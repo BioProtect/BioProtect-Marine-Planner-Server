@@ -47,3 +47,5 @@ EXPOSE 80
 
 CMD ../wait && python3 marxan-server.py
 # CMD python3 marxan-server.py
+
+

@@ -5550,7 +5550,11 @@ puid,R
 12978,0
 12977,0
 12976,0
+<<<<<<< HEAD
 12975,0
+=======
+12975,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12974,0
 12973,0
 12972,0
@@ -6449,7 +6453,11 @@ puid,R
 12043,1
 12042,1
 12041,0
+<<<<<<< HEAD
 12040,1
+=======
+12040,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12039,0
 12038,0
 12037,0

@@ -611,7 +611,7 @@ async def _getProjectsForUser(user):
         if (project[:2] != "__"):  # folders beginning with __ are system folders
             # get the data from the input file for this project
             tmpObj.project = project
-            tmpObj.folder_project = MARXAN_USERS_FOLDER + user + os.sep + project + os.sep
+            tmpObj.project_folder = MARXAN_USERS_FOLDER + user + os.sep + project + os.sep
             await _getProjectData(tmpObj)
             # create a dict to save the data
             projects.append({'user': user, 'name': project, 'description': tmpObj.projectData["metadata"]["DESCRIPTION"], 'createdate': tmpObj.projectData["metadata"][
@@ -682,7 +682,7 @@ def _deleteProject(obj):
     """
     # delete the folder and all of its contents
     try:
-        shutil.rmtree(obj.folder_project)
+        shutil.rmtree(obj.project_folder)
     except (WindowsError) as e:  # pylint:disable=undefined-variable
         raise MarxanServicesError(e.strerror)
 
@@ -729,10 +729,10 @@ def _setFolderPaths(obj, arguments):
         obj.user = user
         # get the project folder and the input and output folders
         if "project" in list(arguments.keys()):
-            obj.folder_project = obj.folder_user + \
+            obj.project_folder = obj.folder_user + \
                 arguments["project"][0].decode("utf-8").strip() + os.sep
-            obj.folder_input = obj.folder_project + "input" + os.sep
-            obj.folder_output = obj.folder_project + "output" + os.sep
+            obj.input_folder = obj.project_folder + "input" + os.sep
+            obj.output_folder = obj.project_folder + "output" + os.sep
             obj.project = obj.get_argument("project")
 
 
@@ -749,7 +749,7 @@ async def _getProjectData(obj):
     metadataDict = {}
     rendererDict = {}
     # get the file contents
-    s = _readFileUnicode(obj.folder_project + PROJECT_DATA_FILENAME)
+    s = _readFileUnicode(obj.project_folder + PROJECT_DATA_FILENAME)
     # get the keys from the file
     keys = _getKeys(s)
     # iterate through the keys and get their values
@@ -810,7 +810,7 @@ async def _getProjectInputData(obj, fileToGet, errorIfNotExists=False):
     Returns:
         dict: The data from the input file.
     """
-    filename = obj.folder_input + os.sep + await _getProjectInputFilename(obj, fileToGet)
+    filename = obj.input_folder + os.sep + await _getProjectInputFilename(obj, fileToGet)
     return _loadCSV(filename, errorIfNotExists)
 
 
@@ -926,7 +926,8 @@ async def _getSpeciesData(obj):
             output_df['alias'] = output_df['name']
         else:
             output_df['alias'] = output_df['tmp'].str.cat(
-                (output_df['oid']).apply(str))  # returns: 'Unique identifer: 4702435'
+                # returns: 'Unique identifer: 4702435'
+                (output_df['oid']).apply(str))
         output_df['feature_class_name'] = output_df['oid']
         output_df['description'] = "No description"
         output_df['creation_date'] = "Unknown"
@@ -938,7 +939,8 @@ async def _getSpeciesData(obj):
                                    "creation_date", "area", "tilesetid", "prop", "spf", "oid", "created_by"]]
         except (KeyError) as e:
             raise MarxanServicesError("Unable to load spec.dat data. " + e.args[1] + ". Column names: " + ",".join(df.columns.to_list(
-            )).encode('unicode_escape'))  # .encode('unicode_escape') in case there are tab characters which will be escaped to \\t
+                # .encode('unicode_escape') in case there are tab characters which will be escaped to \\t
+            )).encode('unicode_escape'))
     else:
         # get the postgis feature data - this doesnt use _getAllSpeciesData because we have to join on the oid column
         df2 = await pg.execute("select * from marxan.get_features()", returnFormat="DataFrame")
@@ -986,7 +988,7 @@ def _getSpeciesPreProcessingData(obj):
         None
     """
     obj.speciesPreProcessingData = _loadCSV(
-        obj.folder_input + FEATURE_PREPROCESSING_FILENAME)
+        obj.input_folder + FEATURE_PREPROCESSING_FILENAME)
 
 
 async def _getPlanningUnitsData(obj):
@@ -1024,7 +1026,7 @@ def _getCosts(obj):
         None
     """
     # get all files that end in .cost
-    costFiles = glob.glob(obj.folder_input + "*.cost")
+    costFiles = glob.glob(obj.input_folder + "*.cost")
     # get the names of the files
     costNames = [os.path.basename(f)[:-5] for f in costFiles]
     # add the default cost profile
@@ -1045,7 +1047,7 @@ async def _updateCosts(obj, costname):
     Raises:
         MarxanServicesError: If the costname file does not exist.
     """
-    filename = obj.folder_input + costname + ".cost"
+    filename = obj.input_folder + costname + ".cost"
     # load the pu.dat file
     df = await _getProjectInputData(obj, "PUNAME")
     # default costs are uniform
@@ -1061,7 +1063,7 @@ async def _updateCosts(obj, costname):
         # join the costs file (which has id,cost) to the pu.dat file (which has status)
         df = df2.join(df[['status']])
     # update the input.dat file
-    _updateParameters(obj.folder_project +
+    _updateParameters(obj.project_folder +
                       PROJECT_DATA_FILENAME, {'COSTS': costname})
     await _writeCSV(obj, "PUNAME", df)
 
@@ -1077,7 +1079,7 @@ def _deleteCost(obj, costname):
     Raises:
         MarxanServicesError: If the costname file does not exist.
     """
-    filename = obj.folder_input + costname + ".cost"
+    filename = obj.input_folder + costname + ".cost"
     # check the cost file exists
     if not os.path.exists(filename):
         raise MarxanServicesError(
@@ -1123,7 +1125,7 @@ def _getProtectedAreaIntersectionsData(obj):
     Returns:
         None
     """
-    df = _loadCSV(obj.folder_input + PROTECTED_AREA_INTERSECTIONS_FILENAME)
+    df = _loadCSV(obj.input_folder + PROTECTED_AREA_INTERSECTIONS_FILENAME)
     # normalise the protected area intersections to make the payload smaller
     obj.protectedAreaIntersectionsData = _normaliseDataFrame(
         df, "iucn_cat", "puid")
@@ -1185,14 +1187,14 @@ async def _reprocessProtectedAreas(obj, folder):
         # get the project metadata
         tmpObj = ExtendableObject()
         tmpObj.project = "unimportant"
-        tmpObj.folder_project = os.path.dirname(folder) + os.sep
+        tmpObj.project_folder = os.path.dirname(folder) + os.sep
         await _getProjectData(tmpObj)
         # get the planning grid name
         planning_grid_name = tmpObj.projectData['metadata']['PLANNING_UNIT_NAME']
         # preprocess the planning grid with the WDPA
         obj.send_response({'status': "Preprocessing",
                            'info': 'Preprocessing ' + planning_grid_name})
-        await _preprocessProtectedAreas(obj, planning_grid_name, tmpObj.folder_project + 'input' + os.sep)
+        await _preprocessProtectedAreas(obj, planning_grid_name, tmpObj.project_folder + 'input' + os.sep)
     return project_folders
 
 # gets the marxan log after a run
@@ -1206,8 +1208,8 @@ def _getMarxanLog(obj):
     Returns:
         None
     """
-    if (os.path.exists(obj.folder_output + OUTPUT_LOG_FILENAME)):
-        log = _readFileUnicode(obj.folder_output + OUTPUT_LOG_FILENAME)
+    if (os.path.exists(obj.output_folder + OUTPUT_LOG_FILENAME)):
+        log = _readFileUnicode(obj.output_folder + OUTPUT_LOG_FILENAME)
     else:
         log = ""
     obj.marxanLog = log
@@ -1241,7 +1243,7 @@ def _getBestSolution(obj):
     Returns:
         None
     """
-    filename = _getOutputFilename(obj.folder_output + BEST_SOLUTION_FILENAME)
+    filename = _getOutputFilename(obj.output_folder + BEST_SOLUTION_FILENAME)
     obj.bestSolution = _loadCSV(filename)
 
 
@@ -1253,7 +1255,7 @@ def _getOutputSummary(obj):
     Returns:
         None
     """
-    filename = _getOutputFilename(obj.folder_output + OUTPUT_SUMMARY_FILENAME)
+    filename = _getOutputFilename(obj.output_folder + OUTPUT_SUMMARY_FILENAME)
     obj.outputSummary = _loadCSV(filename)
 
 
@@ -1265,7 +1267,7 @@ def _getSummedSolution(obj):
     Returns:
         None
     """
-    filename = _getOutputFilename(obj.folder_output + SUMMED_SOLUTION_FILENAME)
+    filename = _getOutputFilename(obj.output_folder + SUMMED_SOLUTION_FILENAME)
     df = _loadCSV(filename)
     obj.summedSolution = _normaliseDataFrame(df, "number", "planning_unit")
 
@@ -1283,7 +1285,7 @@ def _getSolution(obj, solutionId):
     """
     try:
         filename = _getOutputFilename(
-            obj.folder_output + SOLUTION_FILE_PREFIX + "%05d" % int(solutionId))
+            obj.output_folder + SOLUTION_FILE_PREFIX + "%05d" % int(solutionId))
     except MarxanServicesError as e:  # the solution no longer exists - probably a clumping project
         obj.solution = []
         if (obj.get_argument('user') != "_clumping"):
@@ -1308,7 +1310,7 @@ def _getMissingValues(obj, solutionId):
         None
     """
     filename = _getOutputFilename(
-        obj.folder_output + MISSING_VALUES_FILE_PREFIX + "%05d" % int(solutionId))
+        obj.output_folder + MISSING_VALUES_FILE_PREFIX + "%05d" % int(solutionId))
     df = _loadCSV(filename)
     obj.missingValues = df.to_dict(orient="split")["data"]
 
@@ -1348,13 +1350,13 @@ async def _updateSpeciesFile(obj, interest_features, target_values, spf_values, 
             # get the name of the puvspr file from the project data
             puvsprFilename = await _getProjectInputFilename(obj, "PUVSPRNAME")
             # update the puvspr.dat file
-            if (os.path.exists(obj.folder_input + puvsprFilename)):
+            if (os.path.exists(obj.input_folder + puvsprFilename)):
                 _deleteRecordsInTextFile(
-                    obj.folder_input + puvsprFilename, "species", removedIds)
+                    obj.input_folder + puvsprFilename, "species", removedIds)
             # update the preprocessing.dat file to remove any species that are no longer in the project - these will need to be preprocessed again
-            if (os.path.exists(obj.folder_input + FEATURE_PREPROCESSING_FILENAME)):
+            if (os.path.exists(obj.input_folder + FEATURE_PREPROCESSING_FILENAME)):
                 _deleteRecordsInTextFile(
-                    obj.folder_input + FEATURE_PREPROCESSING_FILENAME, "id", removedIds)
+                    obj.input_folder + FEATURE_PREPROCESSING_FILENAME, "id", removedIds)
     # create the dataframe to write to file
     records = []
     for i in range(len(ids)):
@@ -1404,11 +1406,11 @@ async def _createPuFile(obj, planning_grid_name):
         None
     """
     # get the path to the pu.dat file
-    filename = obj.folder_input + PLANNING_UNITS_FILENAME
+    filename = obj.input_folder + PLANNING_UNITS_FILENAME
     # create the pu.dat file using a postgis query
     await pg.execute(sql.SQL("SELECT puid as id,1::double precision as cost,0::integer as status FROM marxan.{};").format(sql.Identifier(planning_grid_name)), returnFormat="File", filename=filename)
     # update the input.dat file
-    _updateParameters(obj.folder_project + PROJECT_DATA_FILENAME,
+    _updateParameters(obj.project_folder + PROJECT_DATA_FILENAME,
                       {'PUNAME': PLANNING_UNITS_FILENAME})
 
 
@@ -1484,7 +1486,7 @@ async def _writeCSV(obj, fileToWrite, df, writeIndex=False):
     if _filename == "":  # the file has not previously been created
         raise MarxanServicesError(
             "The filename for the " + fileToWrite + ".dat file has not been set in the input.dat file")
-    df.to_csv(obj.folder_input + _filename, index=writeIndex)
+    df.to_csv(obj.input_folder + _filename, index=writeIndex)
 
 
 def _writeToDatFile(file, dataframe):
@@ -2499,7 +2501,7 @@ async def _createFeaturePreprocessingFileFromImport(obj):
     # rename the columns
     pivotted.columns = ['id', 'pu_area', 'pu_count']
     # output the file
-    pivotted.to_csv(obj.folder_input +
+    pivotted.to_csv(obj.input_folder +
                     FEATURE_PREPROCESSING_FILENAME, index=False)
 
 
@@ -2753,7 +2755,7 @@ def _getRunLogs():
     for index, row in runningProjects.iterrows():
         # get the output folder
         tmpObj = ExtendableObject()
-        tmpObj.folder_output = MARXAN_USERS_FOLDER + \
+        tmpObj.output_folder = MARXAN_USERS_FOLDER + \
             row['user'] + os.sep + row['project'] + os.sep + "output" + os.sep
         # get the number of runs completed
         numRunsCompleted = _getNumberOfRunsCompleted(tmpObj)
@@ -2786,7 +2788,7 @@ def _getNumberOfRunsCompleted(obj):
     Returns:
         int: The number of runs that are completed.
     """
-    files = glob.glob(obj.folder_output + "output_r*")
+    files = glob.glob(obj.output_folder + "output_r*")
     return len(files)
 
 
@@ -3041,6 +3043,7 @@ class PostGIS():
     Attributes:
         pool: An aiopg.pool used for managing connections to PostGIS.
     """
+
     async def initialise(self):
         """On initialise, creates an attribute that points to the database pool that is managing all of the connections to PostGIS
         """
@@ -3328,9 +3331,9 @@ class MarxanRESTHandler(tornado.web.RequestHandler):
         user: A string with the name of the user making the request (if the request.arguments contains a user key).
         folder_user: A string with the path to the users folder (if the request.arguments contains a user key).
         project: A string with the name of the project (if the request.arguments contains a project key).
-        folder_project: A string with the path to the project folder (if the request.arguments contains a project key).
-        folder_input: A string with the path to the projects input folder (if the request.arguments contains a project key).
-        folder_output: A string with the path to the projects output folder (if the request.arguments contains a project key).
+        project_folder: A string with the path to the project folder (if the request.arguments contains a project key).
+        input_folder: A string with the path to the projects input folder (if the request.arguments contains a project key).
+        output_folder: A string with the path to the projects output folder (if the request.arguments contains a project key).
     """
 
     def set_default_headers(self):
@@ -3360,27 +3363,13 @@ class MarxanRESTHandler(tornado.web.RequestHandler):
             # check the referer can call the REST end point from their domain
             _checkCORS(self)
 
-
-<< << << < HEAD
-
-            # check the request is authenticated
-            _authenticate(self)
-
-            # check the users role has access to the requested service
-            _authoriseRole(self, method)
-
-            # check the user has access to the specific resource, i.e. the 'User' role cannot access projects from other users
-            _authoriseUser(self)
-
-== == == =
             # check the request is authenticated
             _authenticate(self)
             # check the users role has access to the requested service
             _authoriseRole(self, method)
             # check the user has access to the specific resource, i.e. the 'User' role cannot access projects from other users
             _authoriseUser(self)
->>>>>> > 18b1667449b3bacf4a0638323c5621c9784009c9
-            # instantiate the response dictionary
+
             self.response = {}
         else:
             if (method != "testTornado"):
@@ -3554,6 +3543,7 @@ class createProject(MarxanRESTHandler):
             "user": The name of the user  
         }  
     """
+
     async def post(self):
         try:
             # validate the input arguments
@@ -3562,7 +3552,7 @@ class createProject(MarxanRESTHandler):
             # create the empty project folder
             _createProject(self, self.get_argument('project'))
             # update the projects parameters
-            _updateParameters(self.folder_project + PROJECT_DATA_FILENAME, {'DESCRIPTION': self.get_argument(
+            _updateParameters(self.project_folder + PROJECT_DATA_FILENAME, {'DESCRIPTION': self.get_argument(
                 'description'), 'CREATEDATE': datetime.datetime.now().strftime("%d/%m/%y %H:%M:%S"), 'PLANNING_UNIT_NAME': self.get_argument('planning_grid_name')})
             # create the spec.dat file
             await _updateSpeciesFile(self, self.get_argument("interest_features"), self.get_argument("target_values"), self.get_argument("spf_values"), True)
@@ -3619,12 +3609,13 @@ class upgradeProject(MarxanRESTHandler):
             "project": The name of the project updated  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
             _validateArguments(self.request.arguments, ['user', 'project'])
             # get the projects existing data from the input.dat file
-            old = _readFileUnicode(self.folder_project + PROJECT_DATA_FILENAME)
+            old = _readFileUnicode(self.project_folder + PROJECT_DATA_FILENAME)
             # get an empty projects data
             new = _readFileUnicode(
                 EMPTY_PROJECT_TEMPLATE_FOLDER + PROJECT_DATA_FILENAME)
@@ -3633,7 +3624,7 @@ class upgradeProject(MarxanRESTHandler):
             if pos > -1:
                 newText = new[pos:]
                 old = old + "\n" + newText
-                _writeFileUnicode(self.folder_project +
+                _writeFileUnicode(self.project_folder +
                                   PROJECT_DATA_FILENAME, old)
             else:
                 raise MarxanServicesError(
@@ -3641,7 +3632,7 @@ class upgradeProject(MarxanRESTHandler):
             # populate the feature_preprocessing.dat file using data in the puvspr.dat file
             await _createFeaturePreprocessingFileFromImport(self)
             # delete the contents of the output folder
-            _deleteAllFiles(self.folder_output)
+            _deleteAllFiles(self.output_folder)
             # set the response
             self.send_response({'info': "Project '" + self.get_argument("project") +
                                 "' updated", 'project': self.get_argument("project")})
@@ -3667,6 +3658,7 @@ class deleteProject(MarxanRESTHandler):
     Raises:
         MarxanServicesError: If it is the users last project.
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -3705,7 +3697,7 @@ class cloneProject(MarxanRESTHandler):
             # validate the input arguments
             _validateArguments(self.request.arguments, ['user', 'project'])
             # clone the folder recursively
-            clonedName = _cloneProject(self.folder_project, self.folder_user)
+            clonedName = _cloneProject(self.project_folder, self.folder_user)
             # set the response
             self.send_response(
                 {'info': "Project '" + clonedName + "' created", 'name': clonedName})
@@ -3747,7 +3739,7 @@ class createProjectGroup(MarxanRESTHandler):
                 projectName = uuid.uuid4().hex
                 # add the project name to the array
                 projects.append({'projectName': projectName, 'clump': i})
-                shutil.copytree(self.folder_project,
+                shutil.copytree(self.project_folder,
                                 CLUMP_FOLDER + projectName)
                 # delete the contents of the output folder in that cloned project
                 _deleteAllFiles(CLUMP_FOLDER + projectName +
@@ -3817,7 +3809,7 @@ class renameProject(MarxanRESTHandler):
             _validateArguments(self.request.arguments, [
                                'user', 'project', 'newName'])
             # rename the folder
-            os.rename(self.folder_project, self.folder_user +
+            os.rename(self.project_folder, self.folder_user +
                       self.get_argument("newName"))
             # set the new name as the users last project so it will load on login
             _updateParameters(self.folder_user + USER_DATA_FILENAME,
@@ -3843,6 +3835,7 @@ class getCountries(MarxanRESTHandler):
             "records": dict[]: The country records. Each dict contains the keys: iso3, name_iso31, has_marine  
         }  
     """
+
     async def get(self):
         try:
             content = await pg.execute("SELECT t.iso3, t.name_iso31, CASE WHEN m.iso3 IS NULL THEN False ELSE True END has_marine FROM marxan.gaul_2015_simplified_1km t LEFT JOIN marxan.eez_simplified_1km m on t.iso3 = m.iso3 WHERE t.iso3 NOT LIKE '%|%' ORDER BY lower(t.name_iso31);", returnFormat="Dict")
@@ -3866,6 +3859,7 @@ class getPlanningUnitGrids(MarxanRESTHandler):
             "planning_unit_grids": dict[]: The data for the planning grids. Each dict contains the keys: alias,aoi_id,country,country_id,created_by,creation_date,description,domain,envelope,feature_class_name,planning_unit_count,source,tilesetid,_area  
         }  
     """
+
     async def get(self):
         try:
             planningUnitGrids = await _getPlanningUnitGrids()
@@ -3895,6 +3889,7 @@ class importPlanningUnitGrid(MarxanRESTHandler):
             "alias": The alias for the feature class imported  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -3924,6 +3919,7 @@ class exportPlanningUnitGrid(MarxanRESTHandler):
             "filename": The name of the zip file created  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -3953,6 +3949,7 @@ class deletePlanningUnitGrid(MarxanRESTHandler):
     Raises:
         MarxanServicesError: If the planning grid is system supplied or is in use by one or more projects. 
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4095,17 +4092,8 @@ class getUser(MarxanRESTHandler):
             role = self.userData["ROLE"]
             unauthorised = ROLE_UNAUTHORISED_METHODS[role]
             # set the response
-<<<<<<< HEAD
-            self.send_response({
-                'info': "User data received",
-                "userData": self.userData,
-                "unauthorisedMethods": unauthorised,
-                'dismissedNotifications': ids
-            })
-=======
             self.send_response({'info': "User data received", "userData": self.userData,
                                 "unauthorisedMethods": unauthorised, 'dismissedNotifications': ids})
->>>>>>> 18b1667449b3bacf4a0638323c5621c9784009c9
         except MarxanServicesError as e:
             _raiseError(self, e.args[0])
 
@@ -4191,6 +4179,7 @@ class getProject(MarxanRESTHandler):
             "costnames": string[]: A list of the costname profiles for the project. These are the .cost files in the input folder  
         } 
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4200,7 +4189,7 @@ class getProject(MarxanRESTHandler):
                     {'error': "Logged on as read-only guest user"})
             else:
                 # see if the project exists
-                if not os.path.exists(self.folder_project):
+                if not os.path.exists(self.project_folder):
                     raise MarxanServicesError(
                         "The project '" + self.get_argument("project") + "' does not exist")
                 # if the project name is an empty string, then get the first project for the user
@@ -4249,6 +4238,7 @@ class getFeature(MarxanRESTHandler):
             "data": dict containing the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4276,6 +4266,7 @@ class exportFeature(MarxanRESTHandler):
             "filename": The name of the zip file created  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4305,6 +4296,7 @@ class getFeaturePlanningUnits(MarxanRESTHandler):
             "data": int[]: A list of the planning unit puids where the feature occurs  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4336,6 +4328,7 @@ class getSpeciesData(MarxanRESTHandler):
             "data": dict[]: For old versions of Marxan each dict contains: alias,feature_class_name,description,creation_date,area,tilesetid,prop,spf,oid,created_by. For Marxan Web projects each dict contains: oid,alias,feature_class_name,description,creation_date,area,tilesetid,extent,created_by  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4364,6 +4357,7 @@ class getAllSpeciesData(MarxanRESTHandler):
             "data": dict[]: A list of the features. Each dict contains the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by  
         }  
     """
+
     async def get(self):
         try:
             # get all the species data
@@ -4419,6 +4413,7 @@ class getPlanningUnitsData(MarxanRESTHandler):
             "data":list[]: The planning units data normalised by status. e.g. [[1,[245,3586]],[2,[45,297,5908,5909]]]  
         }   
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4448,6 +4443,7 @@ class getPlanningUnitsCostData(MarxanRESTHandler):
             "max": The maximum cost value  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4505,6 +4501,7 @@ class updateCosts(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4851,6 +4848,7 @@ class getProjects(MarxanRESTHandler):
             "projects": dict[]: A list of projects. Each dict contains the keys: createdate, description, name, oldversion, private, user  
         } 
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -4878,6 +4876,7 @@ class getProjectsWithGrids(MarxanRESTHandler):
             "data": dict[]: A list of projects with the planning grids  
         }  
     """
+
     async def get(self):
         try:
             matches = []
@@ -4933,6 +4932,7 @@ class updateSpecFile(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def post(self):
         try:
             # validate the input arguments
@@ -4962,6 +4962,7 @@ class updatePUFile(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def post(self):
         try:
             # validate the input arguments
@@ -4998,6 +4999,7 @@ class getPUData(MarxanRESTHandler):
             "data": dict containing the keys: features (the features within the planning unit), pu_data (the planning unit data)  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5036,6 +5038,7 @@ class createFeaturePreprocessingFileFromImport(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5126,7 +5129,7 @@ class updateProjectParameters(MarxanRESTHandler):
             # get the parameters to update as a simple dict
             params = _getSimpleArguments(self, ['user', 'project', 'callback'])
             # update the parameters
-            _updateParameters(self.folder_project +
+            _updateParameters(self.project_folder +
                               PROJECT_DATA_FILENAME, params)
             # set the response
             self.send_response(
@@ -5211,6 +5214,7 @@ class uploadTilesetToMapBox(MarxanRESTHandler):
             "uploadid": The Mapbox tileset upload id  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5277,7 +5281,7 @@ class uploadFile(MarxanRESTHandler):
             _validateArguments(self.request.arguments, [
                                'user', 'project', 'filename'])
             # write the file to the server
-            _writeFile(self.folder_project + self.get_argument('filename'),
+            _writeFile(self.project_folder + self.get_argument('filename'),
                        self.request.files['value'][0].body)
             # set the response
             self.send_response({'info': "File '" + self.get_argument('filename') +
@@ -5301,6 +5305,7 @@ class unzipShapefile(MarxanRESTHandler):
             "rootfilename": The name of the shapefile unzipped (minus the .shp extension)  
         }  
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5360,6 +5365,7 @@ class deleteFeature(MarxanRESTHandler):
     Raises:
         MarxanServicesError: If the feature cannot be deleted because it is system supplied or currently in use in one or more projects. 
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5417,6 +5423,7 @@ class createFeatureFromLinestring(MarxanRESTHandler):
             "uploadId": The Mapbox tileset upload id  
         }  
     """
+
     async def post(self):
         try:
             # validate the input arguments
@@ -5451,6 +5458,7 @@ class stopProcess(MarxanRESTHandler):
     Raises:
         MarxanServicesError: If the process does not exist.
     """
+
     async def get(self):
         try:
             # validate the input arguments
@@ -5593,6 +5601,7 @@ class deleteGapAnalysis(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def get(self):
         try:
             _validateArguments(self.request.arguments, ['user', 'project'])
@@ -5637,6 +5646,7 @@ class runSQLFile(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def get(self):
         try:
             _validateArguments(self.request.arguments, ['filename'])
@@ -5670,6 +5680,7 @@ class cleanup(MarxanRESTHandler):
             "info": Informational message  
         }
     """
+
     async def get(self):
         try:
             await _cleanup()
@@ -5688,6 +5699,7 @@ class shutdown(MarxanRESTHandler):
     Returns:
         None
     """
+
     async def get(self):
         try:
             if platform.system() != "Windows":
@@ -5817,7 +5829,7 @@ class MarxanWebSocketHandler(tornado.websocket.WebSocketHandler):
             if "user" in self.request.arguments.keys():
                 _setFolderPaths(self, self.request.arguments)
                 # get the project data
-                if hasattr(self, 'folder_project'):
+                if hasattr(self, 'project_folder'):
                     await _getProjectData(self)
             # check the request is authenticated
             _authenticate(self)
@@ -5930,6 +5942,7 @@ class runMarxan(MarxanWebSocketHandler):
             "status": One of Preprocessing, pid, RunningMarxan or Finished  
         }  
     """
+
     async def open(self):
         """Authenticate and authorise the request and start the run if it is not already running.
         """
@@ -5944,10 +5957,10 @@ class runMarxan(MarxanWebSocketHandler):
                             "#the-project-is-already-running' target='blank'>here</a>", 'info': ''})
             else:
                 # set the current folder to the project folder so files can be found in the input.dat file
-                if (os.path.exists(self.folder_project)):
-                    os.chdir(self.folder_project)
+                if (os.path.exists(self.project_folder)):
+                    os.chdir(self.project_folder)
                     # delete all of the current output files
-                    _deleteAllFiles(self.folder_output)
+                    _deleteAllFiles(self.output_folder)
                     # run marxan
                     # the "exec " in front allows you to get the pid of the child process, i.e. marxan, and therefore to be able to kill the process using os.kill(pid, signal.SIGTERM) instead of the tornado process - see here: https://stackoverflow.com/questions/4789837/how-to-terminate-a-python-subprocess-launched-with-shell-true/4791612#4791612
                     try:
@@ -6094,6 +6107,7 @@ class importFeatures(MarxanWebSocketHandler):
             "uploadIds": string[]: The Mapbox tileset upload ids (for multiple feature)  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Importing features.."})
@@ -6186,6 +6200,7 @@ class importGBIFData(MarxanWebSocketHandler):
             "uploadId": The Mapbox tileset upload id  
         }  
     """
+
     async def open(self):
         """Manages the GBIF import from downloading the data to importing into PostGIS.
         """
@@ -6262,7 +6277,7 @@ class importGBIFData(MarxanWebSocketHandler):
             _json = json.loads(response)
             # get the lat longs
             data = [OrderedDict({'eventDate': item['eventDate'] if 'eventDate' in item.keys() else None, 'gbifID': item['gbifID'],
-                                 'lng':item['decimalLongitude'], 'lat': item['decimalLatitude'], 'geometry': ''}) for item in _json['results']]
+                                 'lng': item['decimalLongitude'], 'lat': item['decimalLatitude'], 'geometry': ''}) for item in _json['results']]
             # append them to the list
             latLongs.extend(data)
             fetched.add(current_url)
@@ -6376,6 +6391,7 @@ class createFeaturesFromWFS(MarxanWebSocketHandler):
             "uploadId": The Mapbox tileset upload id  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Importing features.."})
@@ -6439,6 +6455,7 @@ class exportProject(MarxanWebSocketHandler):
             "uploadId": The Mapbox tileset upload id  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Exporting project.."})
@@ -6455,7 +6472,7 @@ class exportProject(MarxanWebSocketHandler):
             if os.path.exists(exportFolder):
                 shutil.rmtree(exportFolder)
             # copy the project folder
-            shutil.copytree(self.folder_project, exportFolder)
+            shutil.copytree(self.project_folder, exportFolder)
             # FEATURES
             # get the species data from the spec.dat file and the PostGIS database
             await _getSpeciesData(self)
@@ -6522,6 +6539,7 @@ class importProject(MarxanWebSocketHandler):
             "status": One of Preprocessing or Finished  
         }  
     """
+
     async def open(self):
         try:
             _validateArguments(self.request.arguments, [
@@ -6585,7 +6603,7 @@ class importProject(MarxanWebSocketHandler):
             _getSpeciesPreProcessingData(self)
             df = _updateDataFrame(
                 self.speciesPreProcessingData, mapping, 'id', 'id', 'new_id')
-            df.to_csv(self.folder_input +
+            df.to_csv(self.input_folder +
                       FEATURE_PREPROCESSING_FILENAME, index=False)
             # update the values in the spec.dat file
             df = await _getProjectInputData(self, "SPECNAME")
@@ -6597,7 +6615,7 @@ class importProject(MarxanWebSocketHandler):
             df = df.sort_values(by=['pu', 'species'])
             await _writeCSV(self, "PUVSPRNAME", df)
             # clear the output so we dont have to update the feature ids in any other file
-            _deleteAllFiles(self.folder_output)
+            _deleteAllFiles(self.output_folder)
             # PLANNING GRID
             # load the metadata
             df = pandas.read_csv(projectFolder + EXPORT_PU_METADATA, sep='\t')
@@ -6647,6 +6665,7 @@ class QueryWebSocketHandler(MarxanWebSocketHandler):
         pid: A string with the back-end process id of the PostGIS query (prefixed with 'q'). This allows the query to be stopped.    
     """
     # runs a PostGIS query asynchronously and writes the pid to the client so the query can be stopped
+
     async def executeQuery(self, sql, data=None, returnFormat=None):
         try:
             return await pg.execute(sql, data=data, returnFormat=returnFormat, socketHandler=self)
@@ -6686,6 +6705,7 @@ class preprocessFeature(QueryWebSocketHandler):
             "pu_count": The total number of planning grids that intersect the feature  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Preprocessing '" + self.get_argument('alias') + "'.."})
@@ -6730,14 +6750,14 @@ class preprocessFeature(QueryWebSocketHandler):
                     await _writeCSV(self, "PUVSPRNAME", df)
                     # get the summary information and write it to the feature preprocessing file
                     record = _getPuvsprStats(df, speciesId)
-                    _writeToDatFile(self.folder_input +
+                    _writeToDatFile(self.input_folder +
                                     FEATURE_PREPROCESSING_FILENAME, record)
                 except (MarxanServicesError) as e:
                     self.close({'error': e.args[1]})
                 else:
                     # update the input.dat file
                     _updateParameters(
-                        self.folder_project + PROJECT_DATA_FILENAME, {'PUVSPRNAME': PUVSPR_FILENAME})
+                        self.project_folder + PROJECT_DATA_FILENAME, {'PUVSPRNAME': PUVSPR_FILENAME})
                     # set the response
                     self.close({'info': "Feature '" + self.get_argument('alias') + "' preprocessed", "feature_class_name": self.get_argument(
                         'feature_class_name'), "pu_area": str(record.iloc[0]['pu_area']), "pu_count": str(record.iloc[0]['pu_count']), "id": str(speciesId)})
@@ -6762,6 +6782,7 @@ class preprocessProtectedAreas(QueryWebSocketHandler):
             "intersections" list[]: The intersection data between the planning units and the protected areas normalised by IUCN category. e.g. [['II',[245,3586]],['III',[45,297,5908,5909]]]  
         }   
     """
+
     async def open(self):
         try:
             await super().open({'info': "Preprocessing protected areas"})
@@ -6771,7 +6792,7 @@ class preprocessProtectedAreas(QueryWebSocketHandler):
             _validateArguments(self.request.arguments, [
                                'user', 'project', 'planning_grid_name'])
             # do the intersection with the protected areas
-            await _preprocessProtectedAreas(self, self.get_argument('planning_grid_name'), self.folder_input)
+            await _preprocessProtectedAreas(self, self.get_argument('planning_grid_name'), self.input_folder)
             # get the data to return to the client
             _getProtectedAreaIntersectionsData(self)
             # set the response
@@ -6799,6 +6820,7 @@ class reprocessProtectedAreas(QueryWebSocketHandler):
             "status": One of Preprocessing or Finished  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Reprocessing protected areas for projects"})
@@ -6832,6 +6854,7 @@ class preprocessPlanningUnits(QueryWebSocketHandler):
             "status": One of Preprocessing or Finished  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Calculating boundary lengths"})
@@ -6848,15 +6871,15 @@ class preprocessPlanningUnits(QueryWebSocketHandler):
                 # do the intersection
                 results = await self.executeQuery(sql.SQL("CREATE TABLE marxan.{feature_class_name} AS SELECT DISTINCT a.puid id1, b.puid id2, ST_Length(ST_CollectionExtract(ST_Intersection(ST_Transform(a.geometry, 3410), ST_Transform(b.geometry, 3410)), 2))/1000 boundary  FROM marxan.{planning_unit_name} a, marxan.{planning_unit_name} b  WHERE a.puid < b.puid AND ST_Touches(a.geometry, b.geometry);").format(feature_class_name=sql.Identifier(feature_class_name), planning_unit_name=sql.Identifier(self.projectData["metadata"]["PLANNING_UNIT_NAME"])))
                 # delete the file if it already exists
-                if (os.path.exists(self.folder_input + BOUNDARY_LENGTH_FILENAME)):
-                    os.remove(self.folder_input + BOUNDARY_LENGTH_FILENAME)
+                if (os.path.exists(self.input_folder + BOUNDARY_LENGTH_FILENAME)):
+                    os.remove(self.input_folder + BOUNDARY_LENGTH_FILENAME)
                 # write the boundary lengths to file
-                await pg.execute(sql.SQL("SELECT * FROM marxan.{};").format(sql.Identifier(feature_class_name)), returnFormat="File", filename=self.folder_input + BOUNDARY_LENGTH_FILENAME)
+                await pg.execute(sql.SQL("SELECT * FROM marxan.{};").format(sql.Identifier(feature_class_name)), returnFormat="File", filename=self.input_folder + BOUNDARY_LENGTH_FILENAME)
                 # delete the tmp table
                 await pg.execute(sql.SQL("DROP TABLE IF EXISTS marxan.{};").format(sql.Identifier(feature_class_name)))
                 # update the input.dat file
                 _updateParameters(
-                    self.folder_project + PROJECT_DATA_FILENAME, {'BOUNDNAME': 'bounds.dat'})
+                    self.project_folder + PROJECT_DATA_FILENAME, {'BOUNDNAME': 'bounds.dat'})
             # set the response
             self.close({'info': 'Boundary lengths calculated'})
 
@@ -6883,6 +6906,7 @@ class createPlanningUnitGrid(QueryWebSocketHandler):
             "uploadId": The Mapbox tileset upload id  
         }
     """
+
     async def open(self):
         try:
             await super().open({'info': "Creating planning grid.."})
@@ -6937,6 +6961,7 @@ class runGapAnalysis(QueryWebSocketHandler):
             "data": dict[]: The gap analysis results. Each dict has the keys: country_area,current_protected_area,current_protected_percent,endemic,total_area,_alias,_feature_class_name  
         }   
     """
+
     async def open(self):
         try:
             await super().open({'info': "Running gap analysis.."})
@@ -6972,6 +6997,7 @@ class resetDatabase(QueryWebSocketHandler):
             "status": One of Preprocessing or Finished  
         }  
     """
+
     async def open(self):
         try:
             await super().open({'info': "Resetting database.."})
@@ -7017,7 +7043,7 @@ class resetDatabase(QueryWebSocketHandler):
                     # get the input.dat file data
                     tmpObj = ExtendableObject()
                     tmpObj.project = "unimportant"
-                    tmpObj.folder_project = os.path.dirname(file) + os.sep
+                    tmpObj.project_folder = os.path.dirname(file) + os.sep
                     await _getProjectData(tmpObj)
                     # get the planning grid
                     planningGridsToKeep.append(
@@ -7047,6 +7073,7 @@ class updateWDPA(QueryWebSocketHandler):
         }  
     """
     # authenticate and get the user folder and project folders
+
     async def open(self):
         try:
             await super().open({'info': "Updating WDPA.."})
@@ -7270,7 +7297,8 @@ class GetAtlasLayersHandler(MarxanRESTHandler):
                 layer_link = layer.find(
                     '{http://www.opengis.net/wms}Name').text  # .encode('utf8')
                 title_name = layer.find(
-                    '{http://www.opengis.net/wms}Title').text  # .encode('utf8')
+                    # .encode('utf8')
+                    '{http://www.opengis.net/wms}Title').text
                 layers.append(json.dumps({
                     'title': title_name,
                     'layer': layer_link
@@ -7323,6 +7351,7 @@ class GetAllImpactsHandler(MarxanRESTHandler):
         "data": dict[]: A list of the features. Each dict contains the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by
         }
     """
+
     async def get(self):
         print('Get all impacts handerler.....')
         try:

@@ -2,6 +2,8 @@ server.dat
 marxan-server.log
 runlog.dat
 users/admin/user.dat
+# users/admin/user.dat
+users/admin/*
 *.pyc
 .~*
 dump.sql
@@ -10,3 +12,23 @@ dump.sql
 
 /*.backup/
 /*.sql/
+.venv
+/data/
+data
+
+_marxan_web_resources/
+
+*.dump
+*.sql
+__pycache__
+__pycache__/*
+/__pycache__/
+
+MarOpt_v243_Linux32
+MarOpt_v243_Linux64
+MarOpt_v243_Mac32
+MarOpt_v243_Mac64
+Marxan.exe
+Marxan_x64.exe
+imports
+imports/*

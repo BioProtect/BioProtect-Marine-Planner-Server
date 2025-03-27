@@ -16,10 +16,17 @@ http://www.uq.edu.au/marxan
 
 Entering in the data files 
    There are 1 Planning units.
+<<<<<<< HEAD
   976348992 Planning Unit names read in 
   14155792 species read in 
   14155792 connections entered 
 1 conservation values counted, 976348992 big matrix size, 6.95322e-310% density of matrix 
+=======
+  -1947736256 Planning Unit names read in 
+  14790672 species read in 
+  14790672 connections entered 
+1 conservation values counted, -1947736256 big matrix size, 6.95324e-310% density of matrix 
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 Time passed so far is 0 secs 
 
 Pre-processing Section. 
@@ -27,6 +34,7 @@ Pre-processing Section.
 Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
   Creating the initial reserve 
 
+<<<<<<< HEAD
   Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 6721.0 MPM 0.0
 
   ThermalAnnealing:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall 0.00 Penalty 26.0 MPM 0.0
@@ -34,12 +42,22 @@ Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000
   Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 26.0 MPM 0.0
 
   Best:Value -nan Cost 0.0 PUs -1 Connection 0.0 Missing 14333596 Shortfall 0.00 Penalty 26.0 MPM 0.0
+=======
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6811.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 24.0 MPM 0.0
+
+  Best:Value -nan Cost 24.0 PUs -1 Connection 0.0 Missing 14968476 Shortfall 0.00 Penalty 24.0 MPM 0.0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 
 Time passed so far is 0 secs 
 
 Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
   Creating the initial reserve 
 
+<<<<<<< HEAD
   Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 6908.0 MPM 0.0
 
   ThermalAnnealing:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall 0.00 Penalty 25.0 MPM 0.0
@@ -47,12 +65,20 @@ Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000
   Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 25.0 MPM 0.0
 
   Best:Value -nan Cost 64.5 PUs -1 Connection 0.0 Missing 14333596 Shortfall 0.00 Penalty 25.0 MPM 0.0
+=======
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6761.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 
 Time passed so far is 0 secs 
 
 Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
   Creating the initial reserve 
 
+<<<<<<< HEAD
   Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 6788.0 MPM 0.0
 
   ThermalAnnealing:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall 0.00 Penalty 24.0 MPM 0.0
@@ -60,12 +86,20 @@ Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000
   Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 24.0 MPM 0.0
 
   Best:Value -nan Cost 63.5 PUs -1 Connection 0.0 Missing 14333596 Shortfall 0.00 Penalty 24.0 MPM 0.0
+=======
+  Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6740.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 26.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 
 Time passed so far is 0 secs 
 
 Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
   Creating the initial reserve 
 
+<<<<<<< HEAD
   Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 14388268 Shortfall -0.00 Penalty 6720.0 MPM 0.0
 
   ThermalAnnealing:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 14388268 Shortfall 0.00 Penalty 25.0 MPM 0.0
@@ -145,4 +179,87 @@ Time passed so far is 2 secs
 Best solution is run 14155792
 Time passed so far is 2 secs 
 
+=======
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6917.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 29.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6786.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 24.0 MPM 0.0
+
+  Best:Value -nan Cost 24.0 PUs -1 Connection 0.0 Missing 14968476 Shortfall 0.00 Penalty 24.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6745.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6875.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 61.9 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6781.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 29.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 26.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6820.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 25.0 MPM 0.0
+
+Time passed so far is 0 secs 
+
+Run 0   Using Calculated Tinit = 0.0000 Tcool = 0.00000000 
+  Creating the initial reserve 
+
+  Init:Value 0.0 Cost 0.0 PUs 0 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 6907.0 MPM 0.0
+
+  ThermalAnnealing:Value 0.0 Cost 0.1 PUs -1 Connection 0.0 Missing 15023148 Shortfall 0.00 Penalty 25.0 MPM 0.0
+
+  Iterative Improvement:Value 0.0 Cost 0.0 PUs -1 Connection 0.0 Missing 15023148 Shortfall -16678137655559080201066997238570411471752635862991461526438239336527126593536.00 Penalty 24.0 MPM 0.0
+
+  Best:Value -nan Cost 24.0 PUs -1 Connection 0.0 Missing 14968476 Shortfall 0.00 Penalty 24.0 MPM 0.0
+
+Time passed so far is 1 secs 
+
+Best solution is run 14790672
+Time passed so far is 1 secs 
+
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
               The End 

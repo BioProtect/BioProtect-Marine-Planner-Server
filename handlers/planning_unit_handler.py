@@ -16,6 +16,7 @@ from services.file_service import (check_zipped_shapefile,
 from services.project_service import set_folder_paths, write_csv
 from services.service_error import ServicesError, raise_error
 from sqlalchemy import create_engine
+from tornado import escape
 
 
 class PlanningUnitHandler(BaseHandler):
@@ -86,6 +87,8 @@ class PlanningUnitHandler(BaseHandler):
                 self.list_projects_for_planning_grid()
             elif action == 'cost_data':
                 await self.get_planning_units_cost_data()
+            elif action == "get_cost_layer":
+                await self.get_pu_costs_layer()
             elif action == 'data':
                 await self.get_planning_unit_data()
             else:
@@ -101,7 +104,7 @@ class PlanningUnitHandler(BaseHandler):
         try:
             action = self.get_argument('action', None)
             if action == 'update':
-                await self.update_pu_file()
+                await self.update_planning_units()
             elif action == 'import':
                 await self.import_planning_unit_grid()
             else:
@@ -187,70 +190,210 @@ class PlanningUnitHandler(BaseHandler):
             'projects': projects
         })
 
-    async def get_planning_units_cost_data(self):
-        self.validate_args(self.request.arguments, ['user', 'project'])
-        set_folder_paths(self, self.request.arguments,
-                         self.proj_paths.USERS_FOLDER)
+    async def get_pu_costs_layer(self):
+        """
+        Returns Marxan-style cost layer data for project PUs.
+        """
+        self.validate_args(self.request.arguments, ['user', 'project_id'])
+        project_id = self.get_argument("project_id")
 
-        df = file_to_df(join(
-            self.input_folder, self.projectData["files"]["PUNAME"]))
-        data = normalize_dataframe(df, "cost", "id", 9)
+        rows = await self.pg.execute(
+            """
+            SELECT h3_index, cost
+            FROM bioprotect.project_pus
+            WHERE project_id = %s
+            """,
+            [project_id],
+            return_format="Dict"
+        )
+        if not rows:
+            self.send_response({"data": [], "min": None, "max": None})
+            return
+
+        df = pd.DataFrame(rows)
+        min_cost, max_cost = float(df["cost"].min()), float(df["cost"].max())
+
+        num_bins = 9
+        bins = pd.cut(df["cost"], bins=num_bins, include_lowest=True)
+
+        grouped = [[] for _ in range(num_bins)]
+        bin_ranges = [[] for _ in range(num_bins)]
+        for h3, cost, bin_interval in zip(df["h3_index"], df["cost"], bins):
+            idx = list(bins.cat.categories).index(bin_interval)
+            grouped[idx].append(h3)
+            if not bin_ranges[idx]:
+                bin_ranges[idx] = [
+                    float(bin_interval.left), float(bin_interval.right)]
 
         self.send_response({
-            "data": data[0],
-            'min': str(data[1]),
-            'max': str(data[2])
+            "info": "PU costs layer generated",
+            "data": grouped,        # list of PU ids per bin
+            "ranges": bin_ranges,   # min/max for each bin
+            "min": min_cost,
+            "max": max_cost
         })
+
+    # async def get_planning_unit_data(self):
+    #     self.validate_args(self.request.arguments, ['user', 'project', 'puid'])
+    #     files = self.projectData["files"]
+    #     puid = self.get_argument('puid')
+
+    #     pu_df = file_to_df(join(self.input_folder, files["PUNAME"]))
+    #     pu_data = pu_df.loc[pu_df['id'] == int(puid)].iloc[0]
+
+    #     df = file_to_df(join(self.input_folder, files["PUVSPRNAME"]))
+    #     features = df.loc[df['pu'] == int(
+    #         puid)] if not df.empty else pd.DataFrame()
+
+    #     self.send_response({
+    #         "info": 'Planning unit data returned',
+    #         "data": {
+    #             'features': features.to_dict(orient="records"),
+    #             'pu_data': pu_data.to_dict()
+    #         }
+    #     })
 
     async def get_planning_unit_data(self):
-        self.validate_args(self.request.arguments, ['user', 'project', 'puid'])
-        files = self.projectData["files"]
-        puid = self.get_argument('puid')
+        """
+        Returns data for a single planning unit (PU).
+        Includes cost, status, and feature amounts in this PU.
+        """
+        self.validate_args(self.request.arguments, [
+                           'user', 'project_id', 'h3_index'])
+        project_id = self.get_argument('project_id')
+        h3_index = self.get_argument('h3_index')  # h3_index for the PU
 
-        pu_df = file_to_df(join(self.input_folder, files["PUNAME"]))
-        pu_data = pu_df.loc[pu_df['id'] == int(puid)].iloc[0]
+        # Fetch the PU record by H3 index
+        pu_rows = await self.pg.execute(
+            """
+            SELECT id, h3_index, cost, status
+            FROM bioprotect.project_pus
+            WHERE project_id = %s AND h3_index = %s
+            """,
+            [project_id, h3_index],
+            return_format="Dict"
+        )
+        if not pu_rows:
+            raise ServicesError(
+                f"Planning unit {h3_index} not found in project {project_id}.")
+        pu_data = pu_rows[0]
 
-        df = file_to_df(join(self.input_folder, files["PUVSPRNAME"]))
-        features = df.loc[df['pu'] == int(
-            puid)] if not df.empty else pd.DataFrame()
+        # Fetch all feature amounts for this PU
+        feature_rows = await self.pg.execute(
+            """
+            SELECT f.id AS feature_id,
+                f.alias AS feature_name,
+                pfa.amount
+            FROM bioprotect.pu_feature_amounts pfa
+            JOIN bioprotect.features f ON f.id = pfa.feature_id
+            WHERE pfa.project_id = %s AND pfa.h3_index = %s
+            """,
+            [project_id, h3_index],
+            return_format="Dict"
+        )
 
+        # Normalize for UI compatibility
+        # for old UIs that expect an "id" field
+        pu_data["id"] = pu_data["h3_index"]
+        pu_data["cost"] = round(float(pu_data["cost"]), 2)
+
+        # Send response
         self.send_response({
-            "info": 'Planning unit data returned',
+            "info": "Planning unit data returned",
             "data": {
-                'features': features.to_dict(orient="records"),
-                'pu_data': pu_data.to_dict()
+                "pu_data": pu_data,
+                "features": feature_rows or []
             }
         })
-
     # POST FUNCTIONS ###############################################################
-    async def update_pu_file(self):
-        args = self.request.arguments
-        self.validate_args(args, ['user', 'project'])
 
-        status1_ids = self.get_int_array_from_arg(args, "status1")
-        status2_ids = self.get_int_array_from_arg(args, "status2")
-        status3_ids = self.get_int_array_from_arg(args, "status3")
+    # async def update_pu_file(self):
+    #     args = self.request.arguments
+    #     self.validate_args(args, ['user', 'project'])
 
-        status1 = self.create_status_dataframe(status1_ids, 1)
-        status2 = self.create_status_dataframe(status2_ids, 2)
-        status3 = self.create_status_dataframe(status3_ids, 3)
+    #     status1_ids = self.get_int_array_from_arg(args, "status1")
+    #     status2_ids = self.get_int_array_from_arg(args, "status2")
+    #     status3_ids = self.get_int_array_from_arg(args, "status3")
 
-        pu_file_path = join(
-            self.input_folder, self.projectData["files"]["PUNAME"])
-        df = file_to_df(pu_file_path)
+    #     status1 = self.create_status_dataframe(status1_ids, 1)
+    #     status2 = self.create_status_dataframe(status2_ids, 2)
+    #     status3 = self.create_status_dataframe(status3_ids, 3)
 
-        df['status'] = 0
-        status_updates = pd.concat([status1, status2, status3])
+    #     pu_file_path = join(
+    #         self.input_folder, self.projectData["files"]["PUNAME"])
+    #     df = file_to_df(pu_file_path)
 
-        df = df.merge(status_updates, on='id', how='left')
-        df['status'] = df['status_new'].fillna(df['status']).astype('int')
-        df = df.drop(columns=['status_new'])
-        df = df.astype({'id': 'int64', 'cost': 'int64', 'status': 'int64'})
-        df = df.sort_values(by='id')
+    #     df['status'] = 0
+    #     status_updates = pd.concat([status1, status2, status3])
 
-        await write_csv(self, "PUNAME", df)
+    #     df = df.merge(status_updates, on='id', how='left')
+    #     df['status'] = df['status_new'].fillna(df['status']).astype('int')
+    #     df = df.drop(columns=['status_new'])
+    #     df = df.astype({'id': 'int64', 'cost': 'int64', 'status': 'int64'})
+    #     df = df.sort_values(by='id')
 
-        self.send_response({'info': "pu.dat file updated"})
+    #     await write_csv(self, "PUNAME", df)
+
+    #     self.send_response({'info': "pu.dat file updated"})
+
+    async def update_planning_units(self):
+        """
+        Updates planning unit statuses in the project_pus table.
+        Expects JSON body like:
+        """
+        try:
+            body = escape.json_decode(self.request.body)
+            user = body.get("user")
+            project_name = body.get("project")
+            status1_ids = body.get("status1", [])
+            status2_ids = body.get("status2", [])
+            status3_ids = body.get("status3", [])
+
+            if not user or not project_name:
+                raise ServicesError(
+                    "Missing required fields 'user' or 'project'.")
+
+            # resolve project_id
+            project_row = await self.pg.execute(
+                "SELECT id FROM bioprotect.projects WHERE name = %s",
+                [project_name],
+                return_format="Dict"
+            )
+            if not project_row:
+                raise ServicesError(f"Project '{project_name}' not found.")
+            project_id = project_row[0]["id"]
+
+            # reset all statuses to 0 for this project
+            await self.pg.execute(
+                "UPDATE bioprotect.project_pus SET status = 0 WHERE project_id = %s",
+                [project_id]
+            )
+
+            # apply updates for each status group
+            if status1_ids:
+                await self.pg.execute(
+                    "UPDATE bioprotect.project_pus SET status = 1 WHERE project_id = %s AND h3_index = ANY(%s)",
+                    [project_id, status1_ids]
+                )
+            if status2_ids:
+                await self.pg.execute(
+                    "UPDATE bioprotect.project_pus SET status = 2 WHERE project_id = %s AND h3_index = ANY(%s)",
+                    [project_id, status2_ids]
+                )
+            if status3_ids:
+                await self.pg.execute(
+                    "UPDATE bioprotect.project_pus SET status = 3 WHERE project_id = %s AND h3_index = ANY(%s)",
+                    [project_id, status3_ids]
+                )
+
+            self.send_response({'info': "Planning unit statuses updated"})
+
+        except ServicesError as e:
+            raise_error(self, e.args[0])
+        except Exception as e:
+            raise_error(self, str(e))
+
+            return
 
     async def import_planning_unit_grid(self):
         self.validate_args(self.request.arguments, [

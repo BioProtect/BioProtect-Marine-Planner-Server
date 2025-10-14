@@ -99,12 +99,14 @@ class PostGIS:
     async def drop_existing_table(self, feature_class_name):
         await self.execute(f"DROP TABLE IF EXISTS bioprotect.{feature_class_name};")
 
-    def build_ogr2ogr_command(self, folder, filename, feature_class_name, s_epsg_code, t_epsg_code, source_feature_class=''):
+    def build_ogr2ogr_command(self, folder, filename, feature_class_name, s_epsg_code, t_epsg_code, source_feature_class='', where_clause=None):
+        where_part = f' -where "{where_clause}"' if where_clause else ''
         return (
             f'"{self.config.OGR2OGR_EXECUTABLE}" -f "PostgreSQL" PG:"host={self.config.DATABASE_HOST} '
             f'user={self.config.DATABASE_USER} dbname={self.config.DATABASE_NAME} password={self.config.DATABASE_PASSWORD}" '
-            f'"{os.path.join(folder, filename)}" -nlt GEOMETRY -lco SCHEMA=bioprotect -lco GEOMETRY_NAME=geometry '
-            f'{source_feature_class} -nln {feature_class_name} -s_srs {s_epsg_code} -t_srs {t_epsg_code} -lco precision=NO'
+            f'"{os.path.join(folder, filename)}" -nlt GEOMETRY -lco SCHEMA=bioprotect '
+            f'-lco GEOMETRY_NAME=geometry {source_feature_class} -nln {feature_class_name} '
+            f'-s_srs {s_epsg_code} -t_srs {t_epsg_code} -lco precision=NO{where_part}'
         )
 
     async def export_to_shapefile(self, export_folder, feature_class_name, t_epsg_code="EPSG:4326"):
@@ -133,7 +135,7 @@ class PostGIS:
             raise ServicesError(
                 f"Error exporting shapefile: {e.output.decode('utf-8')}")
 
-    async def import_file(self, folder, filename, feature_class_name, s_epsg_code, t_epsg_code, split_at_dateline=True, source_feature_class=''):
+    async def import_file(self, folder, filename, feature_class_name, s_epsg_code, t_epsg_code, split_at_dateline=True, source_feature_class='', where_clause=None):
         """Imports a file or feature class into PostGIS using ogr2ogr.
 
         Args:
@@ -150,7 +152,7 @@ class PostGIS:
         """
         await self.drop_existing_table(feature_class_name)
         cmd = self.build_ogr2ogr_command(
-            folder, filename, feature_class_name, s_epsg_code, t_epsg_code, source_feature_class)
+            folder, filename, feature_class_name, s_epsg_code, t_epsg_code, source_feature_class, where_clause)
         logging.debug(f"Running ogr2ogr command: {cmd}")
 
         result = await run_command(cmd)
@@ -168,8 +170,9 @@ class PostGIS:
     async def import_gml(self, folder, gmlfilename, feature_class_name, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):
         await self.import_file(folder, gmlfilename, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
 
-    async def import_file_GDBFeatureClass(self, folder, fileGDB, sourceFeatureClass, destFeatureClass, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):
-        await self.import_file(folder, fileGDB, destFeatureClass, s_epsg_code, t_epsg_code, splitAtDateline, sourceFeatureClass)
+    async def import_file_GDBFeatureClass(self, folder, fileGDB, sourceFeatureClass, destFeatureClass, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True, where_clause=None):
+        await self.import_file(
+            folder, fileGDB, destFeatureClass, s_epsg_code, t_epsg_code, splitAtDateline, sourceFeatureClass, where_clause=where_clause)
 
     # async def is_valid(self, feature_class_name):
     #     query = f"SELECT DISTINCT ST_IsValid(geometry) FROM bioprotect.{feature_class_name} LIMIT 1;"
@@ -179,16 +182,28 @@ class PostGIS:
     #         raise ServicesError("The input shapefile has invalid geometries.")
 
     async def is_valid(self, feature_class_name):
-        # Step 1: Attempt to auto-fix invalid geometries
+        # Auto-fix
         await self.execute(f"""
             UPDATE bioprotect.{feature_class_name}
             SET geometry = ST_MakeValid(geometry)
             WHERE NOT ST_IsValid(geometry);
         """)
 
-        # Step 2: Check if any geometries are still invalid
+        # Find an id column if one exists
+        id_column = "id"
+        cols_df = await self.execute(f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'bioprotect'
+            AND table_name = '{feature_class_name}'
+            AND column_name ILIKE ANY (ARRAY['id','fid','ogc_fid','objectid'])
+            LIMIT 1;
+        """, return_format="DataFrame")
+        if not cols_df.empty:
+            id_column = cols_df.iloc[0, 0]
+
         invalids = await self.execute(f"""
-            SELECT ogc_fid, ST_IsValidReason(geometry) AS reason
+            SELECT {id_column}, ST_IsValidReason(geometry) AS reason
             FROM bioprotect.{feature_class_name}
             WHERE NOT ST_IsValid(geometry)
             LIMIT 10;
@@ -196,19 +211,9 @@ class PostGIS:
 
         if invalids:
             await self.drop_existing_table(feature_class_name)
-            reasons = ", ".join(set([item["reason"] for item in invalids]))
+            reasons = ", ".join({i["reason"] for i in invalids})
             raise ServicesError(
-                f"The shapefile contains invalid geometries: {reasons}")
-
-    async def create_primary_key(self, feature_class_name, column):
-        key_name = f"idx_{uuid.uuid4().hex}"
-        await self.execute(f"ALTER TABLE bioprotect.{feature_class_name} ADD CONSTRAINT {key_name} PRIMARY KEY ({column});")
-
-    async def get_geometry_type(self, feature_class_name):
-        result = await self.execute(
-            f"SELECT ST_GeometryType(geometry) FROM bioprotect.{feature_class_name} LIMIT 1;",
-            return_format="Array")
-        return result[0]['st_geometrytype']
+                f"The file contains invalid geometries: {reasons}")
 
 
 pg = None

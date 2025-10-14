@@ -1642,47 +1642,6 @@ class UpdatePUFile(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class getPUData(BaseHandler):
-    """REST HTTP handler. Gets the data for a planning unit including a set of features if there are some. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        puid (string): The planning unit id to get the data for.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "data": dict containing the keys: features (the features within the planning unit), pu_data (the planning unit data)
-        }
-    """
-
-    async def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, [
-                'user', 'project', 'puid'])
-            # get the planning unit data
-            pu_df = file_to_df(os.path.join(
-                self.input_folder, self.projectData["files"]["PUNAME"]))
-            pu_data = pu_df.loc[pu_df['id'] == int(
-                self.get_argument('puid'))].iloc[0]
-            # get a set of feature IDs from the puvspr file
-            df = file_to_df(os.path.join(
-                self.input_folder, self.projectData["files"]["PUVSPRNAME"]))
-
-            if not df.empty:
-                features = df.loc[df['pu'] == int(self.get_argument('puid'))]
-            else:
-                features = pd.DataFrame()
-            # set the response
-            self.send_response({"info": 'Planning unit data returned', 'data': {
-                               'features': features.to_dict(orient="records"), 'pu_data': pu_data.to_dict()}})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 # not currently used
 class createFeaturePreprocessingFileFromImport(BaseHandler):
     """REST HTTP handler. Used to populate the feature_preprocessing.dat file from an imported PUVSPR file. The required arguments in the request.arguments parameter are:
@@ -3599,7 +3558,6 @@ class Application(tornado.web.Application):
             ("/server/listProjectsForPlanningGrid", listProjectsForPlanningGrid),
             ("/server/getPlanningUnitsCostData", getPlanningUnitsCostData),
             ("/server/updatePUFile", UpdatePUFile),
-            ("/server/getPUData", getPUData),
 
             ("/server/getServerData", getServerData),
             ("/server/getAtlasLayers", GetAtlasLayersHandler),

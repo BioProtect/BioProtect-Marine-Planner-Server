@@ -281,21 +281,27 @@ class PlanningUnitHandler(BaseHandler):
         # Fetch all feature amounts for this PU
         feature_rows = await self.pg.execute(
             """
-            SELECT f.id AS feature_id,
+            SELECT 
+                f.unique_id AS feature_id,
                 f.alias AS feature_name,
-                pfa.amount
-            FROM bioprotect.pu_feature_amounts pfa
-            JOIN bioprotect.features f ON f.id = pfa.feature_id
-            WHERE pfa.project_id = %s AND pfa.h3_index = %s
+                COALESCE(pfa.amount, NULL) AS amount
+            FROM bioprotect.project_features pf
+            JOIN bioprotect.metadata_interest_features f
+            ON f.unique_id = pf.feature_unique_id
+            LEFT JOIN bioprotect.pu_feature_amounts pfa
+            ON pfa.feature_unique_id = pf.feature_unique_id
+            AND pfa.project_id = pf.project_id
+            AND pfa.h3_index = %s
+            WHERE pf.project_id = %s
+            ORDER BY f.alias
             """,
-            [project_id, h3_index],
+            [h3_index, project_id],
             return_format="Dict"
         )
 
         # Normalize for UI compatibility
-        # for old UIs that expect an "id" field
-        pu_data["id"] = pu_data["h3_index"]
-        pu_data["cost"] = round(float(pu_data["cost"]), 2)
+        pu_data["cost"] = float(
+            pu_data["cost"]) if pu_data["cost"] is not None else 0
 
         # Send response
         self.send_response({

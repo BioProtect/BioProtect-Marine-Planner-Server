@@ -215,6 +215,28 @@ class PostGIS:
             raise ServicesError(
                 f"The file contains invalid geometries: {reasons}")
 
+    async def get_geometry_type(self, feature_class_name):
+        """Gets the geometry type of the passed feature_class.
+
+        Args:
+            feature_class_sname (string): The name of the feature class in PostGIS to return the geometry type for.  
+        Returns:
+            string: The PostGIS geometry type, e.g. ST_PointgetGeometryType  
+        """
+        geometryType = await self.execute(sql.SQL(
+            "SELECT ST_GeometryType(geometry) FROM bioprotect.{feature_class_name} LIMIT 1;"
+        ).format(feature_class_name=sql.Identifier(feature_class_name)), return_format="Array")
+        # return geometryType[0][0]
+        print('geometryType: ', geometryType)
+        print('geometryType[0]: ', geometryType[0])
+
+        geometryType = geometryType[0]['st_geometrytype'] if geometryType else 'ST_Polygon'
+        if 'Point' in geometryType:
+            geometryType = 'ST_Point'
+        else:
+            geometryType = 'ST_Polygon'
+        return geometryType
+
 
 pg = None
 

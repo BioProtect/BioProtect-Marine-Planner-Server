@@ -42,7 +42,7 @@ with engine.begin() as conn:  # ensures transaction
         # 2. Create the new materialized view
         conn.execute(text(f"""
             CREATE MATERIALIZED VIEW bioprotect.{view_name} AS
-            SELECT h3_index, resolution, scale_level, project_area, geometry, cost, status
+            SELECT h3_index, resolution, scale_level, project_area, geometry
             FROM bioprotect.h3_cells
             WHERE project_area = :area AND resolution = :res;
         """), {"area": project_area, "res": resolution})

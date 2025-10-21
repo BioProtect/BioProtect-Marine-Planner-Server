@@ -76,6 +76,35 @@ class ProjectHandler(BaseHandler):
         # Write the updated content back to the file
         write_to_file(filename, "\n".join(updated_lines))
 
+    def normalise_planning_units(self, df, column_to_normalize_by, puid_column_name, classes=None):
+        if df.empty:
+            return []
+
+        if classes:
+            # Classification logic unchanged
+            min_value = df[column_to_normalize_by].min()
+            max_value = df[column_to_normalize_by].max()
+            num_classes = 1 if min_value == max_value else classes
+            bin_size = (max_value + 1 - min_value) / num_classes
+            bins = [[min_value + bin_size * (i + 1), []]
+                    for i in range(num_classes)]
+
+            for _, row in df.iterrows():
+                bin_index = int(
+                    (row[column_to_normalize_by] - min_value) / bin_size)
+                bin_index = min(bin_index, num_classes - 1)  # prevent overflow
+                bins[bin_index][1].append(row[puid_column_name])
+            return bins, min_value, max_value
+
+        # Normalization (grouping)
+        df[column_to_normalize_by] = df[column_to_normalize_by].fillna(
+            0).astype(int)
+        groups = df.groupby(column_to_normalize_by, sort=True)
+        return [
+            [int(group), group_df[puid_column_name].tolist()]
+            for group, group_df in groups
+        ]
+
     async def get_species_data(self, obj):
         """
         Retrieves species data for a project from the Marxan SPECNAME file as a DataFrame.
@@ -338,7 +367,6 @@ class ProjectHandler(BaseHandler):
         # Define project paths - need these for uploads
         self.project = project
         self.folder_user = join("./users", self.current_user)
-        print('self.current_user: ', self.current_user)
         self.project_path = join(self.folder_user, project['name']) + sep
         self.input_folder = join(self.project_path, "input") + sep
 
@@ -363,18 +391,23 @@ class ProjectHandler(BaseHandler):
 
         # 3. Load and normalize planning unit data
         query = """
-            SELECT pp.h3_index AS id, pp.cost, pp.status
+            SELECT
+                pp.h3_index AS id,
+                pp.cost,
+                pp.status
             FROM bioprotect.project_pus pp
             JOIN bioprotect.h3_cells hc ON pp.h3_index = hc.h3_index
             JOIN bioprotect.projects p ON p.id = pp.project_id
             JOIN bioprotect.metadata_planning_units mpu ON p.planning_unit_id = mpu.unique_id
             WHERE pp.project_id = %s
-                AND hc.resolution = %s
-                AND hc.project_area = mpu.alias
+            AND hc.resolution = %s
+            AND LOWER(TRIM(hc.project_area)) = LOWER(TRIM(split_part(mpu.alias, ' (', 1)));
         """
-        df = await self.pg.execute(query, data=[self.project["id"], resolution], return_format="DataFrame")
-
-        self.planningUnitsData = normalize_dataframe(df, "status", "id")
+        df = await self.pg.execute(query, data=[project_id, resolution], return_format="DataFrame")
+        print(df.head(5))
+        print(df['status'].value_counts(dropna=False))
+        self.planningUnitsData = self.normalise_planning_units(
+            df, "status", "id")
 
         # 5. Load protected area intersections (DB instead of file)
         # self.protectedAreaIntersectionsData = await self.pg.execute(

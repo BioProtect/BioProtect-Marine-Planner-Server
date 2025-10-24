@@ -76,34 +76,39 @@ class ProjectHandler(BaseHandler):
         # Write the updated content back to the file
         write_to_file(filename, "\n".join(updated_lines))
 
-    def normalise_planning_units(self, df, column_to_normalize_by, puid_column_name, classes=None):
+    def normalise_planning_units(self, df, column_to_normalize_by, puid_column_name, classes=None, as_dict=True):
         if df.empty:
             return []
 
         if classes:
-            # Classification logic unchanged
+            # get min, max and then sort by number of bins needed based on number of vals
             min_value = df[column_to_normalize_by].min()
             max_value = df[column_to_normalize_by].max()
             num_classes = 1 if min_value == max_value else classes
             bin_size = (max_value + 1 - min_value) / num_classes
-            bins = [[min_value + bin_size * (i + 1), []]
-                    for i in range(num_classes)]
+
+            bins = {min_value + bin_size * (i + 1): []
+                    for i in range(num_classes)}
 
             for _, row in df.iterrows():
                 bin_index = int(
                     (row[column_to_normalize_by] - min_value) / bin_size)
-                bin_index = min(bin_index, num_classes - 1)  # prevent overflow
-                bins[bin_index][1].append(row[puid_column_name])
+                bin_index = min(bin_index, num_classes - 1)
+                key = min_value + bin_size * (bin_index + 1)
+                bins[key].append(row[puid_column_name])
             return bins, min_value, max_value
 
         # Normalization (grouping)
         df[column_to_normalize_by] = df[column_to_normalize_by].fillna(
             0).astype(int)
         groups = df.groupby(column_to_normalize_by, sort=True)
-        return [
-            [int(group), group_df[puid_column_name].tolist()]
-            for group, group_df in groups
-        ]
+
+        if as_dict:
+            # Return dictionary {status: [puid list]}
+            return {int(group): group_df[puid_column_name].tolist() for group, group_df in groups}
+        else:
+            # Return legacy array-of-arrays
+            return [[int(group), group_df[puid_column_name].tolist()] for group, group_df in groups]
 
     async def get_species_data(self, obj):
         """

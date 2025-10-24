@@ -317,13 +317,13 @@ class PlanningUnitHandler(BaseHandler):
     #     args = self.request.arguments
     #     self.validate_args(args, ['user', 'project'])
 
-    #     status1_ids = self.get_int_array_from_arg(args, "status1")
-    #     status2_ids = self.get_int_array_from_arg(args, "status2")
-    #     status3_ids = self.get_int_array_from_arg(args, "status3")
+    #     status0_ids = self.get_int_array_from_arg(args, "status1")
+    #     status1_ids = self.get_int_array_from_arg(args, "status2")
+    #     status2_ids = self.get_int_array_from_arg(args, "status3")
 
-    #     status1 = self.create_status_dataframe(status1_ids, 1)
-    #     status2 = self.create_status_dataframe(status2_ids, 2)
-    #     status3 = self.create_status_dataframe(status3_ids, 3)
+    #     status1 = self.create_status_dataframe(status0_ids, 1)
+    #     status2 = self.create_status_dataframe(status1_ids, 2)
+    #     status3 = self.create_status_dataframe(status2_ids, 3)
 
     #     pu_file_path = join(
     #         self.input_folder, self.projectData["files"]["PUNAME"])
@@ -347,27 +347,20 @@ class PlanningUnitHandler(BaseHandler):
         Updates planning unit statuses in the project_pus table.
         Expects JSON body like:
         """
+        print('self.request: ', self.request)
+
         try:
-            body = escape.json_decode(self.request.body)
-            user = body.get("user")
-            project_name = body.get("project")
-            status1_ids = body.get("status1", [])
-            status2_ids = body.get("status2", [])
-            status3_ids = body.get("status3", [])
+            project_id = self.get_argument("project_id")
+            status0_ids = self.get_argument("status0", "").split(
+                ",") if self.get_argument("status0", "") else []
+            status1_ids = self.get_argument("status1", "").split(
+                ",") if self.get_argument("status1", "") else []
+            status2_ids = self.get_argument("status2", "").split(
+                ",") if self.get_argument("status2", "") else []
 
-            if not user or not project_name:
+            if not project_id:
                 raise ServicesError(
-                    "Missing required fields 'user' or 'project'.")
-
-            # resolve project_id
-            project_row = await self.pg.execute(
-                "SELECT id FROM bioprotect.projects WHERE name = %s",
-                [project_name],
-                return_format="Dict"
-            )
-            if not project_row:
-                raise ServicesError(f"Project '{project_name}' not found.")
-            project_id = project_row[0]["id"]
+                    "Missing required fields 'project_id'.")
 
             # reset all statuses to 0 for this project
             await self.pg.execute(
@@ -376,20 +369,20 @@ class PlanningUnitHandler(BaseHandler):
             )
 
             # apply updates for each status group
-            if status1_ids:
+            if status0_ids:
                 await self.pg.execute(
                     "UPDATE bioprotect.project_pus SET status = 1 WHERE project_id = %s AND h3_index = ANY(%s)",
+                    [project_id, status0_ids]
+                )
+            if status1_ids:
+                await self.pg.execute(
+                    "UPDATE bioprotect.project_pus SET status = 2 WHERE project_id = %s AND h3_index = ANY(%s)",
                     [project_id, status1_ids]
                 )
             if status2_ids:
                 await self.pg.execute(
-                    "UPDATE bioprotect.project_pus SET status = 2 WHERE project_id = %s AND h3_index = ANY(%s)",
-                    [project_id, status2_ids]
-                )
-            if status3_ids:
-                await self.pg.execute(
                     "UPDATE bioprotect.project_pus SET status = 3 WHERE project_id = %s AND h3_index = ANY(%s)",
-                    [project_id, status3_ids]
+                    [project_id, status2_ids]
                 )
 
             self.send_response({'info': "Planning unit statuses updated"})

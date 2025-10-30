@@ -47,6 +47,8 @@ class FeatureHandler(BaseHandler):
                 self.list_projects_for_feature()
             elif action == 'planning_units':
                 await self.get_feature_planning_units()
+            elif action == 'get_sensitivities':
+                await self.get_sensitivities()
             else:
                 raise ServicesError("Invalid action specified.")
 
@@ -185,6 +187,20 @@ class FeatureHandler(BaseHandler):
         puids = df.loc[df['species'] == int(ids)]['pu'].unique().tolist()
 
         self.send_response({"data": puids})
+
+    async def get_sensitivities(self):
+        sensitivities = await self.pg.execute("""
+            SELECT DISTINCT ON (eunis_code_assessment)
+                eunis_code_assessment,
+                jncc_habitat
+            FROM bioprotect.jncc_sensitivities
+            WHERE eunis_code_assessment IS NOT NULL
+            ORDER BY eunis_code_assessment, jncc_habitat;
+        """, return_format="Array")
+        self.send_response({
+            'info': "Sensitivity info returned",
+            "projects": sensitivities
+        })
 
     def list_projects_for_feature(self):
         """Lists all projects containing a specific feature."""

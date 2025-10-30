@@ -87,8 +87,6 @@ class PlanningGridWebSocketHandler(SocketHandler):
                     "scale_level": scale_level,
                     "project_area": project_area_name,
                     "geometry": Polygon(coords),
-                    "cost": 1.0,
-                    "status": 0
                 })
 
             self.send_response(
@@ -126,7 +124,7 @@ class PlanningGridWebSocketHandler(SocketHandler):
             # await self.pg.execute(text(f"DROP VIEW IF EXISTS bioprotect.{view_name} CASCADE"))
             await self.pg.execute(sql.SQL("""
                 CREATE VIEW bioprotect.{} AS
-                SELECT h3_index, resolution, scale_level, project_area, geometry, cost, status
+                SELECT h3_index, resolution, scale_level, project_area, geometry
                 FROM bioprotect.h3_cells
                 WHERE project_area = %s AND resolution = %s;
             """).format(sql.Identifier(view_name)), data=[project_area_name, resolution])

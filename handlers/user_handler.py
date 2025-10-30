@@ -81,22 +81,12 @@ class UserHandler(BaseHandler):
             if action == 'create':
                 await self.create_user()
             elif action == 'update':
-                await self.update_user_parameters()
+                await self.update_user()
             else:
                 raise ServicesError("Invalid action specified.")
 
         except ServicesError as e:
             raise_error(self, e.args[0])
-
-    def get_user_data(self, return_password=False):
-        user_data_path = join(self.folder_user, "user.dat")
-        user_data = get_key_values_from_file(user_data_path)
-
-        # Filter out the password unless requested
-        self.userData = (
-            user_data if return_password else {
-                key: value for key, value in user_data.items() if key != 'PASSWORD'}
-        )
 
     async def create_user(self):
         self.validate_args(self.request.arguments, [
@@ -190,12 +180,12 @@ class UserHandler(BaseHandler):
             raise ServicesError(f"Failed to delete user: {e}")
 
     async def update_user_parameters(self):
-        self.validate_args(self.request.arguments, ["user"])
+        self.validate_args(self.request.arguments, ["user_id"])
 
         params = {
             key: self.get_argument(key)
             for key in self.request.arguments
-            if key not in ["user", "callback"]
+            if key not in ["user_id", "callback"]
         }
 
         update_file_parameters(join(self.folder_user, "user.dat"), params)
@@ -205,7 +195,6 @@ class UserHandler(BaseHandler):
         })
 
     # NOT YET IMPLEMENTED *************************************************
-
     async def get_user_by_id(self, user_id=None):
         """
         Retrieve a single user by ID or all users if no ID is provided.
@@ -239,59 +228,73 @@ class UserHandler(BaseHandler):
             self.write(json.dumps({"users": users}))
 
     # NOT YET IMPLEMENTED *************************************************
-    async def update_user(self, user_id):
+
+    async def update_user(self):
         """
-        Update an existing user.
+        Update an existing user by ID (password, username, email, role).
         """
         try:
-            body = json.loads(self.request.body)
+            body = {k: self.get_argument(k) for k in self.request.arguments}
+            print("BODY====== ", body)
+            user_id = int(self.get_argument("user_id"))
             updates = []
             params = []
-            index = 1
 
-            for field in ["username", "email", "password", "role"]:
-                value = body.get(field)
-                if value:
+            field_map = {
+                "username": "username",
+                "email": "email",
+                "role": "role",
+                "basemap": "basemap",
+                "show_popup": "show_popup",
+                "use_feature_colours": "use_feature_colours",
+                "report_units": "report_units",
+                "password": "password_hash",
+            }
+            for field, col in field_map.items():
+                if field in body:
+                    value = body[field]
                     if field == "password":
                         value = bcrypt.hash(value)
-                    updates.append(f"{field} = ${index}")
+                    updates.append(f"{col} = %s")
                     params.append(value)
-                    index += 1
 
             if not updates:
                 self.set_status(400)
-                self.write({"message": "No fields to update"})
+                self.write(
+                    {"success": False, "message": "No fields to update"})
                 return
 
             params.append(user_id)
-            query = f"UPDATE bioprotect.users SET {
-                ', '.join(updates)} WHERE id = ${index}"
-            result = await self.pg.execute(query, *params)
-            if result == "UPDATE 0":
-                self.set_status(404)
-                self.write({"message": "User not found"})
-            else:
-                self.write({"message": "User updated"})
+
+            query = f"""
+                UPDATE bioprotect.users
+                SET {', '.join(updates)}
+                WHERE id = %s
+            """
+
+            await self.pg.execute(query, data=params)
+
+            self.write({"success": True, "message": "User updated"})
 
         except Exception as e:
             self.set_status(500)
-            self.write({"message": "Error updating user", "error": str(e)})
+            self.write({
+                "success": False,
+                "message": "Error updating user",
+                "error": str(e),
+            })
 
-    # NOT YET IMPLEMENTED *************************************************
+            # NOT YET IMPLEMENTED *************************************************
+            # async def delete_user_by_id(self, user_id):
+            #     try:
+            # query = "DELETE FROM bioprotect.users WHERE id = %s"
+            #     result= await self.pg.execute(query, int(user_id))
+            #     if result == "DELETE 0":
+            #     self.set_status(404)
+            #     self.write({"message": "User not found"})
+            #     else:
+            #     self.write({"message": "User deleted"})
 
-    async def delete_user_by_id(self, user_id):
-        """
-        Delete a user.
-        """
-        try:
-            query = "DELETE FROM bioprotect.users WHERE id = %s"
-            result = await self.pg.execute(query, int(user_id))
-            if result == "DELETE 0":
-                self.set_status(404)
-                self.write({"message": "User not found"})
-            else:
-                self.write({"message": "User deleted"})
-
-        except Exception as e:
-            self.set_status(500)
-            self.write({"message": "Error deleting user", "error": str(e)})
+            #     except Exception as e:
+            #     self.set_status(500)
+            #     self.write({"message": "Error deleting user", "error": str(e)})

@@ -25,3 +25,6 @@ These link to metadata_planning_units.feature_class_name (used as Martin source-
 | `get_project_pus()`             | Gets the project’s planning units (from `project_pus`) |
 
 ---
+
+ROLES
+'owner','editor','viewer'

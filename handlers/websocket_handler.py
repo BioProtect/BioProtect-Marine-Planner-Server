@@ -45,6 +45,13 @@ class SocketHandler(WebSocketHandler):
         raise HTTPError(403, f"The origin '{
                         origin}' does not have permission to access the service (CORS error)")
 
+    def validate_args(self, arguments, required_keys):
+        """Validates that all required arguments are present."""
+        missing = [key for key in required_keys if key not in arguments]
+        if missing:
+            raise ServicesError(f"Missing required arguments: {
+                                ', '.join(missing)}")
+
     async def open(self, start_message):
         """Handles WebSocket connection opening."""
         print("================== websocket open method")

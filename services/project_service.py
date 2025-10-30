@@ -113,8 +113,8 @@ def delete_project(obj):
 
     # Validate that the project folder exists before attempting to delete it
     if not path.exists(project_folder):
-        raise ServicesError(f"The project folder '{
-                            project_folder}' does not exist.")
+        raise ServicesError(
+            f"The project folder '{project_folder}' does not exist.")
 
     try:
         shutil.rmtree(project_folder)

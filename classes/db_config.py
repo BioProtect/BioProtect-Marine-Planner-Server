@@ -52,8 +52,7 @@ class DBConfig:
     def create_db_engine(self):
         """Creates a SQLAlchemy engine for the PostgreSQL database."""
         return create_engine(
-            f'postgresql+psycopg2://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{
-                self.DATABASE_HOST}:{self.PORT}/{self.DATABASE_NAME}',
+            f'postgresql+psycopg2://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{self.DATABASE_HOST}:{self.PORT}/{self.DATABASE_NAME}',
             pool_size=5,
             max_overflow=10,
             pool_timeout=30,

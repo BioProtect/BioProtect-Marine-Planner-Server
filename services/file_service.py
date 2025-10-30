@@ -19,8 +19,8 @@ def copy_directory(src, dest):
     try:
         shutil.copytree(src, dest)
     except (shutil.Error, OSError) as e:
-        raise ServicesError(f"Failed to copy directory from '{
-                            src}' to '{dest}': {e}") from e
+        raise ServicesError(
+            f"Failed to copy directory from '{src}' to '{dest}': {e}") from e
 
 
 def get_shapefile_fieldnames(shapefile):
@@ -56,8 +56,8 @@ def get_shapefile_fieldnames(shapefile):
         return [layer_definition.GetFieldDefn(i).GetName() for i in range(layer_definition.GetFieldCount())]
 
     except RuntimeError as e:
-        raise ServicesError(f"Error reading shapefile '{
-                            shapefile}': {e.args[0]}")
+        raise ServicesError(
+            f"Error reading shapefile '{shapefile}': {e.args[0]}")
 
 
 def normalize_dataframe(df, column_to_normalize_by, puid_column_name, classes=None):
@@ -334,8 +334,8 @@ def add_parameter_to_file(file_type, param_key, value, user_folder, app_folder):
         else:
             # Update the existing param_key-value pair
             update_file_parameters(file, {param_key: value})
-            logging.warning(f"Key '{param_key}' updated to '{
-                            value}' in {file}")
+            logging.warning(
+                f"Key '{param_key}' updated to '{value}' in {file}")
             results.append(f"Key '{param_key}' updated to '{value}' in {file}")
 
     return results
@@ -596,8 +596,8 @@ def unzip_file(folder, filename):
     except zipfile.BadZipFile:
         raise ServicesError(f"The file '{filename}' is not a valid zip file.")
     except Exception as e:
-        raise ServicesError(f"An error occurred while unzipping '{
-                            filename}': {str(e)}")
+        raise ServicesError(
+            f"An error occurred while unzipping '{filename}': {str(e)}")
 
 
 def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_term=None):

@@ -13,8 +13,21 @@ dump.sql
 /*.backup/
 /*.sql/
 .venv
-/data/
-data
+/data/activities/*
+/data/climate/*
+/data/EUSeaMap_*/*
+/data/LocalDS_Boundaries/*
+/data/mapbox
+/data/pressures/*
+/data/rasters/*
+/data/shapefiles/*
+/data/test
+/data/tmp/*
+/data/uploaded_rasters/*
+/data/dunmore*
+/data/tralee*
+
+
 
 _marxan_web_resources/
 

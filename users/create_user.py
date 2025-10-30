@@ -46,4 +46,7 @@ def create_a_user(username, email, password, role="User"):
 
 
 if __name__ == "__main__":
-    create_a_user("cartig", "carlostighe@gmail.com", "carlos", "Admin")
+    create_a_user(username="maylis",
+                  email="Maylis.Sontot-Marjary@marine.ie",
+                  password="Paltry3-Rundown-Okay",
+                  role="Admin")

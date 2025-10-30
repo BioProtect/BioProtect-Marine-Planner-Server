@@ -139,8 +139,7 @@ for m in privateMembers:
 
 def log_server_info():
     """Logs server-related information."""
-    log(f"Server {SERVER_VERSION} listening on port {
-        db_config.SERVER_PORT} ..", Fore.GREEN)
+    log(f"Server {SERVER_VERSION} listening on port {db_config.SERVER_PORT} ..", Fore.GREEN)
     log(pad_dict("Operating system:", platform.system()))
     log(pad_dict("Tornado version:", tornado.version))
     log(pad_dict("Permitted domains:", ",".join(
@@ -184,8 +183,7 @@ def log_other_info():
 
     # Construct the test URL
     host_part = "<host>"
-    port_part = f":{
-        db_config.SERVER_PORT}" if db_config.SERVER_PORT != '80' else ""
+    port_part = f":{db_config.SERVER_PORT}" if db_config.SERVER_PORT != '80' else ""
     test_path = "/server/testTornado"
     test_url = f"{protocol}{host_part}{port_part}{test_path}"
 
@@ -467,12 +465,11 @@ def del_tileset(tileset_id):
     Returns:
         None
     """
-    url = f"https://api.mapbox.com/tilesets/v1/{MAPBOX_USER}.{
-        tileset_id}?access_token={project_paths.MBAT}"
+    url = f"https://api.mapbox.com/tilesets/v1/{MAPBOX_USER}.{tileset_id}?access_token={project_paths.MBAT}"
     response = requests.delete(url)
     if response.status_code != 204:
-        raise ServicesError(f"Failed to delete tileset '{tileset_id}'. "f"Response: {
-                            response.status_code} - {response.text}")
+        raise ServicesError(
+            f"Failed to delete tileset {tileset_id}. Response: {response.status_code} - {response.text}")
 
 
 def get_unique_feature_name(prefix):
@@ -519,8 +516,8 @@ async def finish_feature_import(feature_class_name, name, description, source, u
             .format(sql.Identifier(feature_class_name))
         )
     except psycopg2.errors.InvalidTableDefinition as e:
-        logging.warning(f"Primary key already exists for {
-                        feature_class_name}: {e}")
+        logging.warning(
+            f"Primary key already exists for {feature_class_name}: {e}")
 
     # Insert metadata for the feature
     try:
@@ -714,12 +711,12 @@ def update_run_log(pid, start_time, runs_completed, runs_required, status):
         if start_time:
             run_log.at[record_index, 'endtime'] = current_time.strftime(
                 "%d/%m/%y %H:%M:%S")
-            run_log.at[record_index, 'runtime'] = f"{
-                (current_time - start_time).seconds}s"
+            run_log.at[record_index,
+                       'runtime'] = f"{(current_time - start_time).seconds}s"
 
         if runs_completed is not None:
-            run_log.at[record_index, 'runs'] = f"{
-                runs_completed}/{runs_required}"
+            run_log.at[record_index,
+                       'runs'] = f"{runs_completed}/{runs_required}"
 
         # Update the status only if it is currently 'Running'
         if run_log.at[record_index, 'status'] == 'Running':
@@ -1388,8 +1385,8 @@ class GetSolution(BaseHandler):
             try:
                 # Retrieve the solution file name
                 file_name = get_output_file(
-                    os.path.join(self.output_folder, f"{
-                                 SOLUTION_FILE_PREFIX}{int(solution_id):05d}")
+                    os.path.join(self.output_folder,
+                                 f"{SOLUTION_FILE_PREFIX}{int(solution_id):05d}")
                 )
             except ServicesError as e:
                 # Handle missing solution (likely a clumping project)
@@ -1407,8 +1404,8 @@ class GetSolution(BaseHandler):
             # Handle missing values file for non-clumping projects
             if user != '_clumping':
                 mv_file_name = get_output_file(
-                    os.path.join(self.output_folder, f"{
-                                 MISSING_VALUES_FILE_PREFIX}{int(solution_id):05d}")
+                    os.path.join(
+                        self.output_folder, f"{MISSING_VALUES_FILE_PREFIX}{int(solution_id):05d}")
                 )
                 solution_df = file_to_df(mv_file_name)
                 self.missingValues = solution_df.to_dict(orient="split")[
@@ -2981,8 +2978,7 @@ class updateWDPA(QueryWebSocketHandler):
                         file_size_dl += len(chunk)
 
                         # Update the download progress
-                        self.ping_message = f"{
-                            int((file_size_dl / file_size) * 100)} Completed "
+                        self.ping_message = f"{int((file_size_dl / file_size) * 100)} Completed "
 
             except Exception as e:
                 raise ServicesError("Error getting a file: %s" % e)
@@ -3214,7 +3210,7 @@ class UploadRasterHandler(BaseHandler):
                 for pressure in pad_data:
                     new_band = band.copy()
                     update_band = new_band*pressure["rppscore"]
-                    title = f"data/pressures/{replace_chars(pressure["pressuretitle"])}.tif"
+                    title = f"data/pressures/{replace_chars(pressure['pressuretitle'])}.tif"
 
                     with rasterio.open(title, 'w', **meta) as dst:
                         dst.write(update_band, 1)

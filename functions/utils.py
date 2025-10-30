@@ -666,12 +666,6 @@ def colorise_raster(file_name, outfile_name):
 
 wgs84 = CRS.from_proj4(folder_path_config.gis_config.get("wgs84_str"))
 JOSE_CRS = CRS.from_proj4(folder_path_config.gis_config.get("jose_crs_str"))
-WGS84_SHP = reproject_shape(
-    filename=data_path / 'data/shapefiles/ATLAS_CaseStudy_areas.shp',
-    save_path=data_path / 'data/shapefiles/case_study/',
-    reproject=folder_path_config.gis_config.get("wgs84_str")
-)
-
 engine = db_config.engine
 
 

@@ -45,8 +45,8 @@ class UserHandler(BaseHandler):
         missing_arguments = [
             arg for arg in required_arguments if arg not in arguments]
         if missing_arguments:
-            raise ServicesError(f"Missing arguments: {
-                                ', '.join(missing_arguments)}")
+            raise ServicesError(
+                f"Missing arguments: {', '.join(missing_arguments)}")
 
     async def get(self):
         """

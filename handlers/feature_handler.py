@@ -27,8 +27,8 @@ class FeatureHandler(BaseHandler):
         """Checks that all of the arguments in argumentList are in the arguments dictionary."""
         missing = [key for key in required_keys if key not in args]
         if missing:
-            raise ServicesError(f"Missing required arguments: {
-                                ', '.join(missing)}")
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
     async def get(self):
         """
@@ -119,16 +119,15 @@ class FeatureHandler(BaseHandler):
 
         try:
             response = requests.delete(
-                f"https://api.mapbox.com/tilesets/v1/{self.proj_paths.MAPBOX_USER}.{
-                    feature_class_name}?access_token={self.proj_paths.MBAT}"
+                f"https://api.mapbox.com/tilesets/v1/{self.proj_paths.MAPBOX_USER}.{feature_class_name}?access_token={self.proj_paths.MBAT}"
             )
             if response.status_code != 204:
-                raise ServicesError(f"Failed to delete tileset: {
-                                    response.status_code} - {response.text}")
+                raise ServicesError(
+                    f"Failed to delete tileset: {response.status_code} - {response.text}")
 
         except Exception as e:
-            print(f"Warning: Unable to delete tileset for feature '{
-                  feature_class_name}': {e}")
+            print(
+                f"Warning: Unable to delete tileset for feature '{feature_class_name}': {e}")
 
         self.send_response({'info': "Feature deleted"})
 

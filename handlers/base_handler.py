@@ -59,8 +59,8 @@ class BaseHandler(RequestHandler):
         """Validates that all required arguments are present."""
         missing = [key for key in required_keys if key not in arguments]
         if missing:
-            raise ServicesError(f"Missing required arguments: {
-                                ', '.join(missing)}")
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
     def send_response(self, response):
         """Used by all descendent classes to write the response data and send it.

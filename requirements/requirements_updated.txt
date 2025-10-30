@@ -19,6 +19,7 @@ passlib==1.7.4
 asyncpg==0.30.0
 pyjwt==2.10.1
 h3
+asyncpg
 
 ###### pip freeze
 

@@ -3644,9 +3644,9 @@ async def initialiseApp():
     app = Application()
     # if there is an https certificate then use the certificate information from the server.dat file to return data securely
     if project_paths.CERTFILE is None:
-        app.listen(db_config.SERVER_PORT)
+        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0")
     else:
-        app.listen(db_config.SERVER_PORT, ssl_options={
+        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0", ssl_options={
             "certfile": project_paths.CERTFILE,
             "keyfile": project_paths.KEYFILE
         })

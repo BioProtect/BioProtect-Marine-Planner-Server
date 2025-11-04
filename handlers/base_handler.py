@@ -29,17 +29,36 @@ class BaseHandler(RequestHandler):
     def prepare(self):
         print(f"Incoming {self.request.method} request to {self.request.uri}")
 
+    # def set_default_headers(self):
+    #     """Writes CORS headers in the response to prevent CORS errors in the client"""
+    #     if proj_paths.DISABLE_SECURITY:
+    #         # self.set_header("Access-Control-Allow-Origin", "http://localhost:4500")
+    #         self.set_header("Access-Control-Allow-Origin",
+    #                         ["http://vmudai1.datascienceinstitute.ie", "http://localhost:4500"])
+    #         self.set_header("Access-Control-Allow-Methods",
+    #                         "GET, POST, OPTIONS")
+    #         self.set_header("Access-Control-Allow-Headers",
+    #                         "Content-Type, Authorization")
+    #         self.set_header("Access-Control-Allow-Credentials", "true")
+
     def set_default_headers(self):
         """Writes CORS headers in the response to prevent CORS errors in the client"""
-        if proj_paths.DISABLE_SECURITY:
-            # self.set_header("Access-Control-Allow-Origin", "http://localhost:4500")
-            self.set_header("Access-Control-Allow-Origin",
-                            "http://vmudai1.datascienceinstitute.ie")
+        allowed_origins = [
+            "http://vmudai1.datascienceinstitute.ie",
+            "http://localhost:4500"
+        ]
+
+        origin = self.request.headers.get("Origin")
+        if proj_paths.DISABLE_SECURITY and origin in allowed_origins:
+            self.set_header("Access-Control-Allow-Origin", origin)
             self.set_header("Access-Control-Allow-Methods",
                             "GET, POST, OPTIONS")
             self.set_header("Access-Control-Allow-Headers",
                             "Content-Type, Authorization")
             self.set_header("Access-Control-Allow-Credentials", "true")
+        else:
+            # Optionally block or allow none
+            self.set_header("Access-Control-Allow-Origin", "null")
 
     def options(self, *args, **kwargs):
         # Respond to preflight OPTIONS request

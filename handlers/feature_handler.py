@@ -39,15 +39,17 @@ class FeatureHandler(BaseHandler):
 
             if action == 'get':
                 await self.get_feature()
+            elif action == 'get-all':
+                await self.get_all_features()
             elif action == 'delete':
                 await self.delete_feature()
             elif action == 'export':
                 await self.export_feature()
-            elif action == 'list_projects':
+            elif action == 'list-projects':
                 self.list_projects_for_feature()
-            elif action == 'planning_units':
+            elif action == 'planning-units':
                 await self.get_feature_planning_units()
-            elif action == 'get_sensitivities':
+            elif action == 'get-sensitivities':
                 await self.get_sensitivities()
             else:
                 raise ServicesError("Invalid action specified.")
@@ -87,6 +89,21 @@ class FeatureHandler(BaseHandler):
 
         data = await self.pg.execute(query, data=[unique_id], return_format="DataFrame")
         self.send_response({"data": data.to_dict(orient="records")})
+
+    async def get_all_features(self):
+        """Fetches all features information from PostGIS."""
+        query = (
+            """
+            SELECT unique_id::integer AS id, feature_class_name, alias, description,
+            _area AS area, extent, to_char(creation_date, 'DD/MM/YY HH24:MI:SS') AS creation_date,
+            tilesetid, source, created_by
+            FROM bioprotect.metadata_interest_features;
+            """
+        )
+
+        data = await self.pg.execute(query, return_format="DataFrame")
+        self.send_response({"info": "all features returned",
+                            "data": data.to_dict(orient="records")})
 
     async def delete_feature(self):
         """Deletes a feature class and its associated metadata record."""

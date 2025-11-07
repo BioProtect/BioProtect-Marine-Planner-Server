@@ -114,13 +114,6 @@ class UserHandler(BaseHandler):
                 data=[username, email, password_hash],
                 return_format="Dict"
             )
-
-            case_studies = glob.glob(
-                join(self.proj_paths.CASE_STUDIES_FOLDER, "*/"))
-            for case_study in case_studies:
-                clone_a_project(case_study, join(
-                    self.proj_paths.USERS_FOLDER, username))
-
             self.set_status(201)
             self.write({"message": "User created", "user": new_user})
 
@@ -132,9 +125,23 @@ class UserHandler(BaseHandler):
             self.write({"message": "Error creating user", "error": str(e)})
 
     async def logout_user(self):
-        self.clear_cookie("user")
-        self.clear_cookie("role")
-        self.send_response({'info': "User logged out"})
+        try:
+            # Get current user info if possible
+            user_id = self.get_secure_cookie("user_id")
+
+            query = "UPDATE bioprotect.users SET refresh_tokens = ARRAY[]::text[] WHERE id = %s"
+            await self.pg.execute(query, [int(user_id.decode())])
+
+            # Clear cookies
+            self.clear_cookie("jwt")
+            self.clear_cookie("user")
+            self.clear_cookie("user_id")
+            self.clear_cookie("role")
+
+            self.send_response({'info': "User logged out"})
+        except Exception as e:
+            self.set_status(500)
+            self.send_response({'error': "Logout Failed"})
 
     async def resend_password(self):
         self.send_response({'info': "Not currently implemented"})

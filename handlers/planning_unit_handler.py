@@ -313,35 +313,6 @@ class PlanningUnitHandler(BaseHandler):
         })
     # POST FUNCTIONS ###############################################################
 
-    # async def update_pu_file(self):
-    #     args = self.request.arguments
-    #     self.validate_args(args, ['user', 'project'])
-
-    #     status1_ids = self.get_int_array_from_arg(args, "status1")
-    #     status2_ids = self.get_int_array_from_arg(args, "status2")
-    #     status3_ids = self.get_int_array_from_arg(args, "status3")
-
-    #     status1 = self.create_status_dataframe(status1_ids, 1)
-    #     status2 = self.create_status_dataframe(status2_ids, 2)
-    #     status3 = self.create_status_dataframe(status3_ids, 3)
-
-    #     pu_file_path = join(
-    #         self.input_folder, self.projectData["files"]["PUNAME"])
-    #     df = file_to_df(pu_file_path)
-
-    #     df['status'] = 0
-    #     status_updates = pd.concat([status1, status2, status3])
-
-    #     df = df.merge(status_updates, on='id', how='left')
-    #     df['status'] = df['status_new'].fillna(df['status']).astype('int')
-    #     df = df.drop(columns=['status_new'])
-    #     df = df.astype({'id': 'int64', 'cost': 'int64', 'status': 'int64'})
-    #     df = df.sort_values(by='id')
-
-    #     await write_csv(self, "PUNAME", df)
-
-    #     self.send_response({'info': "pu.dat file updated"})
-
     async def update_planning_units(self):
         """
         Updates planning unit statuses in the project_pus table.
@@ -415,7 +386,7 @@ class PlanningUnitHandler(BaseHandler):
         )
 
         feature_class_name = "pu_" + uuid.uuid4().hex[:29]
-        tileset_id = f"{MAPBOX_USER}.{feature_class_name}"
+        tileset_id = f"planning_unit.{feature_class_name}"
         shapefile_path = join(
             import_folder, f"{root_filename}.shp")
 

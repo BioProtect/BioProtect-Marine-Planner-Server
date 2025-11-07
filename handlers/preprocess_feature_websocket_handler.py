@@ -82,7 +82,7 @@ class PreprocessFeature(SocketHandler):
                 pu_count = stats[0]["pu_count"] if stats else 0
 
                 # Final response
-                self.close({
+                self.send_response({
                     'info': f"Feature '{feature_class}' preprocessed",
                     'feature_class': feature_class,
                     'id': feature_id,
@@ -91,4 +91,4 @@ class PreprocessFeature(SocketHandler):
                 })
 
         except ServicesError as e:
-            self.close({'error': e.args[0]})
+            self.send_response({'error': e.args[0]})

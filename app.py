@@ -72,6 +72,7 @@ from tornado.log import LogFormatter
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
 from tornado.process import Subprocess
 from tornado.web import HTTPError, StaticFileHandler
+import hashlib
 
 ####################################################################################################################################################################################################################################################################
 # constant declarations
@@ -2721,23 +2722,24 @@ class GetAtlasLayersHandler(BaseHandler):
         self.finish(json.dumps(layers))
 
 
-class GetActivitiesHandler(BaseHandler):
-    """_summary_
+def make_stable_id(name: str, digits=6):
+    h = hashlib.sha1(name.encode()).hexdigest()
+    return int(h[:digits], 16)
 
-    Args:
-        BaseHandler (_type_): _description_
-    """
+
+class GetActivitiesHandler(BaseHandler):
 
     async def get(self):
-
         pad = getPressuresActivitiesDatabase(db_config.db_config.get('pad'))
         try:
             activities = []
             activitytitles = pad.activitytitle.unique()
-
             for idx, act in enumerate(activitytitles):
+                act_id = make_stable_id(act)
+                cat = pad[pad.activitytitle == act].categorytitle.unique()[0]
                 activities.append({
-                    "category": pad[pad.activitytitle == act].categorytitle.unique()[0],
+                    "id": act_id,
+                    "category": cat,
                     "activity": act
                 })
             self.send_response({"data": json.dumps(activities)})

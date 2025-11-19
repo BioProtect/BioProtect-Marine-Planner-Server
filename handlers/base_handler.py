@@ -48,17 +48,16 @@ class BaseHandler(RequestHandler):
             "http://localhost:4500"
         ]
 
-        origin = self.request.headers.get("Origin")
-        if proj_paths.DISABLE_SECURITY and origin in allowed_origins:
+        origin = self.request.headers.get("Origin", "")
+        permitted = proj_paths.PERMITTED_DOMAINS if hasattr(
+            proj_paths, "PERMITTED_DOMAINS") else []
+        if proj_paths.DISABLE_SECURITY or origin in permitted:
             self.set_header("Access-Control-Allow-Origin", origin)
             self.set_header("Access-Control-Allow-Methods",
                             "GET, POST, OPTIONS")
             self.set_header("Access-Control-Allow-Headers",
                             "Content-Type, Authorization")
             self.set_header("Access-Control-Allow-Credentials", "true")
-        else:
-            # Optionally block or allow none
-            self.set_header("Access-Control-Allow-Origin", "null")
 
     def options(self, *args, **kwargs):
         # Respond to preflight OPTIONS request

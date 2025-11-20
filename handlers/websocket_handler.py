@@ -42,15 +42,15 @@ class SocketHandler(WebSocketHandler):
         parsed_origin = urlparse(origin)
         if origin in project_paths.PERMITTED_DOMAINS or parsed_origin.netloc.find(self.request.host_name) != -1:
             return True
-        raise HTTPError(403, f"The origin '{
-                        origin}' does not have permission to access the service (CORS error)")
+        raise HTTPError(
+            403, f"The origin '{origin}' does not have permission to access the service (CORS error)")
 
     def validate_args(self, arguments, required_keys):
         """Validates that all required arguments are present."""
         missing = [key for key in required_keys if key not in arguments]
         if missing:
-            raise ServicesError(f"Missing required arguments: {
-                                ', '.join(missing)}")
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
     async def open(self, start_message):
         """Handles WebSocket connection opening."""

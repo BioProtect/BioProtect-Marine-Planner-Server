@@ -72,6 +72,7 @@ from tornado.log import LogFormatter
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
 from tornado.process import Subprocess
 from tornado.web import HTTPError, StaticFileHandler
+import hashlib
 
 ####################################################################################################################################################################################################################################################################
 # constant declarations
@@ -1007,238 +1008,6 @@ class getCountries(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class getPlanningUnitGrids(BaseHandler):
-    """REST HTTP handler. Gets all of the planning grid data. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "planning_unit_grids": dict[]: The data for the planning grids. Each dict contains the keys: alias,aoi_id,country,country_id,created_by,creation_date,description,domain,envelope,feature_class_name,planning_unit_count,source,tilesetid,_area
-        }
-    """
-
-    async def get(self):
-        try:
-            self.send_response({'info': 'Planning unit grids retrieved'})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class ImportPlanningUnitGrid(BaseHandler):
-    """
-    REST HTTP handler to import a zipped planning grid shapefile into PostGIS as a planning unit grid feature class.
-
-    Required Arguments:
-        filename (str): The name of the zipped shapefile to import (not the full path).
-        name (str): The name of the planning grid to use as the alias in the metadata_planning_units table.
-        description (str): The description for the planning grid.
-
-    Returns:
-        dict: Contains the feature_class_name, Mapbox uploadId, and alias for the imported feature class.
-    """
-
-    async def get(self):
-        try:
-            # Validate input arguments
-            validate_args(self.request.arguments, [
-                          'filename', 'name', 'description'])
-            filename = self.get_argument('filename')
-            name = self.get_argument('name')
-            description = self.get_argument('description')
-            user = self.get_current_user()
-
-            # Unzip the shapefile asynchronously
-            root_filename = await asyncio.get_running_loop().run_in_executor(
-                None, unzip_shapefile, project_paths.IMPORT_FOLDER, filename
-            )
-
-            # Generate a unique feature class name
-            feature_class_name = get_unique_feature_name("pu_")
-            tileset_id = f"{MAPBOX_USER}.{feature_class_name}"
-            shapefile_path = os.path.join(
-                project_paths.IMPORT_FOLDER, f"{root_filename}.shp")
-
-            try:
-                # Validate the shapefile
-                check_zipped_shapefile(shapefile_path)
-                fieldnames = get_shapefile_fieldnames(shapefile_path)
-                if "PUID" in fieldnames:
-                    raise ServicesError(
-                        "The field 'puid' in the shapefile must be lowercase.")
-
-                # Insert metadata for the planning unit grid
-                await pg.execute(
-                    """
-                    INSERT INTO bioprotect.metadata_planning_units(
-                        feature_class_name, alias, description, creation_date, source, created_by, tilesetid
-                    ) VALUES (%s, %s, %s, now(), 'Imported from shapefile', %s, %s);
-                    """,
-                    [feature_class_name, name, description, user, tileset_id]
-                )
-
-                # Import the shapefile into PostGIS
-                await pg.import_shapefile(project_paths.IMPORT_FOLDER, f"{root_filename}.shp", feature_class_name)
-
-                # Validate and process the geometry
-                await pg.is_valid(feature_class_name)
-                await pg.execute(
-                    sql.SQL(
-                        "ALTER TABLE bioprotect.{} ALTER COLUMN puid TYPE integer;")
-                    .format(sql.Identifier(feature_class_name))
-                )
-
-                # Update metadata: envelope and planning unit count
-                await pg.execute(
-                    sql.SQL(
-                        """
-                        UPDATE bioprotect.metadata_planning_units
-                        SET envelope = (
-                            SELECT ST_Transform(ST_Envelope(ST_Collect(geometry)), 4326)
-                            FROM bioprotect.{}
-                        )
-                        WHERE feature_class_name = %s;
-                        """
-                    ).format(sql.Identifier(feature_class_name)),
-                    [feature_class_name]
-                )
-                await pg.execute(
-                    sql.SQL(
-                        """
-                        UPDATE bioprotect.metadata_planning_units
-                        SET planning_unit_count = (
-                            SELECT COUNT(puid)
-                            FROM bioprotect.{}
-                        )
-                        WHERE feature_class_name = %s;
-                        """
-                    ).format(sql.Identifier(feature_class_name)),
-                    [feature_class_name]
-                )
-
-                # Upload the shapefile to Mapbox
-                upload_id = upload_tileset(shapefile_path, feature_class_name)
-
-            except ServicesError as e:
-                # Handle specific errors related to the shapefile or constraints
-                if all(keyword in e.args[0] for keyword in ['column', 'puid', 'does not exist']):
-                    raise ServicesError(
-                        "The field 'puid' does not exist in the shapefile.") from e
-                if 'violates unique constraint' in e.args[0]:
-                    raise ServicesError(f"The planning grid '{
-                                        name}' already exists.") from e
-                raise
-            finally:
-                # Cleanup: delete the shapefile and zip file
-                await asyncio.get_running_loop().run_in_executor(
-                    None, delete_zipped_shapefile, project_paths.IMPORT_FOLDER, filename, root_filename
-                )
-
-            # Prepare the response data
-            response_data = {
-                'feature_class_name': feature_class_name,
-                'uploadId': upload_id,
-                'alias': name
-            }
-
-            # Send the response
-            self.send_response({
-                'info': f"Planning grid '{name}' imported",
-                **response_data
-            })
-
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class getAllSpeciesData(BaseHandler):
-    """REST HTTP handler. Gets all species information from the PostGIS database. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "data": dict[]: A list of the features. Each dict contains the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by
-        }
-    """
-
-    async def get(self):
-        try:
-            # get all the species data
-            query = (
-                "SELECT unique_id::integer AS id, feature_class_name, alias, description, "
-                "_area AS area, extent, to_char(creation_date, 'DD/MM/YY HH24:MI:SS') AS creation_date, "
-                "tilesetid, source, created_by "
-                "FROM bioprotect.metadata_interest_features "
-                "ORDER BY lower(alias);"
-            )
-
-            self.allSpeciesData = await pg.execute(query, return_format="DataFrame")
-            # set the response
-            self.send_response({"info": "All species data received",
-                                "data": self.allSpeciesData.to_dict(orient="records")})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class getPlanningUnitsCostData(BaseHandler):
-    """REST HTTP handler. Gets the planning units cost information from the PUNAME file. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "data": list[]: A list of puids that are in each of the 9 classes of cost (the cost data is classified into 9 classes),
-            "min": The minimum cost value,
-            "max": The maximum cost value
-        }
-    """
-
-    async def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['user', 'project'])
-            project_id = self.get_argument("project")
-            # get the planning units cost information
-            # df = file_to_df(os.path.join(self.input_folder,self.projectData["files"]["PUNAME"]))
-            query = """
-                SELECT * FROM bioprotect.pu_costs WHERE project_id= %s;
-            """
-            df = await pg.execute(query, data=[project_id], return_format="DataFrame")
-            print('df: ', df)
-
-            if df.empty:
-                self.send_response({
-                    "data": [],
-                    "min": None,
-                    "max": None
-                })
-                return
-
-            # normalise the planning unit cost data to make the payload smaller
-            data = normalize_dataframe(df, "cost", "id", 9)
-            bins, min_value, max_value = normalize_dataframe(
-                df, "cost", "id", classes=9)
-
-            # set the response
-            self.send_response({
-                "data": bins,
-                'min': str(min_value),
-                'max': str(max_value)
-            })
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 class updateCosts(BaseHandler):
     """REST HTTP handler. Updates a projects costs in the PUNAME file using the named cost profile. The required arguments in the request.arguments parameter are:
 
@@ -1543,105 +1312,6 @@ class getServerData(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class UpdatePUFile(BaseHandler):
-    """
-    REST HTTP handler. Updates the pu.dat file with the posted data.
-
-    Required Arguments:
-        user (str): The name of the user.
-        project (str): The name of the project.
-        status1_ids (list[int]): Array of planning grid units that have a status of 1.
-        status2_ids (list[int]): Array of planning grid units that have a status of 2.
-        status3_ids (list[int]): Array of planning grid units that have a status of 3.
-
-    Returns:
-        dict: Contains an "info" key with an informational message.
-        If an error occurs, the response includes an 'error' key with the error message.
-    """
-
-    @staticmethod
-    def create_status_dataframe(puid_array, pu_status):
-        """
-        Helper function to create a DataFrame for planning units and their statuses.
-
-        Args:
-            puid_array (list[int]): Array of planning unit IDs.
-            pu_status (int): Status to assign to all IDs.
-
-        Returns:
-            pd.DataFrame: DataFrame with columns 'id' and 'status_new'.
-        """
-        return pd.DataFrame({
-            'id': [int(puid) for puid in puid_array],
-            'status_new': [pu_status] * len(puid_array)
-        }, dtype='int64')
-
-    @staticmethod
-    def get_int_array_from_arg(arguments, arg_name):
-        """
-        Extracts an array of integers from the specified argument.
-
-        Args:
-            arguments (dict): Dictionary of request arguments.
-            arg_name (str): Name of the argument to extract.
-
-        Returns:
-            list[int]: List of integers from the argument value.
-        """
-        return [
-            int(s) for s in arguments.get(arg_name, [b""])[0].decode("utf-8").split(",")
-        ] if arg_name in arguments else []
-
-    async def post(self):
-        try:
-            # Validate input arguments
-            validate_args(self.request.arguments, ['user', 'project'])
-
-            # Get IDs for the different statuses
-            status1_ids = self.get_int_array_from_arg(
-                self.request.arguments, "status1")
-            status2_ids = self.get_int_array_from_arg(
-                self.request.arguments, "status2")
-            status3_ids = self.get_int_array_from_arg(
-                self.request.arguments, "status3")
-
-            # Create DataFrames for each status group
-            status1 = self.create_status_dataframe(status1_ids, 1)
-            status2 = self.create_status_dataframe(status2_ids, 2)
-            status3 = self.create_status_dataframe(status3_ids, 3)
-
-            # Read the data from the PUNAME file
-            pu_file_path = os.path.join(
-                self.input_folder, self.projectData["files"]["PUNAME"]
-            )
-            df = file_to_df(pu_file_path)
-
-            # Reset the status for all planning units
-            df['status'] = 0
-
-            # Combine status DataFrames and merge with the original
-            status_updates = pd.concat([status1, status2, status3])
-            df = df.merge(status_updates, on='id', how='left')
-
-            # Update the status column
-            df['status'] = df['status_new'].fillna(df['status']).astype('int')
-
-            # Drop the intermediate column and ensure data types
-            df = df.drop(columns=['status_new'])
-            df = df.astype({'id': 'int64', 'cost': 'int64', 'status': 'int64'})
-
-            # Sort the DataFrame by 'id'
-            df = df.sort_values(by='id')
-
-            # Write the updated DataFrame back to the file
-            await write_csv(self, "PUNAME", df)
-
-            # Send response
-            self.send_response({'info': "pu.dat file updated"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 # not currently used
 class createFeaturePreprocessingFileFromImport(BaseHandler):
     """REST HTTP handler. Used to populate the feature_preprocessing.dat file from an imported PUVSPR file. The required arguments in the request.arguments parameter are:
@@ -1720,34 +1390,6 @@ class addParameter(BaseHandler):
                                             project_paths.PROJECT_FOLDER)
             # set the response
             self.send_response({'info': results})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class listProjectsForPlanningGrid(BaseHandler):
-    """REST HTTP handler. Gets a list of all of the projects that a planning grid is used in. The required arguments in the request.arguments parameter are:
-
-    Args:
-        feature_class_id (string): The planning grid feature oid.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "projects": dict[]: A list of the projects that the feature is in. Each dict contains the keys: user, name
-        }
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['feature_class_name'])
-            # get the projects which contain the planning grid
-            projects = get_projects_for_planning_grid(
-                self.get_argument('feature_class_name'))
-            # set the response for uploading to mapbox
-            self.send_response(
-                {'info': "Projects info returned", "projects": projects})
         except ServicesError as e:
             raise_error(self, e.args[0])
 
@@ -3080,23 +2722,24 @@ class GetAtlasLayersHandler(BaseHandler):
         self.finish(json.dumps(layers))
 
 
-class GetActivitiesHandler(BaseHandler):
-    """_summary_
+def make_stable_id(name: str, digits=6):
+    h = hashlib.sha1(name.encode()).hexdigest()
+    return int(h[:digits], 16)
 
-    Args:
-        BaseHandler (_type_): _description_
-    """
+
+class GetActivitiesHandler(BaseHandler):
 
     async def get(self):
-
         pad = getPressuresActivitiesDatabase(db_config.db_config.get('pad'))
         try:
             activities = []
             activitytitles = pad.activitytitle.unique()
-
             for idx, act in enumerate(activitytitles):
+                act_id = make_stable_id(act)
+                cat = pad[pad.activitytitle == act].categorytitle.unique()[0]
                 activities.append({
-                    "category": pad[pad.activitytitle == act].categorytitle.unique()[0],
+                    "id": act_id,
+                    "category": cat,
                     "activity": act
                 })
             self.send_response({"data": json.dumps(activities)})
@@ -3553,19 +3196,12 @@ class Application(tornado.web.Application):
 
             ("/server/createPlanningUnitGrid",
              PlanningGridWebSocketHandler, dict(pg=pg)),  # websocket
-            ("/server/getPlanningUnitGrids", getPlanningUnitGrids),
-            ("/server/importPlanningUnitGrid", ImportPlanningUnitGrid),
-            ("/server/listProjectsForPlanningGrid", listProjectsForPlanningGrid),
-            ("/server/getPlanningUnitsCostData", getPlanningUnitsCostData),
-            ("/server/updatePUFile", UpdatePUFile),
 
             ("/server/getServerData", getServerData),
             ("/server/getAtlasLayers", GetAtlasLayersHandler),
             ("/server/getActivities", GetActivitiesHandler),
             ("/server/getAllImpacts", GetAllImpactsHandler),
             ("/server/getCountries", getCountries),
-
-            ("/server/getAllSpeciesData", getAllSpeciesData),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),
             ("/server/unzipShapefile", unzipShapefile),
@@ -3644,9 +3280,9 @@ async def initialiseApp():
     app = Application()
     # if there is an https certificate then use the certificate information from the server.dat file to return data securely
     if project_paths.CERTFILE is None:
-        app.listen(db_config.SERVER_PORT)
+        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0")
     else:
-        app.listen(db_config.SERVER_PORT, ssl_options={
+        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0", ssl_options={
             "certfile": project_paths.CERTFILE,
             "keyfile": project_paths.KEYFILE
         })

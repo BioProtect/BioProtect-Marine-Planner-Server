@@ -27,8 +27,8 @@ class FeatureHandler(BaseHandler):
         """Checks that all of the arguments in argumentList are in the arguments dictionary."""
         missing = [key for key in required_keys if key not in args]
         if missing:
-            raise ServicesError(f"Missing required arguments: {
-                                ', '.join(missing)}")
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
     async def get(self):
         """
@@ -39,15 +39,17 @@ class FeatureHandler(BaseHandler):
 
             if action == 'get':
                 await self.get_feature()
+            elif action == 'get-all':
+                await self.get_all_features()
             elif action == 'delete':
                 await self.delete_feature()
             elif action == 'export':
                 await self.export_feature()
-            elif action == 'list_projects':
+            elif action == 'list-projects':
                 self.list_projects_for_feature()
-            elif action == 'planning_units':
+            elif action == 'planning-units':
                 await self.get_feature_planning_units()
-            elif action == 'get_sensitivities':
+            elif action == 'get-sensitivities':
                 await self.get_sensitivities()
             else:
                 raise ServicesError("Invalid action specified.")
@@ -88,6 +90,21 @@ class FeatureHandler(BaseHandler):
         data = await self.pg.execute(query, data=[unique_id], return_format="DataFrame")
         self.send_response({"data": data.to_dict(orient="records")})
 
+    async def get_all_features(self):
+        """Fetches all features information from PostGIS."""
+        query = (
+            """
+            SELECT unique_id::integer AS id, feature_class_name, alias, description,
+            _area AS area, extent, to_char(creation_date, 'DD/MM/YY HH24:MI:SS') AS creation_date,
+            tilesetid, source, created_by
+            FROM bioprotect.metadata_interest_features;
+            """
+        )
+
+        data = await self.pg.execute(query, return_format="DataFrame")
+        self.send_response({"info": "all features returned",
+                            "data": data.to_dict(orient="records")})
+
     async def delete_feature(self):
         """Deletes a feature class and its associated metadata record."""
         self.validate_args(self.request.arguments, ['feature_name'])
@@ -119,16 +136,15 @@ class FeatureHandler(BaseHandler):
 
         try:
             response = requests.delete(
-                f"https://api.mapbox.com/tilesets/v1/{self.proj_paths.MAPBOX_USER}.{
-                    feature_class_name}?access_token={self.proj_paths.MBAT}"
+                f"https://api.mapbox.com/tilesets/v1/{self.proj_paths.MAPBOX_USER}.{feature_class_name}?access_token={self.proj_paths.MBAT}"
             )
             if response.status_code != 204:
-                raise ServicesError(f"Failed to delete tileset: {
-                                    response.status_code} - {response.text}")
+                raise ServicesError(
+                    f"Failed to delete tileset: {response.status_code} - {response.text}")
 
         except Exception as e:
-            print(f"Warning: Unable to delete tileset for feature '{
-                  feature_class_name}': {e}")
+            print(
+                f"Warning: Unable to delete tileset for feature '{feature_class_name}': {e}")
 
         self.send_response({'info': "Feature deleted"})
 

@@ -33,8 +33,8 @@ class ProjectHandler(BaseHandler):
         """Checks that all of the arguments in argumentList are in the arguments dictionary."""
         missing = [key for key in required_keys if key not in args]
         if missing:
-            raise ServicesError(f"Missing required arguments: {
-                                ', '.join(missing)}")
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
     def json_serial(self, obj):
         """Convert datetime objects to a JSON-serializable format."""

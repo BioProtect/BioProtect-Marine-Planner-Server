@@ -22,7 +22,7 @@ class DBConfig:
         self.SERVER_DESCRIPTION = self.db_config.get(
             'server_description', 'default_description')
         self.SERVER_PORT = self.db_config.get(
-            'server_port', '5000')
+            'server_port', '8080')
         self.DATABASE_NAME = self.db_config.get("db_name")
         self.DATABASE_HOST = self.db_config.get("db_host")
         self.DATABASE_USER = self.db_config.get("db_user")

@@ -20,8 +20,8 @@ def copy_directory(src, dest):
     try:
         shutil.copytree(src, dest)
     except (shutil.Error, OSError) as e:
-        raise ServicesError(f"Failed to copy directory from '{
-                            src}' to '{dest}': {e}") from e
+        raise ServicesError(
+            f"Failed to copy directory from '{src}' to '{dest}': {e}") from e
 
 
 def set_folder_paths(obj, arguments, users_folder):
@@ -113,8 +113,8 @@ def delete_project(obj):
 
     # Validate that the project folder exists before attempting to delete it
     if not path.exists(project_folder):
-        raise ServicesError(f"The project folder '{
-                            project_folder}' does not exist.")
+        raise ServicesError(
+            f"The project folder '{project_folder}' does not exist.")
 
     try:
         shutil.rmtree(project_folder)
@@ -144,8 +144,8 @@ async def write_csv(obj, file_to_write, df, write_index=False):
     """
     file_name = obj.projectData["files"][file_to_write]
     if not file_name:  # Ensure the file has been created
-        raise ServicesError(f"The filename for '{
-                            file_to_write}.dat' has not been set in the input.dat file.")
+        raise ServicesError(
+            f"The filename for '{file_to_write}.dat' has not been set in the input.dat file.")
 
     df.to_csv(path.join(obj.input_folder, file_name), index=write_index)
 

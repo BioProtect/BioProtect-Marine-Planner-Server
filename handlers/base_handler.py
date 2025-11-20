@@ -44,20 +44,19 @@ class BaseHandler(RequestHandler):
     def set_default_headers(self):
         """Writes CORS headers in the response to prevent CORS errors in the client"""
         allowed_origins = [
-            "http://vmudai1.datascienceinstitute.ie",
-            "http://localhost:4500"
+            "vmudai1.datascienceinstitute.ie",
+            "localhost",
+            "127.0.0.1"
         ]
 
         origin = self.request.headers.get("Origin", "")
-        permitted = proj_paths.PERMITTED_DOMAINS if hasattr(
-            proj_paths, "PERMITTED_DOMAINS") else []
-        if proj_paths.DISABLE_SECURITY or origin in permitted:
+        if any(all_orig in origin for all_orig in allowed_origins):
             self.set_header("Access-Control-Allow-Origin", origin)
-            self.set_header("Access-Control-Allow-Methods",
-                            "GET, POST, OPTIONS")
-            self.set_header("Access-Control-Allow-Headers",
-                            "Content-Type, Authorization")
             self.set_header("Access-Control-Allow-Credentials", "true")
+
+        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers",
+                        "Content-Type, Authorization")
 
     def options(self, *args, **kwargs):
         # Respond to preflight OPTIONS request

@@ -47,10 +47,16 @@ class ProjectHandler(BaseHandler):
         raise TypeError(f"Type {type(obj)} not serializable")
 
     async def get_project_by_id(self, project_id):
-        """Fetch project details based on project ID."""
-        query = """
-            SELECT * FROM bioprotect.projects WHERE id = %s;
         """
+        Fetch project details based on project ID.
+
+        :param self: Handler
+        :param project_id: project_id
+        :return: project id, name, description, date_created, planning_unit_id, old_version, is_private, costs (type), iucn_category, resolution,  and active cost profile
+        :rtype: Dict
+
+        """
+        query = "SELECT * FROM bioprotect.projects WHERE id = %s;"
         result = await self.pg.execute(query, [project_id], return_format="Dict")
         return result[0] if result else None
 
@@ -60,7 +66,7 @@ class ProjectHandler(BaseHandler):
         are updated, while others remain unchanged.
         """
         if not new_params:
-            return  # Exit if there are no parameters to update
+            return
 
         file_content = read_file(filename)
         lines = file_content.splitlines()
@@ -109,54 +115,6 @@ class ProjectHandler(BaseHandler):
         else:
             # Return legacy array-of-arrays
             return [[int(group), group_df[puid_column_name].tolist()] for group, group_df in groups]
-
-    async def get_species_data(self, obj):
-        """
-        Retrieves species data for a project from the Marxan SPECNAME file as a DataFrame.
-        Joins this data with the PostGIS database if the project is a Marxan Web project.
-        Sets the resulting data on the `speciesData` attribute of the passed `obj`.
-
-        Args:
-            obj (BaseHandler): The request handler instance.
-
-        Returns:
-            None
-        """
-
-        project_id = obj.projectData["project"]["id"]
-
-        # Load project_features (targets + spf)
-        species_data = await obj.pg.execute("""
-            SELECT
-                pf.feature_unique_id AS id,
-                pf.target_type,
-                pf.target_value,
-                pf.spf,
-                pf.weight,
-                pf.created_at,
-                pf.updated_at
-            FROM bioprotect.project_features pf
-            WHERE pf.project_id = %s
-        """, data=[project_id], return_format="DataFrame")
-
-        if species_data.empty:
-            obj.speciesData = pd.DataFrame()
-            return
-
-        # Get additional feature metadata from PostGIS
-        feature_data = await obj.pg.execute(
-            "SELECT * FROM bioprotect.get_features()",
-            return_format="DataFrame"
-        )
-
-        # Join
-        output_df = species_data.join(
-            feature_data.set_index("unique_id"),
-            on="id",
-            how="left"
-        )
-        output_df = output_df.replace(np.nan, None)
-        obj.speciesData = output_df
 
     async def get_projects_for_user(self, user_id):
         """
@@ -314,19 +272,16 @@ class ProjectHandler(BaseHandler):
     # }
 
     async def create_project(self):
-        print('self.request.arguments: ', self.request.arguments)
         self.validate_args(self.request.arguments, [
             'user', 'project', 'description', 'planning_grid_name', 'interest_features', 'target_values', 'spf_values'
         ])
 
         user = self.get_argument('user')
-        print('user--------------------------------: ', user)
         project = self.get_argument('project')
         description = self.get_argument('description')
         planning_grid_name = self.get_argument('planning_grid_name')
 
         # 1. Create project in DB
-
         row = await self.pg.execute("""
             INSERT INTO bioprotect.projects (user_id, name, description, planning_unit_id)
             VALUES (
@@ -344,7 +299,7 @@ class ProjectHandler(BaseHandler):
         # 2. Link features to this project
         await self.update_project_features(project_id=project_id)
 
-        # 3. Respond
+        # 3. return info
         self.send_response({
             'info': f"Project '{project}' created with features",
             'name': project,
@@ -362,59 +317,62 @@ class ProjectHandler(BaseHandler):
         except ValueError:
             raise ServicesError("Invalid project ID")
 
+        # 1 - gets project details from the project table in the database
         project = await self.get_project_by_id(project_id) if project_id else None
-        print('++++++ project_id: ', project_id)
-        print('++++++ project: ', project)
-
         if project is None:
             raise ServicesError(f"That project does not exist")
 
-        # Define project paths - need these for uploads
+        # 2 - Define project paths - need these for uploads
+        ######################################################################
+        # NEED TO CHANGE THIS
+        # NEED PROJECT FOLDERS TO UPLOAD BUT GENERALLY NEED TO MOVE AWAY FROM FILE BASED STORAGE
+        ######################################################################
         self.project = project
         self.folder_user = join("./users", self.current_user)
         self.project_path = join(self.folder_user, project['name']) + sep
         self.input_folder = join(self.project_path, "input") + sep
 
-        # 1. Load project data
+        # 3 - Load project data
         self.projectData = await self.fetch_project_data(project)
 
-        # 2. Load species data
-        await self.get_species_data(self)
+        # 4 - Load species data
+        output_df = await self.pg.execute(
+            "SELECT * FROM bioprotect.get_project_species(%s)",
+            data=[project_id],
+            return_format="DataFrame"
+        )
+        self.speciesData = output_df.replace(np.nan, None)
 
-        # 3. Load feature preprocessing (DB instead of file)
-        # self.speciesPreProcessingData = await self.pg.execute(
-        #     """
-        #     SELECT project_id, feature_unique_id, preprocessing_result
-        #     FROM bioprotect.feature_preprocessing
-        #     WHERE project_id = %s
-        #     """,
-        #     data=[project_id],
-        #     return_format="DataFrame"
-        # )
-        self.speciesPreProcessingData = file_to_df(
-            join(self.input_folder, "feature_preprocessing.dat"))
-
-        # 3. Load and normalize planning unit data
-        query = """
+        # 5 - Load feature preprocessing (DB instead of file)
+        self.speciesPreProcessingData = await self.pg.execute(
+            """
             SELECT
-                pp.h3_index AS id,
-                pp.cost,
-                pp.status
-            FROM bioprotect.project_pus pp
-            JOIN bioprotect.h3_cells hc ON pp.h3_index = hc.h3_index
-            JOIN bioprotect.projects p ON p.id = pp.project_id
-            JOIN bioprotect.metadata_planning_units mpu ON p.planning_unit_id = mpu.unique_id
-            WHERE pp.project_id = %s
-            AND hc.resolution = %s
-            AND LOWER(TRIM(hc.project_area)) = LOWER(TRIM(split_part(mpu.alias, ' (', 1)));
-        """
-        df = await self.pg.execute(query, data=[project_id, resolution], return_format="DataFrame")
-        print(df.head(5))
-        print(df['status'].value_counts(dropna=False))
-        self.planningUnitsData = self.normalise_planning_units(
-            df, "status", "id")
+                fp.project_id,
+                fp.feature_unique_id,
+                fp.pu_area,
+                fp.pu_count
+            FROM bioprotect.feature_preprocessing fp
+            WHERE fp.project_id = %s
+            """,
+            data=[project_id],
+            return_format="DataFrame"
+        )
 
-        # 5. Load protected area intersections (DB instead of file)
+        # 6 - Load and normalize planning unit data
+        df = await self.pg.execute(
+            "SELECT * FROM bioprotect.get_planning_units_for_project(%s, %s)",
+            data=[project_id, resolution],
+            return_format="DataFrame"
+        )
+
+        self.planningUnitsData = self.normalise_planning_units(
+            df, "status", "h3_index")
+
+        ######################################################################
+        # NEED TO fix THIS
+        # NEED to get wdpa back up and running to get protected areas
+        ######################################################################
+        # 4. Load protected area intersections (DB instead of file)
         # self.protectedAreaIntersectionsData = await self.pg.execute(
         #     """
         #     SELECT project_id, puid, iucn_cat
@@ -429,40 +387,31 @@ class ProjectHandler(BaseHandler):
         self.protectedAreaIntersectionsData = normalize_dataframe(
             protected_areas_df, "iucn_cat", "puid")
 
-        # 6. Get project costs
-        # costs = await self.pg.execute(
-        #     """
-        #     SELECT h3_index AS id, cost
-        #     FROM bioprotect.project_costs
-        #     WHERE project_id = %s
-        #     """,
-        #     data=[project_id],
-        #     return_format="DataFrame"
-        # )
-        # self.costNames = ["Custom", "Equal area"] if not costs.empty else ["Equal area"]
-        # NOT WHOLLY SURE ABOUT THIS _ NOT ACTUALLY GETTING COSTS
-        query = """SELECT 1 FROM bioprotect.costs WHERE project_id = %s LIMIT 1"""
-        cost_rows = await self.pg.execute(query, data=[self.project["id"]], return_format="Dict")
+        # 5. Get project costs
+        # 6. Load cost profiles for the project
+        profiles = await self.pg.execute(
+            """
+            SELECT
+                cp.id,
+                cp.name,
+                cp.description,
+                cp.is_default,
+                (cp.id = p.active_cost_profile_id) AS is_active
+            FROM bioprotect.cost_profiles cp
+            JOIN bioprotect.projects p
+              ON p.id = cp.project_id
+            WHERE cp.project_id = %s
+            ORDER BY cp.is_default DESC, cp.name;
+            """,
+            data=[project_id],
+            return_format="Dict"
+        )
+        # List of names for existing UI
+        self.costNames = [row["name"] for row in profiles]
+        # Full profile objects for updated UI / future work
+        self.costProfiles = profiles
 
-        # If any cost data exists, add "Custom" profile
-        self.costNames = [
-            "Custom", "Equal area"] if cost_rows else ["Equal area"]
-
-        # costs = await self.pg.execute("""
-        #     SELECT id, cost
-        #     FROM bioprotect.project_costs
-        #     WHERE project_id = %s
-        # """, [project_id], return_format="Dict")
-
-        # MATCH COSTS UP WITH PLANNING UNITS
-        # costs = await self.pg.execute("""
-        #     SELECT pc.id, pc.cost, pp.status
-        #     FROM bioprotect.project_costs pc
-        #     JOIN bioprotect.project_pus pp
-        #     ON pc.project_id = pp.project_id AND pc.id = pp.h3_index
-        #     WHERE pc.project_id = %s
-        # """, [project_id], return_format="Dict")
-
+        ##################################################################
         # 5. Update user
         uid = self.get_secure_cookie("user_id")
         if not uid:
@@ -500,6 +449,7 @@ class ProjectHandler(BaseHandler):
             'planning_units': self.planningUnitsData,
             'protected_area_intersections': self.protectedAreaIntersectionsData,
             'costnames': self.costNames,
+            'costProfiles': self.costProfiles,  # new full metadata
         }
         response = json.dumps(data, default=self.json_serial)
         self.send_response(response)

@@ -359,12 +359,12 @@ class ProjectHandler(BaseHandler):
         )
 
         # 6 - Load and normalize planning unit data
+        # This is just the status values
         df = await self.pg.execute(
-            "SELECT * FROM bioprotect.get_planning_units_for_project(%s, %s)",
-            data=[project_id, resolution],
+            "SELECT * FROM bioprotect.get_planning_units_for_project(%s)",
+            data=[project_id],
             return_format="DataFrame"
         )
-
         self.planningUnitsData = self.normalise_planning_units(
             df, "status", "h3_index")
 
@@ -433,7 +433,11 @@ class ProjectHandler(BaseHandler):
             )
         else:
             await self.pg.execute(
-                "UPDATE bioprotect.users SET last_project = %s WHERE username = %s",
+                """
+                UPDATE bioprotect.users 
+                SET last_project = %s 
+                WHERE username = %s
+                """,
                 data=[self.project["id"], self.current_user]
             )
 

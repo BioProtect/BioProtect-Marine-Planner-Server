@@ -360,6 +360,7 @@ class ProjectHandler(BaseHandler):
 
         # 6 - Load and normalize planning unit data
         # This is just the status values
+        # THIS IS A PGADMIN FUNCTION
         df = await self.pg.execute(
             "SELECT * FROM bioprotect.get_planning_units_for_project(%s)",
             data=[project_id],

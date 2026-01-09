@@ -298,62 +298,41 @@ class PlanningUnitHandler(BaseHandler):
 
     async def update_planning_units(self):
         """
-        Updates planning unit statuses in the project_pus table.
-        Expects JSON body like:
+        Updates planning unit statuses for the project's ACTIVE cost profile.
+        Expects form fields:
+        - user
+        - project_id (prefer this) OR project (name)
+        - status0/status1/status2... each containing comma-separated h3 indexes
         """
         try:
-            body = escape.json_decode(self.request.body)
-            user = body.get("user")
-            project_name = body.get("project")
-            status1_ids = body.get("status1", [])
-            status2_ids = body.get("status2", [])
-            status3_ids = body.get("status3", [])
-
-            if not user or not project_name:
-                raise ServicesError(
-                    "Missing required fields 'user' or 'project'.")
-
+            self.validate_args(self.request.arguments, ['project_id'])
             # resolve project_id
-            project_row = await self.pg.execute(
-                "SELECT id FROM bioprotect.projects WHERE name = %s",
-                [project_name],
-                return_format="Dict"
-            )
-            if not project_row:
-                raise ServicesError(f"Project '{project_name}' not found.")
-            project_id = project_row[0]["id"]
+            project_id = int(self.get_argument("project_id", None))
 
-            # reset all statuses to 0 for this project
+            if not project_id:
+                raise ServicesError(f"Project id not found.")
+
+            def parse_h3_list(arg_name):
+                raw = self.get_argument(arg_name, "")
+                return [s.strip() for s in raw.split(",") if s.strip()]
+
+            status1 = parse_h3_list("status1")
+            print('status1: ', status1)
+            status2 = parse_h3_list("status2")
+            print('status2: ', status2)
+
             await self.pg.execute(
-                "UPDATE bioprotect.project_pus SET status = 0 WHERE project_id = %s",
-                [project_id]
+                "SELECT bioprotect.set_active_profile_pu_statuses(%s, %s, %s)",
+                [project_id, status1, status2]
             )
 
-            # apply updates for each status group
-            if status1_ids:
-                await self.pg.execute(
-                    "UPDATE bioprotect.project_pus SET status = 1 WHERE project_id = %s AND h3_index = ANY(%s)",
-                    [project_id, status1_ids]
-                )
-            if status2_ids:
-                await self.pg.execute(
-                    "UPDATE bioprotect.project_pus SET status = 2 WHERE project_id = %s AND h3_index = ANY(%s)",
-                    [project_id, status2_ids]
-                )
-            if status3_ids:
-                await self.pg.execute(
-                    "UPDATE bioprotect.project_pus SET status = 3 WHERE project_id = %s AND h3_index = ANY(%s)",
-                    [project_id, status3_ids]
-                )
-
-            self.send_response({'info': "Planning unit statuses updated"})
+            self.send_response(
+                {"info": "Planning unit statuses updated", "project_id": project_id})
 
         except ServicesError as e:
             raise_error(self, e.args[0])
         except Exception as e:
             raise_error(self, str(e))
-
-            return
 
     async def import_planning_unit_grid(self):
         self.validate_args(self.request.arguments, [

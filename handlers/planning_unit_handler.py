@@ -239,7 +239,7 @@ class PlanningUnitHandler(BaseHandler):
         Includes cost, status, and feature amounts in this PU.
         """
         self.validate_args(self.request.arguments, [
-                           'user', 'project_id', 'h3_index'])
+                           'project_id', 'h3_index'])
         project_id = self.get_argument('project_id')
         h3_index = self.get_argument('h3_index')
         resolution = int(self.get_argument("resolution", 7))

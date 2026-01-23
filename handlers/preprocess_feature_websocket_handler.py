@@ -104,5 +104,19 @@ class PreprocessFeature(SocketHandler):
                     'pu_count': pu_count
                 })
 
+                self.close()
+
+            if geometry_type == "ST_Point":
+                self.send_response({
+                    'info': f"Feature '{feature_class}' is a point layer – no preprocessing required",
+                    'feature_class': feature_class,
+                    'id': feature_id,
+                    'pu_area': 0,
+                    'pu_count': 0,
+                })
+                self.close()
+                return
+
         except ServicesError as e:
             self.send_response({'error': e.args[0]})
+            self.close(clean=False)

@@ -26,8 +26,8 @@ logline <- function(...) {
     flush.console()
 }
 
-`%||NA%` <- function(x, y) {
-    if (is.null(x) || is.na(x)) y else x
+`%||%` <- function(x, y) {
+    if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
 }
 
 
@@ -44,7 +44,7 @@ if (!is.finite(run_id) || run_id <= 0) {
 # ---- 2) DB connect (use env vars or defaults) ----------
 PG_HOST <- Sys.getenv("PGHOST", "localhost")
 PG_PORT <- as.integer(Sys.getenv("PGPORT", "5432"))
-PG_DB <- Sys.getenv("PGDATABASE", "postgres")
+PG_DB <- Sys.getenv("PGDATABASE", "bioprotect")
 PG_USER <- Sys.getenv("PGUSER", "postgres")
 PG_PASS <- Sys.getenv("PGPASSWORD", "postgres")
 
@@ -58,6 +58,24 @@ conn <- dbConnect(
     password = PG_PASS
 )
 on.exit(try(dbDisconnect(conn), silent = TRUE), add = TRUE)
+
+db_info <- dbGetQuery(
+    conn,
+    "
+    SELECT
+    current_database()  AS db,
+    current_user        AS user,
+    inet_server_addr()  AS server_ip,
+    inet_server_port()  AS server_port
+    "
+)
+logline("DB INFO:")
+logline(capture.output(print(db_info)))
+
+sp <- dbGetQuery(conn, "SHOW search_path")
+logline("search_path:")
+logline(sp$search_path)
+
 
 # ---- 3) Load run config ----------
 config <- dbGetQuery(
@@ -74,6 +92,10 @@ if (nrow(config) != 1) {
 project_id <- as.integer(config$project_id[1])
 input_table <- config$input_table[1]
 feature_cols <- config$feature_cols[[1]]
+# Convert Postgres array literal -> R character vector
+feature_cols <- gsub("[{}]", "", feature_cols)
+feature_cols <- strsplit(feature_cols, ",")[[1]]
+feature_cols <- trimws(feature_cols)
 
 if (is.null(input_table) || !nzchar(input_table)) {
     stop("Run has no input_table. Did you call prepare_prioritizr_input?")
@@ -83,13 +105,12 @@ if (is.null(feature_cols) || length(feature_cols) == 0) {
 }
 
 # Optimizer params
-TARGET_PROP <- as.numeric(config$target_prop[1] %||NA% 0.30)
-MODE <- as.character(config$mode[1] %||NA% "area")
-BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||NA% 0.005)
-LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||NA% 0.1)
-GAP <- as.numeric(config$gap[1] %||NA% 0.04)
-TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||NA% 1200)
-
+TARGET_PROP <- as.numeric(config$target_prop[1] %||% 0.30)
+MODE <- as.character(config$mode[1] %||% "area")
+BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||% 0.005)
+LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||% 0.1)
+GAP <- as.numeric(config$gap[1] %||% 0.04)
+TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||% 1200)
 
 logline("Run:", run_id, " Project:", project_id)
 logline("Input table:", input_table)
@@ -119,7 +140,6 @@ PU <- tryCatch(
 )
 
 PU$pu_id <- as.character(PU$pu_id)
-
 # Sanitize feature columns -> numeric, NAs -> 0
 for (f in feature_cols) {
     PU[[f]] <- suppressWarnings(as.numeric(PU[[f]]))
@@ -142,10 +162,30 @@ if (any(!is.finite(PU$area_km2) | PU$area_km2 <= 0)) {
 
 logline("Loaded PUs:", nrow(PU))
 
+# -------------------------------
+# 4.5) Drop zero-coverage features (CRITICAL)
+# -------------------------------
+feature_matrix <- as.data.frame(PU[, feature_cols, drop = FALSE])
+feature_matrix[] <- lapply(feature_matrix, as.numeric)
+feature_sums <- colSums(feature_matrix, na.rm = TRUE)
+
+valid_features <- names(feature_sums[feature_sums > 0])
+
+if (length(valid_features) == 0) {
+    stop("All features have zero coverage in this project")
+}
+
+feature_cols <- valid_features
+logline("Using features:", paste(feature_cols, collapse = ", "))
+logline("Loaded PUs:", nrow(PU))
+
 # ---- 5) Boundary matrix from H3 adjacency (Postgres) ----------
 # Note: adjacency function returns undirected unique pairs (pu_id, nbr_id).
 # mirror edges to make bm symmetric.
 logline("Building boundary from H3 adjacency…")
+
+MAX_PU_FOR_BOUNDARY <- 60000
+
 h3_adjacency <- tryCatch(
     dbGetQuery(
         conn,
@@ -156,6 +196,13 @@ h3_adjacency <- tryCatch(
     ),
     error = function(e) stop("Failed to read H3 adjacency: ", e$message)
 )
+
+
+if (nrow(PU) > MAX_PU_FOR_BOUNDARY) {
+    logline("PU count >", MAX_PU_FOR_BOUNDARY, "- skipping boundary penalties")
+    bm <- NULL
+}
+
 
 bm <- NULL
 if (nrow(h3_adjacency) == 0) {

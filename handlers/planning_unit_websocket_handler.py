@@ -13,8 +13,7 @@ from sqlalchemy import create_engine, text
 
 class PlanningGridWebSocketHandler(SocketHandler):
     def initialize(self, pg):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
 
     def check_origin(self, origin):
         return True  # for development purposes

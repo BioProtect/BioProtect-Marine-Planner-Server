@@ -7,8 +7,7 @@ class UploadInputDatHandler(BaseHandler):
     """REST endpoint to upload a project's input.dat into the database."""
 
     def initialize(self, pg):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
 
     async def post(self):
         try:

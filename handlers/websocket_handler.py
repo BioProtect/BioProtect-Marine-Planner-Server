@@ -21,9 +21,9 @@ class SocketHandler(WebSocketHandler):
     authorization, CORS, and keep-alive pings.
     """
 
-    async def initialize(self):
+    def initialize(self, pg=None):
         super().initialize()
-        self.pg = await get_pg
+        self.pg = pg
 
     def prepare(self):
         if not self.get_secure_cookie("user"):

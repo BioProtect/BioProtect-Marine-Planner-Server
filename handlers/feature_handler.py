@@ -18,8 +18,7 @@ class FeatureHandler(BaseHandler):
     """
 
     def initialize(self, pg, finish_feature_import):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.finish_feature_import = finish_feature_import
 
     def validate_args(self, args, required_keys):

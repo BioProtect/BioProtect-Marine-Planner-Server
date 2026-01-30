@@ -31,8 +31,7 @@ class PreprocessFeature(SocketHandler):
     """
 
     def initialize(self, pg):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
 
     async def open(self):
         try:

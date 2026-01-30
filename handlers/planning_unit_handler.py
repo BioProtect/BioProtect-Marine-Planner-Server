@@ -26,8 +26,7 @@ class PlanningUnitHandler(BaseHandler):
     """
 
     def initialize(self, pg, upload_tileset):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.upload_tileset = upload_tileset
 
     @staticmethod

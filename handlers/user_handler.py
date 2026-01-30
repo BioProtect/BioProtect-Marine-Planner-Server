@@ -24,8 +24,7 @@ class UserHandler(BaseHandler):
     """
 
     def initialize(self, pg, project_paths):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.project_paths = project_paths
 
     def validate_args(self, arguments, required_arguments):

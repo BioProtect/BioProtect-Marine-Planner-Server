@@ -9,116 +9,81 @@ from handlers.websocket_handler import SocketHandler
 
 class PrioritizrHandler(SocketHandler):
     """
-    WebSocket handler to run Prioritizr (R) for a project and stream progress logs.
+    WebSocket handler to run Prioritizr (R) for a project and stream progress.
     """
 
     def initialize(self, pg, r_script_path):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.r_script_path = r_script_path
         self.proc = None
         self.run_id = None
 
     async def open(self):
         try:
-            await super().open({"info": "Starting prioritizr run..."})
-        except ServicesError:
-            pass
-
-    async def on_message(self, message):
-        action = self.get_argument("action", None)
-        try:
-            if action == "run":
-                await self.run_prioritizr()
-            else:
-                raise ServicesError("Invalid action specified.")
+            await super().open({"info": "Running Prioritizr..."})
         except ServicesError as e:
-            raise_error(self, e.args[0])
-
-    async def _log(self, stream, msg):
-        msg = (msg or "").rstrip("\n")
-        if not msg:
+            self.send_response({
+                "status": "Error",
+                "info": "Error runing websocket...",
+                "error": e
+            })
             return
 
-        # persist logs (optional but recommended)
-        if self.run_id:
-            await self.pg.execute(
-                """
-                INSERT INTO bioprotect.prioritizr_run_logs(run_id, stream, message)
-                VALUES (%s, %s, %s)
-                """,
-                [self.run_id, stream, msg],
-            )
-
-        # push to UI
-        self.send_response(
-            {"status": "Running", "stream": stream, "message": msg})
-
-    async def _pump_stream(self, stream_name, stream):
-        while True:
-            line = await stream.readline()
-            if not line:
-                break
-            await self._log(stream_name, line.decode("utf-8", errors="replace"))
-
-    async def _create_run_row(self, project_id, params):
-        # each click => new run_id so you can compare scenarios later
-        row = await self.pg.execute(
-            """
-            INSERT INTO bioprotect.prioritizr_runs(project_id, status, params)
-            VALUES (%s, 'queued', COALESCE(%s::jsonb, '{}'::jsonb))
-            RETURNING id
-            """,
-            [project_id, json.dumps(params or {})],
-            return_format="Dict",
-        )
-        if not row:
-            raise ServicesError("Failed to create prioritizr run row")
-        return int(row[0]["id"])
-
-    async def run_prioritizr(self):
+        # === validate ===
         self.validate_args(self.request.arguments, ["user", "project_id"])
         project_id = int(self.get_argument("project_id"))
 
-        # Optional: allow the client to pass scenario params (targets, penalties, mode, solver)
-        # If you don't want this yet, just keep params = {}
         params_raw = self.get_argument("params", None)
         params = json.loads(params_raw) if params_raw else {}
 
-        # 1) Create run_id
-        self.run_id = await self._create_run_row(project_id, params)
-        self.send_response({"status": "Queued", "run_id": self.run_id})
+        # === create run ===
+        row = await self.pg.execute(
+            """
+            INSERT INTO bioprotect.prioritizr_runs (project_id, status, params)
+            VALUES (%s, 'queued', %s::jsonb)
+            RETURNING id
+            """,
+            data=[project_id, json.dumps(params or {})],
+            return_format="Dict",
+        )
 
-        # 2) Prepare input in DB
+        self.run_id = row[0]["id"]
+
+        self.send_response({
+            "status": "Queued",
+            "run_id": self.run_id
+        })
+
+        # === prepare DB input ===
         await self.pg.execute(
             "UPDATE bioprotect.prioritizr_runs SET status='preparing' WHERE id=%s",
-            [self.run_id],
+            data=[self.run_id],
         )
-        self.send_response(
-            {"status": "Preparing", "info": "Preparing input table in PostGIS...", "run_id": self.run_id})
+
+        self.send_response({
+            "status": "Preparing",
+            "info": "Preparing prioritizr input in PostGIS...",
+            "run_id": self.run_id
+        })
 
         await self.pg.execute(
             "SELECT bioprotect.prepare_prioritizr_input(%s)",
-            [self.run_id],
+            data=[self.run_id],
         )
 
-        # 3) Spawn R
+        # === start R ===
         await self.pg.execute(
             "UPDATE bioprotect.prioritizr_runs SET status='running' WHERE id=%s",
-            [self.run_id],
+            data=[self.run_id],
         )
-        self.send_response(
-            {"status": "Running", "info": "Launching prioritizr...", "run_id": self.run_id})
 
-        # Ensure R can talk to the DB via env vars (recommended; don't pass secrets on CLI)
+        self.send_response({
+            "status": "Running",
+            "info": "Launching Prioritizr...",
+            "run_id": self.run_id
+        })
+
         env = os.environ.copy()
-        # If you already set these in the service environment, you can omit these lines:
-        # env["PGHOST"] = ...
-        # env["PGPORT"] = ...
-        # env["PGDATABASE"] = ...
-        # env["PGUSER"] = ...
-        # env["PGPASSWORD"] = ...
-
         cmd = ["Rscript", self.r_script_path, str(self.run_id)]
 
         self.proc = await asyncio.create_subprocess_exec(
@@ -128,35 +93,65 @@ class PrioritizrHandler(SocketHandler):
             env=env,
         )
 
-        # 4) Stream stdout/stderr
         await asyncio.gather(
-            self._pump_stream("stdout", self.proc.stdout),
-            self._pump_stream("stderr", self.proc.stderr),
+            self._stream_output("stdout", self.proc.stdout),
+            self._stream_output("stderr", self.proc.stderr),
         )
 
         rc = await self.proc.wait()
 
-        # 5) Finalize status
         if rc != 0:
             await self.pg.execute(
-                "UPDATE bioprotect.prioritizr_runs SET status='failed', error=%s WHERE id=%s",
-                [f"R exited with code {rc}", self.run_id],
+                """
+                UPDATE bioprotect.prioritizr_runs
+                SET status='failed', error=%s
+                WHERE id=%s
+                """,
+                data=[f"R exited with code {rc}", self.run_id],
             )
-            self.close({"status": "Failed", "run_id": self.run_id,
-                       "error": f"R exited with code {rc}"})
+            self.close({
+                "status": "Failed",
+                "run_id": self.run_id,
+                "error": f"R exited with code {rc}"
+            })
             return
 
         await self.pg.execute(
             "UPDATE bioprotect.prioritizr_runs SET status='done' WHERE id=%s",
-            [self.run_id],
+            data=[self.run_id],
         )
-        self.close({"status": "Finished", "run_id": self.run_id,
-                   "info": "Prioritizr run completed"})
+
+        self.close({
+            "status": "Finished",
+            "run_id": self.run_id,
+            "info": "Prioritizr run completed"
+        })
+
+    async def _stream_output(self, stream_name, stream):
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+
+            msg = line.decode("utf-8", errors="replace").rstrip("\n")
+
+            await self.pg.execute(
+                """
+                INSERT INTO bioprotect.prioritizr_run_logs (run_id, stream, message)
+                VALUES (%s, %s, %s)
+                """,
+                data=[self.run_id, stream_name, msg],
+            )
+
+            self.send_response({
+                "status": "Running",
+                "stream": stream_name,
+                "message": msg
+            })
 
     def on_close(self):
-        # If client disconnects, optionally terminate the process
-        try:
-            if self.proc and self.proc.returncode is None:
+        if self.proc and self.proc.returncode is None:
+            try:
                 self.proc.kill()
-        except Exception:
-            pass
+            except Exception:
+                pass

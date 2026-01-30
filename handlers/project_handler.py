@@ -25,8 +25,7 @@ class ProjectHandler(BaseHandler):
     """
 
     def initialize(self, pg):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
 
     def validate_args(self, args, required_keys):
         # sourcery skip: use-named-expression

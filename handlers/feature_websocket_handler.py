@@ -15,8 +15,7 @@ class FeatureHandler(SocketHandler):
     """
 
     def initialize(self, pg, finish_feature_import, upload_tileset_to_mapbox):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.finish_feature_import = finish_feature_import
         self.upload_tileset_to_mapbox = upload_tileset_to_mapbox
 

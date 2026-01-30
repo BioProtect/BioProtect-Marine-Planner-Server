@@ -91,11 +91,34 @@ if (nrow(config) != 1) {
 
 project_id <- as.integer(config$project_id[1])
 input_table <- config$input_table[1]
-feature_cols <- config$feature_cols[[1]]
-# Convert Postgres array literal -> R character vector
-feature_cols <- gsub("[{}]", "", feature_cols)
-feature_cols <- strsplit(feature_cols, ",")[[1]]
-feature_cols <- trimws(feature_cols)
+feature_cols_raw <- config$feature_cols[[1]]
+# # Convert Postgres array literal -> R character vector
+# feature_cols <- gsub("[{}]", "", feature_cols)
+# feature_cols <- strsplit(feature_cols, ",")[[1]]
+# feature_cols <- trimws(feature_cols)
+
+# feature_cols may arrive as:
+# - a character vector (ideal), OR
+# - a Postgres array literal string like "{f_19,f_21,...}"
+feature_cols <- NULL
+if (is.character(feature_cols_raw) && length(feature_cols_raw) > 1) {
+    feature_cols <- feature_cols_raw
+} else if (is.character(feature_cols_raw) && length(feature_cols_raw) == 1) {
+    tmp <- gsub("[{}\"]", "", feature_cols_raw)
+    tmp <- trimws(tmp)
+    feature_cols <- if (nzchar(tmp)) {
+        trimws(strsplit(tmp, ",")[[1]])
+    } else {
+        character(0)
+    }
+} else {
+    feature_cols <- as.character(unlist(feature_cols_raw))
+}
+
+feature_cols <- feature_cols[nzchar(feature_cols)]
+if (length(feature_cols) == 0) {
+    stop("Run has no feature_cols.")
+}
 
 if (is.null(input_table) || !nzchar(input_table)) {
     stop("Run has no input_table. Did you call prepare_prioritizr_input?")
@@ -165,79 +188,97 @@ logline("Loaded PUs:", nrow(PU))
 # -------------------------------
 # 4.5) Drop zero-coverage features (CRITICAL)
 # -------------------------------
-feature_matrix <- as.data.frame(PU[, feature_cols, drop = FALSE])
-feature_matrix[] <- lapply(feature_matrix, as.numeric)
-feature_sums <- colSums(feature_matrix, na.rm = TRUE)
+# feature_matrix <- as.data.frame(PU[, feature_cols, drop = FALSE])
+# feature_matrix[] <- lapply(feature_matrix, as.numeric)
+# feature_sums <- colSums(feature_matrix, na.rm = TRUE)
 
-valid_features <- names(feature_sums[feature_sums > 0])
+# valid_features <- names(feature_sums[feature_sums > 0])
 
+# if (length(valid_features) == 0) {
+#     stop("All features have zero coverage in this project")
+# }
+
+# feature_cols <- valid_features
+# logline("Using features:", paste(feature_cols, collapse = ", "))
+# logline("Loaded PUs:", nrow(PU))
+# use a numeric matrix to avoid colSums complaining
+feat_mat <- as.matrix(PU[, feature_cols, drop = FALSE])
+storage.mode(feat_mat) <- "double"
+feat_sums <- colSums(feat_mat, na.rm = TRUE)
+
+valid_features <- names(feat_sums[is.finite(feat_sums) & feat_sums > 0])
 if (length(valid_features) == 0) {
     stop("All features have zero coverage in this project")
 }
 
 feature_cols <- valid_features
 logline("Using features:", paste(feature_cols, collapse = ", "))
-logline("Loaded PUs:", nrow(PU))
+
 
 # ---- 5) Boundary matrix from H3 adjacency (Postgres) ----------
 # Note: adjacency function returns undirected unique pairs (pu_id, nbr_id).
 # mirror edges to make bm symmetric.
 logline("Building boundary from H3 adjacency…")
 
-MAX_PU_FOR_BOUNDARY <- 60000
-
-h3_adjacency <- tryCatch(
-    dbGetQuery(
+# MAX_PU_FOR_BOUNDARY <- 60000
+MAX_PU_FOR_BOUNDARY <- 0
+bm <- NULL
+if (nrow(PU) > MAX_PU_FOR_BOUNDARY) {
+    logline("PU count >", MAX_PU_FOR_BOUNDARY, "- skipping boundary penalties")
+} else {
+    logline("Building boundary from H3 adjacency…")
+    h3_adjacency <- dbGetQuery(
         conn,
         sprintf(
             "SELECT pu_id, nbr_id, boundary FROM bioprotect.get_project_h3_adjacency(%s)",
             project_id
         )
-    ),
-    error = function(e) stop("Failed to read H3 adjacency: ", e$message)
-)
-
-
-if (nrow(PU) > MAX_PU_FOR_BOUNDARY) {
-    logline("PU count >", MAX_PU_FOR_BOUNDARY, "- skipping boundary penalties")
-    bm <- NULL
-}
-
-
-bm <- NULL
-if (nrow(h3_adjacency) == 0) {
-    logline(
-        "No adjacency edges returned; continuing without boundary penalties."
     )
-} else {
-    ids <- PU$pu_id
-    n <- length(ids)
 
-    h3_adjacency$pu_id <- as.character(h3_adjacency$pu_id)
-    h3_adjacency$nbr_id <- as.character(h3_adjacency$nbr_id)
-
-    i <- match(h3_adjacency$pu_id, ids)
-    j <- match(h3_adjacency$nbr_id, ids)
-    ok <- !is.na(i) & !is.na(j) & i != j
-
-    if (!any(ok)) {
+    if (nrow(h3_adjacency) == 0) {
         logline(
-            "Adjacency edges did not match PU ids; continuing without boundary penalties."
+            "No adjacency edges returned; continuing without boundary penalties."
         )
     } else {
-        x <- suppressWarnings(as.numeric(h3_adjacency$boundary[ok]))
-        x[!is.finite(x)] <- 1
+        ids <- PU$pu_id
+        n <- length(ids)
 
-        bm <- Matrix::sparseMatrix(
-            i = c(i[ok], j[ok]),
-            j = c(j[ok], i[ok]),
-            x = c(x, x),
-            dims = c(n, n),
-            dimnames = list(ids, ids)
-        )
-        logline("Boundary matrix built. nnz=", length(bm@x))
+        h3_adjacency$pu_id <- as.character(h3_adjacency$pu_id)
+        h3_adjacency$nbr_id <- as.character(h3_adjacency$nbr_id)
+
+        i <- match(h3_adjacency$pu_id, ids)
+        j <- match(h3_adjacency$nbr_id, ids)
+        ok <- !is.na(i) & !is.na(j) & i != j
+
+        if (!any(ok)) {
+            logline(
+                "Adjacency edges did not match PU ids; continuing without boundary penalties."
+            )
+        } else {
+            x <- suppressWarnings(as.numeric(h3_adjacency$boundary[ok]))
+            x[!is.finite(x) | x < 0] <- 0
+
+            # build symmetric sparse matrix
+            bm0 <- Matrix::sparseMatrix(
+                i = c(i[ok], j[ok]),
+                j = c(j[ok], i[ok]),
+                x = c(x, x),
+                dims = c(n, n),
+                dimnames = list(ids, ids)
+            )
+
+            # set diagonal = total perimeter proxy (sum of shared boundaries)
+            # (not perfect outer-perimeter, but satisfies prioritizr's expectation)
+            rs <- Matrix::rowSums(bm0)
+            Matrix::diag(bm0) <- as.numeric(rs)
+
+            # coerce to symmetric dsCMatrix (expected by prioritizr boundary handling)
+            bm <- as(Matrix::forceSymmetric(bm0, uplo = "U"), "dsCMatrix")
+            logline("Boundary matrix built. nnz=", length(bm@x))
+        }
     }
 }
+
 
 # ---- 6) Build & solve problem ----------
 fw <- setNames(rep(1, length(feature_cols)), feature_cols)

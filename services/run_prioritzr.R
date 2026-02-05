@@ -92,10 +92,6 @@ if (nrow(config) != 1) {
 project_id <- as.integer(config$project_id[1])
 input_table <- config$input_table[1]
 feature_cols_raw <- config$feature_cols[[1]]
-# # Convert Postgres array literal -> R character vector
-# feature_cols <- gsub("[{}]", "", feature_cols)
-# feature_cols <- strsplit(feature_cols, ",")[[1]]
-# feature_cols <- trimws(feature_cols)
 
 # feature_cols may arrive as:
 # - a character vector (ideal), OR
@@ -188,19 +184,6 @@ logline("Loaded PUs:", nrow(PU))
 # -------------------------------
 # 4.5) Drop zero-coverage features (CRITICAL)
 # -------------------------------
-# feature_matrix <- as.data.frame(PU[, feature_cols, drop = FALSE])
-# feature_matrix[] <- lapply(feature_matrix, as.numeric)
-# feature_sums <- colSums(feature_matrix, na.rm = TRUE)
-
-# valid_features <- names(feature_sums[feature_sums > 0])
-
-# if (length(valid_features) == 0) {
-#     stop("All features have zero coverage in this project")
-# }
-
-# feature_cols <- valid_features
-# logline("Using features:", paste(feature_cols, collapse = ", "))
-# logline("Loaded PUs:", nrow(PU))
 # use a numeric matrix to avoid colSums complaining
 feat_mat <- as.matrix(PU[, feature_cols, drop = FALSE])
 storage.mode(feat_mat) <- "double"

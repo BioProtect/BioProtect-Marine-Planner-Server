@@ -45,6 +45,7 @@ from handlers.project_handler import ProjectHandler
 from handlers.user_handler import UserHandler
 from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
+from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from mapbox import Uploader
 from osgeo import ogr
 from passlib.hash import bcrypt
@@ -3184,9 +3185,9 @@ class Application(tornado.web.Application):
                                                       finish_feature_import=finish_feature_import)),
             ("/server/planning-units", PlanningUnitHandler, dict(pg=pg,
                                                                  upload_tileset=upload_tileset)),
-            ("/server/prioritizr", PrioritizrHandler, dict(pg=pg,
-                                                           r_script_path="./services/run_prioritzr.R")),
-
+            ("/server/prioritizr", PrioritizrHandler, dict(pg=pg)),
+            ("/server/prioritizr-ws", PrioritizrWSHandler, dict(pg=pg,
+                                                                r_script_path="./services/run_prioritzr.R")),
 
             ("/server/updateCosts", updateCosts),
             ("/server/deleteCost", deleteCost),

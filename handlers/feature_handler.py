@@ -63,7 +63,7 @@ class FeatureHandler(BaseHandler):
         try:
             action = self.get_argument('action', None)
 
-            if action == 'create_from_linestring':
+            if action == 'create-from-linestring':
                 await self.create_feature_from_linestring()
             else:
                 raise ServicesError("Invalid action specified.")
@@ -73,8 +73,8 @@ class FeatureHandler(BaseHandler):
 
     async def get_feature(self):
         """Fetches feature information from PostGIS."""
-        self.validate_args(self.request.arguments, ['unique_id'])
-        unique_id = self.get_argument("unique_id")
+        self.validate_args(self.request.arguments, ['id'])
+        unique_id = self.get_argument("id")
 
         query = (
             """
@@ -106,8 +106,8 @@ class FeatureHandler(BaseHandler):
 
     async def delete_feature(self):
         """Deletes a feature class and its associated metadata record."""
-        self.validate_args(self.request.arguments, ['feature_name'])
-        feature_class_name = self.get_argument('feature_name')
+        self.validate_args(self.request.arguments, ['feature'])
+        feature_class_name = self.get_argument('feature')
 
         feature_data = await self.pg.execute(
             """
@@ -191,9 +191,9 @@ class FeatureHandler(BaseHandler):
     async def get_feature_planning_units(self):
         """Gets the planning unit IDs for a feature."""
 
-        self.validate_args(self.request.arguments, ['user', 'project', 'oid'])
+        self.validate_args(self.request.arguments, ['user', 'project', 'id'])
         # unique_ids = self.get_argument("oid")
-        ids = self.get_argument("unique_id")
+        ids = self.get_argument("id")
 
         file_name = os.path.join(self.input_folder,
                                  self.projectData["files"]["PUVSPRNAME"])
@@ -220,10 +220,10 @@ class FeatureHandler(BaseHandler):
     def list_projects_for_feature(self):
         """Lists all projects containing a specific feature."""
 
-        self.validate_args(self.request.arguments, ['feature_class_id'])
+        self.validate_args(self.request.arguments, ['feature-id'])
 
         projects = get_projects_for_feature(
-            int(self.get_argument('feature_class_id')), self.proj_paths.USERS_FOLDER)
+            int(self.get_argument('feature-id')), self.proj_paths.USERS_FOLDER)
 
         self.send_response({
             'info': "Projects info returned",

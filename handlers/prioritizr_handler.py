@@ -1,157 +1,100 @@
-import asyncio
-import os
-import json
-from services.service_error import ServicesError, raise_error
-from handlers.websocket_handler import SocketHandler
+# handlers/prioritizr_handler.py
 
-# server/prioritizr?action=run&user=<id>&project_id=<pid>
+from handlers.base_handler import BaseHandler
+from services.service_error import ServicesError
 
 
-class PrioritizrHandler(SocketHandler):
-    """
-    WebSocket handler to run Prioritizr (R) for a project and stream progress.
-    """
+class PrioritizrHandler(BaseHandler):
 
-    def initialize(self, pg, r_script_path):
+    def initialize(self, pg):
         super().initialize(pg=pg)
-        self.r_script_path = r_script_path
-        self.proc = None
-        self.run_id = None
 
-    async def open(self):
-        try:
-            await super().open({"info": "Running Prioritizr..."})
-        except ServicesError as e:
-            self.send_response({
-                "status": "Error",
-                "info": "Error runing websocket...",
-                "error": e
-            })
-            return
+    def validate_args(self, args, required_keys):
+        """Checks that all of the arguments in argumentList are in the arguments dictionary."""
+        missing = [key for key in required_keys if key not in args]
+        if missing:
+            raise ServicesError(
+                f"Missing required arguments: {', '.join(missing)}")
 
-        # === validate ===
-        self.validate_args(self.request.arguments, ["user", "project_id"])
-        project_id = int(self.get_argument("project_id"))
+    async def get(self):
+        action = self.get_argument("action", None)
 
-        params_raw = self.get_argument("params", None)
-        params = json.loads(params_raw) if params_raw else {}
+        if action == "list-runs":
+            return await self.list_runs()
 
-        # === create run ===
-        row = await self.pg.execute(
+        if action == "get-run":
+            return await self.get_run()
+
+        if action == "get-results":
+            return await self.get_results()
+
+        self.write({"error": f"Unknown action '{action}'"})
+        self.set_status(400)
+
+    # --------------------------------------------------
+    async def list_runs(self):
+        self.validate_args(self.request.arguments, ["project-id"])
+        project_id = self.get_argument("project-id")
+
+        query = ("""
+                SELECT
+                    id,
+                    project_id,
+                    created_by,
+                    created_at,
+                    status,
+                    params,
+                    input_table,
+                    feature_cols,
+                    feature_map
+                FROM bioprotect.prioritizr_runs
+                WHERE project_id = %s
+                ORDER BY created_at DESC
+                """)
+
+        data = await self.pg.execute(query, data=[project_id], return_format="DataFrame")
+        print('list runs data: ', data)
+        self.send_response({"data": data.to_dict(orient="records")})
+
+    # --------------------------------------------------
+    async def get_run(self):
+        self.validate_args(self.request.arguments, ["run-id"])
+        run_id = self.get_argument("run-id")
+
+        query = ("""
+                SELECT
+                    id,
+                    project_id,
+                    created_by,
+                    created_at,
+                    status,
+                    params,
+                    input_table,
+                    feature_cols,
+                    feature_map
+                FROM bioprotect.prioritizr_runs
+                WHERE id = %s
+                """)
+        data = await self.pg.execute(query, data=[run_id], return_format="DataFrame")
+        print('GET run data for run-id: ', run_id, data)
+        self.send_response({"info": "Run returned",
+                            "data": data.to_dict(orient="records")})
+
+    # --------------------------------------------------
+    async def get_results(self):
+        self.validate_args(self.request.arguments, ["run-id"])
+        run_id = self.get_argument("run-id", None)
+        query = (
             """
-            INSERT INTO bioprotect.prioritizr_runs (project_id, status, params)
-            VALUES (%s, 'queued', %s::jsonb)
-            RETURNING id
-            """,
-            data=[project_id, json.dumps(params or {})],
-            return_format="Dict",
-        )
+                SELECT
+                    h3_index,
+                    solution
+                FROM bioprotect.prioritizr_run_results
+                WHERE run_id = %s
+                """)
 
-        self.run_id = row[0]["id"]
-
-        self.send_response({
-            "status": "Queued",
-            "run_id": self.run_id
-        })
-
-        # === prepare DB input ===
-        await self.pg.execute(
-            "UPDATE bioprotect.prioritizr_runs SET status='preparing' WHERE id=%s",
-            data=[self.run_id],
-        )
-
-        self.send_response({
-            "status": "Preparing",
-            "info": "Preparing prioritizr input in PostGIS...",
-            "run_id": self.run_id
-        })
-
-        await self.pg.execute(
-            "SELECT bioprotect.prepare_prioritizr_input(%s)",
-            data=[self.run_id],
-        )
-
-        # === start R ===
-        await self.pg.execute(
-            "UPDATE bioprotect.prioritizr_runs SET status='running' WHERE id=%s",
-            data=[self.run_id],
-        )
-
-        self.send_response({
-            "status": "Running",
-            "info": "Launching Prioritizr...",
-            "run_id": self.run_id
-        })
-
-        env = os.environ.copy()
-        cmd = ["Rscript", self.r_script_path, str(self.run_id)]
-
-        self.proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-
-        await asyncio.gather(
-            self._stream_output("stdout", self.proc.stdout),
-            self._stream_output("stderr", self.proc.stderr),
-        )
-
-        rc = await self.proc.wait()
-
-        if rc != 0:
-            await self.pg.execute(
-                """
-                UPDATE bioprotect.prioritizr_runs
-                SET status='failed', error=%s
-                WHERE id=%s
-                """,
-                data=[f"R exited with code {rc}", self.run_id],
-            )
-            self.close({
-                "status": "Failed",
-                "run_id": self.run_id,
-                "error": f"R exited with code {rc}"
-            })
-            return
-
-        await self.pg.execute(
-            "UPDATE bioprotect.prioritizr_runs SET status='done' WHERE id=%s",
-            data=[self.run_id],
-        )
-
-        self.close({
-            "status": "Finished",
-            "run_id": self.run_id,
-            "info": "Prioritizr run completed"
-        })
-
-    async def _stream_output(self, stream_name, stream):
-        while True:
-            line = await stream.readline()
-            if not line:
-                break
-
-            msg = line.decode("utf-8", errors="replace").rstrip("\n")
-
-            await self.pg.execute(
-                """
-                INSERT INTO bioprotect.prioritizr_run_logs (run_id, stream, message)
-                VALUES (%s, %s, %s)
-                """,
-                data=[self.run_id, stream_name, msg],
-            )
-
-            self.send_response({
-                "status": "Running",
-                "stream": stream_name,
-                "message": msg
-            })
-
-    def on_close(self):
-        if self.proc and self.proc.returncode is None:
-            try:
-                self.proc.kill()
-            except Exception:
-                pass
+        data = await self.pg.execute(query, data=[run_id], return_format="DataFrame")
+        print('Results data: ', data)
+        self.send_response({"info": "Results returned",
+                            "run_id": int(run_id),
+                            "data": data.to_dict(orient="records")})

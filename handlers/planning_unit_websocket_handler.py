@@ -1,3 +1,4 @@
+from ast import alias
 import json
 
 import geopandas as gpd
@@ -39,25 +40,57 @@ class PlanningGridWebSocketHandler(SocketHandler):
             pass
 
     async def on_message(self, message):
+        # Parse incoming message
+        # get all the necessary data
+        data = json.loads(message)
+        print('data: ', data)
+
+        shapefile_path = data.get('shapefile_path')
+        alias = data.get('alias')
+        description = data.get('description')
+        resolution = int(data.get('resolution', 7))  # fallback if missing
+        created_by = self.current_user
+
+        if not all([shapefile_path, alias, description]):
+            raise ServicesError(
+                "Missing required fields in WebSocket message.")
+
+        scale_level = self.get_scale_level(resolution)
+        view_name = f"v_h3_{self.normalize_name(alias)}_res{resolution}"
+        project_area_name = alias
+
         try:
-            # Parse incoming message
-            data = json.loads(message)
-            print('data: ', data)
+            # Start the processing steps
+            # Check if it already exists
+            existing = await self.pg.execute(
+                "SELECT 1 FROM bioprotect.metadata_planning_units WHERE feature_class_name = %s",
+                [view_name],
+                return_format="Dict"
+            )
+            # if existing:
+            #     raise ServicesError(f"Planning grid '{alias}' already exists.")
+            create_new_version = data.get("create_new_version", False)
+            if existing:
+                result = await self.pg.execute(
+                    """
+                    SELECT unique_id 
+                    FROM bioprotect.metadata_planning_units 
+                    WHERE feature_class_name = %s
+                    """,
+                    [view_name],
+                    return_format="Dict"
+                )
 
-            shapefile_path = data.get('shapefile_path')
-            print('shapefile_path: ', shapefile_path)
-            alias = data.get('alias')
-            description = data.get('description')
-            resolution = int(data.get('resolution', 7))  # fallback if missing
-            created_by = self.current_user
+                planning_unit_id = result[0]["unique_id"]
 
-            if not all([shapefile_path, alias, description]):
-                raise ServicesError(
-                    "Missing required fields in WebSocket message.")
+                self.send_response({
+                    "type": "grid_exists",
+                    "info": f"Planning grid '{alias}' already exists. Using existing grid.",
+                    "view_name": view_name,
+                    "planning_unit_id": planning_unit_id
+                })
 
-            scale_level = self.get_scale_level(resolution)
-            view_name = f"v_h3_{self.normalize_name(alias)}_res{resolution}"
-            project_area_name = alias
+                return
 
             self.send_response({'info': "📦 Reading shapefile..."})
             df = gpd.read_file(shapefile_path)
@@ -90,7 +123,6 @@ class PlanningGridWebSocketHandler(SocketHandler):
 
             self.send_response(
                 {'info': f"🧱 Generated {len(records)} H3 records"})
-            # self.send_response({'status': 'Preprocessing', 'info': "Checking the geometry.."})
 
             gdf_out = gpd.GeoDataFrame(
                 records, geometry="geometry", crs="EPSG:4326")
@@ -104,6 +136,7 @@ class PlanningGridWebSocketHandler(SocketHandler):
                 """,
                 [project_area_name, resolution]
             )
+
             gdf_out.to_postgis(
                 "h3_cells", engine, schema="bioprotect", if_exists="append", index=False)
 

@@ -25,7 +25,12 @@ class PlanningGridWebSocketHandler(SocketHandler):
 
     @staticmethod
     def get_scale_level(res):
-        return "basin" if res <= 6 else "regional" if res == 7 else "local"
+        # return "basin" if res <= 6 else "regional" if res == 7 else "local"
+        return (
+            "basin" if res <= 6
+            else "regional" if res == 7
+            else "local"
+        )
 
     @staticmethod
     def create_sql_engine():
@@ -44,12 +49,14 @@ class PlanningGridWebSocketHandler(SocketHandler):
         # get all the necessary data
         data = json.loads(message)
         print('data: ', data)
-
+        created_by = self.current_user
         shapefile_path = data.get('shapefile_path')
         alias = data.get('alias')
         description = data.get('description')
         resolution = int(data.get('resolution', 7))  # fallback if missing
-        created_by = self.current_user
+        if resolution not in (6, 7, 8, 9):  # include 9 if you're enabling it
+            raise ServicesError(
+                "Invalid resolution. Allowed values: 6, 7, 8, 9.")
 
         if not all([shapefile_path, alias, description]):
             raise ServicesError(
@@ -155,11 +162,24 @@ class PlanningGridWebSocketHandler(SocketHandler):
 
             # await self.pg.execute(text(f"DROP VIEW IF EXISTS bioprotect.{view_name} CASCADE"))
             await self.pg.execute(sql.SQL("""
-                CREATE VIEW bioprotect.{} AS
-                SELECT h3_index, resolution, scale_level, project_area, geometry
+                CREATE MATERIALIZED VIEW bioprotect.{} AS
+                SELECT 
+                    h3_index,
+                    resolution,
+                    scale_level,
+                    project_area,
+                    ST_SetSRID(geometry, 4326)::geometry(Polygon, 4326) AS geometry
                 FROM bioprotect.h3_cells
                 WHERE project_area = %s AND resolution = %s;
-            """).format(sql.Identifier(view_name)), data=[project_area_name, resolution])
+                """).format(sql.Identifier(view_name)), data=[project_area_name, resolution])
+
+            await self.pg.execute(sql.SQL("""
+                CREATE INDEX {} ON bioprotect.{}
+                USING GIST (geometry);
+                """).format(sql.Identifier(f"{view_name}_geom_idx"), sql.Identifier(view_name)))
+
+            # Analyze so planner + Martin see stats
+            await self.pg.execute(sql.SQL("""ANALYZE bioprotect.{};""").format(sql.Identifier(view_name)))
 
             self.send_response(
                 {'info': "📝 Inserting planning unit metadata..."})
@@ -202,6 +222,6 @@ class PlanningGridWebSocketHandler(SocketHandler):
                 [view_name]
             )
             await self.pg.execute(
-                sql.SQL("DROP VIEW IF EXISTS bioprotect.{} CASCADE").format(
+                sql.SQL("DROP MATERIALIZED VIEW IF EXISTS bioprotect.{} CASCADE").format(
                     sql.Identifier(view_name))
             )

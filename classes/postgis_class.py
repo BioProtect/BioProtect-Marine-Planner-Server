@@ -22,10 +22,11 @@ class PostGIS:
         try:
             self.pool = await aiopg.create_pool(
                 dsn=self.config.CONNECTION_STRING,
-                timeout=None,
-                minsize=50,
-                maxsize=250
+                minsize=2,
+                maxsize=10,
+                timeout=60
             )
+
         except Exception as e:
             logging.error(f"Error initializing PostGIS pool: {e}")
             raise ServicesError(

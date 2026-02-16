@@ -5,7 +5,6 @@ import json
 from urllib.parse import urlparse
 
 from classes.folder_path_config import get_folder_path_config
-from services.project_service import get_project_data, set_folder_paths
 from services.service_error import ServicesError
 from tornado.ioloop import PeriodicCallback
 from tornado.web import HTTPError
@@ -61,19 +60,6 @@ class SocketHandler(WebSocketHandler):
                 start_message = {"message": str(start_message)}
             start_message.update({'status': 'Started'})
             self.send_response(start_message)
-
-            if "user" in self.request.arguments:
-                print("================== user in args")
-                set_folder_paths(self,
-                                 self.request.arguments,
-                                 project_paths.USERS_FOLDER)
-                if hasattr(self, 'project_folder'):
-                    await get_project_data(self.pg, self)
-
-            # if project_paths.DISABLE_SECURITY:
-            #     print('project_paths.DISABLE_SECURITY: ',
-            #           project_paths.DISABLE_SECURITY)
-            #     return
 
             if not self.current_user:
                 raise HTTPError(401, "User not authenticated")

@@ -1,19 +1,12 @@
-import fnmatch
 import json
-import shutil
-import uuid
 from datetime import datetime
-from os import rename, sep, walk
-from os.path import exists, join
+from os import sep
+from os.path import join
 import numpy as np
 import pandas as pd
 from handlers.base_handler import BaseHandler
 from psycopg2 import sql
-from services.file_service import (delete_all_files, file_to_df,
-                                   get_key_values_from_file,
-                                   normalize_dataframe, read_file,
-                                   write_to_file)
-from services.project_service import clone_a_project
+from services.file_service import (read_file, write_to_file)
 from services.service_error import ServicesError, raise_error
 from decimal import Decimal
 
@@ -26,6 +19,67 @@ class ProjectHandler(BaseHandler):
 
     def initialize(self, pg):
         super().initialize(pg=pg)
+
+    # ----------------------------
+    # Utility
+    # ----------------------------
+
+    async def _get_authenticated_user_id(self):
+        uid = self.get_secure_cookie("user_id")
+        if not uid:
+            raise ServicesError("Not authenticated")
+
+        try:
+            return int(uid.decode() if isinstance(uid, (bytes, bytearray)) else uid)
+        except Exception:
+            raise ServicesError("Invalid session user")
+
+    async def _resolve_planning_unit_id(self, planning_grid_name):
+        """
+        planning_grid_name coming from frontend is tilesetid
+        which corresponds to metadata_planning_units.alias or tilesetid
+        """
+        row = await self.pg.execute(
+            """
+            SELECT unique_id
+            FROM bioprotect.metadata_planning_units
+            WHERE alias = %s OR tilesetid = %s
+            """,
+            [planning_grid_name, planning_grid_name],
+            return_format="Dict"
+        )
+
+        if not row:
+            raise ServicesError("Planning grid not found")
+
+        return row[0]["unique_id"]
+
+    async def _check_project_access(self, user_id, project_id, min_role=None):
+        """
+        Ensures user has access to project.
+        Optionally enforce minimum role: owner > editor > viewer
+        """
+        row = await self.pg.execute(
+            """
+            SELECT role
+            FROM bioprotect.user_projects
+            WHERE user_id = %s AND project_id = %s
+            """,
+            [user_id, project_id],
+            return_format="Dict"
+        )
+
+        if not row:
+            raise ServicesError("Access denied")
+
+        role = row[0]["role"]
+
+        if min_role:
+            hierarchy = {"viewer": 1, "editor": 2, "owner": 3}
+            if hierarchy[role] < hierarchy[min_role]:
+                raise ServicesError("Insufficient permissions")
+
+        return role
 
     def validate_args(self, args, required_keys):
         # sourcery skip: use-named-expression
@@ -44,6 +98,49 @@ class ProjectHandler(BaseHandler):
             return float(obj)
 
         raise TypeError(f"Type {type(obj)} not serializable")
+
+    async def post(self):
+        """
+        Handles POST requests for creating and updating projects.
+        """
+        try:
+            action = self.get_argument('action', None)
+
+            if action == 'create':
+                await self.create_project()
+            elif action == 'update':
+                await self.update_project_parameters()
+            elif action == 'update_features':
+                await self.update_project_features()
+            elif action == 'rename':
+                await self.rename_project()
+            elif action == 'delete':
+                await self.delete_project()
+            elif action == 'clone':
+                await self.clone_project()
+            else:
+                raise ServicesError("Invalid action specified.")
+
+        except ServicesError as e:
+            raise_error(self, e.args[0])
+
+    async def get(self):
+        """
+        Handles GET requests for various project-related actions based on query parameters.
+        """
+        try:
+            action = self.get_argument('action', None)
+
+            if action == 'get':
+                await self.get_project()
+            elif action == 'list':
+                await self.get_projects()
+
+            else:
+                raise ServicesError("Invalid action specified.")
+
+        except ServicesError as e:
+            raise_error(self, e.args[0])
 
     async def get_project_by_id(self, project_id):
         """
@@ -71,11 +168,8 @@ class ProjectHandler(BaseHandler):
         lines = file_content.splitlines()
         updated_lines = []
         for line in lines:
-            updated_line = next(
-                (f"{key} {value}" for key,
-                 value in new_params.items() if line.startswith(key)),
-                line  # Keep the line unchanged if no match
-            )
+            updated_line = next((f"{key} {value}" for key, value in new_params.items() if line.startswith(key)),
+                                line)  # Keep the line unchanged if no match
             updated_lines.append(updated_line)
 
         # Write the updated content back to the file
@@ -163,13 +257,6 @@ class ProjectHandler(BaseHandler):
                     WHERE mp.unique_id = %s
                 """, [project["planning_unit_id"]], return_format="DataFrame")
 
-                # df = await self.pg.execute("""
-                #     SELECT alias, description, domain, _area AS area, creation_date,
-                #         created_by, original_n AS country
-                #     FROM bioprotect.metadata_planning_units
-                #     WHERE unique_id = %s
-                # """, [project["planning_unit_id"]], return_format="DataFrame")
-
                 if not df.empty:
                     row = df.iloc[0]
                     pu_metadata = {
@@ -210,55 +297,9 @@ class ProjectHandler(BaseHandler):
             })
         return project_data_list
 
-    async def post(self):
-        """
-        Handles POST requests for creating and updating projects.
-        """
-        try:
-            action = self.get_argument('action', None)
-
-            if action == 'create':
-                await self.create_project()
-            elif action == 'create_group':
-                await self.create_project_group()
-            elif action == 'update':
-                await self.update_project_parameters()
-            elif action == 'update_features':
-                await self.update_project_features()
-            else:
-                raise ServicesError("Invalid action specified.")
-
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-    async def get(self):
-        """
-        Handles GET requests for various project-related actions based on query parameters.
-        """
-        try:
-            action = self.get_argument('action', None)
-
-            if action == 'get':
-                await self.get_project()
-            elif action == 'list':
-                await self.get_projects()
-            elif action == 'list_with_grids':
-                await self.get_projects_with_grids()
-            elif action == 'clone':
-                await self.clone_project()
-            elif action == 'delete':
-                await self.delete_project()
-            elif action == 'delete_cluster':
-                await self.delete_projects()
-            elif action == 'rename':
-                await self.rename_project()
-            else:
-                raise ServicesError("Invalid action specified.")
-
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
+    # ----------------------------
     # POST /projects?action=create
+    # ----------------------------
     # Body:
     # {
     #     "user": "username",
@@ -271,45 +312,59 @@ class ProjectHandler(BaseHandler):
     # }
 
     async def create_project(self):
-        self.validate_args(self.request.arguments, [
-            'user', 'project', 'description', 'planning_grid_name', 'interest_features', 'target_values', 'spf_values'
-        ])
+        user_id = await self._get_authenticated_user_id()
 
-        user = self.get_argument('user')
-        project = self.get_argument('project')
+        name = self.get_argument('project')
         description = self.get_argument('description')
         planning_grid_name = self.get_argument('planning_grid_name')
+        planning_unit_id = await self._resolve_planning_unit_id(planning_grid_name)
 
         # 1. Create project in DB
-        row = await self.pg.execute("""
-            INSERT INTO bioprotect.projects (user_id, name, description, planning_unit_id)
-            VALUES (
-                (SELECT id FROM bioprotect.users WHERE username = %s),
-                %s, %s,
-                (SELECT unique_id FROM bioprotect.metadata_planning_units WHERE alias = %s)
-            )
+        row = await self.pg.execute(
+            """
+            INSERT INTO bioprotect.projects
+                (name, description, planning_unit_id)
+            VALUES (%s, %s, %s)
             RETURNING id
-        """, [user, project, description, planning_grid_name], return_format="Array")
+            """,
+            [name, description, planning_unit_id],
+            return_format="Array"
+        )
 
         if not row:
             raise ServicesError("Failed to create project")
         project_id = row[0]["id"]
 
-        # 2. Link features to this project
+        # 2 Link owner
+        await self.pg.execute(
+            """
+            INSERT INTO bioprotect.user_projects
+                (user_id, project_id, role)
+            VALUES (%s, %s, 'owner')
+            """,
+            [user_id, project_id]
+        )
+
+        # 3. Link features to this project
         await self.update_project_features(project_id=project_id)
 
-        # 3. return info
+        # 4. return info
         self.send_response({
-            'info': f"Project '{project}' created with features",
-            'name': project,
-            'user': user,
+            'info': f"Project '{name}' created with features",
+            'name': name,
+            'user': user_id,
             'project_id': project_id
         })
 
-    # GET /projects?action=get&user=username&project=project_name
+    # --------------------------------------------------
+    # GET /projects?action=get&project_id=#
+    # --------------------------------------------------
+
     async def get_project(self):
+        user_id = await self._get_authenticated_user_id()
         project_id = self.get_argument('projectId', None)
-        resolution = int(self.get_argument("resolution", 7))
+
+        await self._check_project_access(user_id, project_id)
 
         try:
             project_id = int(project_id) if project_id else None
@@ -368,26 +423,6 @@ class ProjectHandler(BaseHandler):
         self.planningUnitsData = self.normalise_planning_units(
             df, "status", "h3_index")
 
-        ######################################################################
-        # NEED TO fix THIS
-        # NEED to get wdpa back up and running to get protected areas
-        ######################################################################
-        # 4. Load protected area intersections (DB instead of file)
-        # self.protectedAreaIntersectionsData = await self.pg.execute(
-        #     """
-        #     SELECT project_id, puid, iucn_cat
-        #     FROM bioprotect.protected_area_intersections
-        #     WHERE project_id = %s
-        #     """,
-        #     data=[project_id],
-        #     return_format="DataFrame"
-        # )
-        protected_areas_df = file_to_df(
-            join(self.input_folder, "protected_area_intersections.dat"))
-        self.protectedAreaIntersectionsData = normalize_dataframe(
-            protected_areas_df, "iucn_cat", "puid")
-
-        # 5. Get project costs
         # 6. Load cost profiles for the project
         profiles = await self.pg.execute(
             """
@@ -399,7 +434,7 @@ class ProjectHandler(BaseHandler):
                 (cp.id = p.active_cost_profile_id) AS is_active
             FROM bioprotect.cost_profiles cp
             JOIN bioprotect.projects p
-              ON p.id = cp.project_id
+            ON p.id = cp.project_id
             WHERE cp.project_id = %s
             ORDER BY cp.is_default DESC, cp.name;
             """,
@@ -413,15 +448,6 @@ class ProjectHandler(BaseHandler):
 
         ##################################################################
         # 5. Update user
-        uid = self.get_secure_cookie("user_id")
-        if not uid:
-            raise ServicesError("Not authenticated")
-        try:
-            user_id = int(uid.decode() if isinstance(
-                uid, (bytes, bytearray)) else uid)
-        except Exception:
-            raise ServicesError("Invalid user id in session")
-
         if user_id:
             await self.pg.execute(
                 """
@@ -451,7 +477,6 @@ class ProjectHandler(BaseHandler):
             'features': self.speciesData.to_dict(orient="records"),
             'feature_preprocessing': self.speciesPreProcessingData.to_dict(orient="split")["data"],
             'planning_units': self.planningUnitsData,
-            'protected_area_intersections': self.protectedAreaIntersectionsData,
             'costnames': self.costNames,
             'costProfiles': self.costProfiles,  # new full metadata
         }
@@ -537,163 +562,74 @@ class ProjectHandler(BaseHandler):
             'renderer': renderer
         }
 
+    # --------------------------------------------------
+    # GET /projects?action=list
+    # --------------------------------------------------
     async def get_projects(self):
         # if the user is an admin get all all_projects
         # if the user isnt an admin get all projects for user
-
-        self.validate_args(self.request.arguments, ['user'])
+        user_id = await self._get_authenticated_user_id()
         try:
-            user_id = int(self.get_secure_cookie("user_id"))
             self.projects = await self.get_projects_for_user(user_id)
-
         except AttributeError:
             print("AttributeError - user_id error")
             raise ServicesError(f"The user does not exist.")
 
         self.send_response({"projects": self.projects})
 
-    # GET /projects?action=list_with_grids
-    async def get_projects_with_grids(self):
-        user_folder = self.proj_paths.USERS_FOLDER
-        matches = [
-            join(root, filename)
-            for root, _, filenames in walk(user_folder)
-            for filename in fnmatch.filter(filenames, 'input.dat')
-        ]
-
-        projects = []
-        for match in matches:
-            user = match[len(user_folder):].split(sep)[0]
-            project = match.split(sep)[-2]
-            values = get_key_values_from_file(match)
-
-            projects.append({
-                'user': user,
-                'project': project,
-                'feature_class_name': values['PLANNING_UNIT_NAME'],
-                'description': values['DESCRIPTION']
-            })
-
-        df = pd.DataFrame(projects).set_index("feature_class_name")
-        grids = await self.pg.execute("SELECT * FROM bioprotect.get_pu_grids();", return_format="Dict")
-
-        df2 = pd.DataFrame(grids).set_index("feature_class_name")
-        df = df.join(df2).replace({pd.NA: None})
-
-        self.send_response({
-            'info': "Projects data returned",
-            'data': df.to_dict(orient="records")
-        })
-
     # GET /projects?action=clone&user=username&project=project_name
     async def clone_project(self):
-        self.validate_args(self.request.arguments, ['user', 'project'])
+        return
 
-        cloned_name = clone_a_project(self.project_folder, self.folder_user)
+# ----------------------------
+    # POST /projects?action=delete
+    # ----------------------------
 
-        self.send_response({
-            'info': f"Project '{cloned_name}' created",
-            'name': cloned_name
-        })
-
-    # GET /projects?action=delete&user=username&project=project_name
     async def delete_project(self):
-        self.validate_args(self.request.arguments, ['user', 'project'])
+        user_id = await self._get_authenticated_user_id()
 
-        await self.get_projects()
+        project_id = int(self.get_argument("project_id"))
 
-        if len(self.projects) == 1:
-            raise ServicesError("You cannot delete all projects")
+        await self._check_project_access(user_id, project_id, min_role="owner")
 
-        # Validate that the project folder exists before attempting to delete it
-        if not exists(self.project_folder):
-            raise ServicesError(f"The project folder does not exist.")
+        await self.pg.execute(
+            "DELETE FROM bioprotect.projects WHERE id = %s",
+            [project_id]
+        )
 
-        try:
-            shutil.rmtree(self.project_folder)
-        except Exception as e:  # Catching all exceptions is a general approach
-            raise ServicesError(f"Error deleting project folder: {e}") from e
+        self.send_response({"info": "Project deleted"})
 
-        # Optionally, you could log the deletion
-        print(f"Successfully deleted project folder: {self.project_folder}")
-        self.send_response({
-            'info': f"Project '{self.get_argument('project')}' deleted",
-            'project': self.get_argument('project')
-        })
+    # GET `projects?action=rename&projectId=${projectId}&newName=${newName}`,
 
-    # GET /projects?action=delete_cluster&projectNames=project1,project2,project3
-    async def delete_projects(self):
-        self.validate_args(self.request.arguments, ['projectNames'])
-
-        project_names = self.get_argument("projectNames").split(",")
-        for project_name in project_names:
-            project_path = join(self.proj_paths.CLUMP_FOLDER, project_name)
-            if exists(project_path):
-                shutil.rmtree(project_path)
-
-        self.send_response({"info": "Projects deleted"})
-
-    # GET /projects?action=rename&user=username&project=project_name&newName=new_project_name
     async def rename_project(self):
-        self.validate_args(self.request.arguments, [
-                           'user', 'project', 'newName'])
+        self.validate_args(self.request.arguments, ['project', 'newName'])
+
+        user_id = await self._get_authenticated_user_id()
+        project_id = self.get_argument("project_id", None)
         new_name = self.get_argument('newName')
 
-        rename(self.project_folder, join(self.folder_user, new_name))
+        try:
+            project_id = int(project_id)
+        except ValueError:
+            raise ServicesError("Invalid project_id")
 
-        self.update_file_parameters(
-            join(self.folder_user, "user.dat"),
-            {'LASTPROJECT': new_name}
+        await self._check_project_access(user_id, project_id, min_role="owner")
+
+        # Perform rename
+        await self.pg.execute(
+            """
+            UPDATE bioprotect.projects
+            SET name = %s
+            WHERE id = %s
+            """,
+            [new_name, project_id]
         )
 
         self.send_response({
-            'info': f"Project renamed to '{new_name}'",
-            'project': self.get_argument('project')
+            "info": f"Project renamed to '{new_name}'",
+            "project_id": project_id,
+            "new_name": new_name
         })
-
-    async def create_project_group(self):
-        self.validate_args(self.request.arguments, [
-                           'user', 'project', 'copies', 'blmValues'])
-
-        blm_values = self.get_argument("blmValues").split(",")
-        projects = []
-
-        for i in range(int(self.get_argument("copies"))):
-            project_name = uuid.uuid4().hex
-            projects.append({'projectName': project_name, 'clump': i})
-            shutil.copytree(self.project_folder, join(
-                self.proj_paths.CLUMP_FOLDER, project_name))
-
-            delete_all_files(
-                join(self.proj_paths.CLUMP_FOLDER, project_name, "output"))
-
-            self.update_file_parameters(
-                join(self.proj_paths.CLUMP_FOLDER, project_name, "input.dat"),
-                {'BLM': blm_values[i], 'NUMREPS': '1'}
-            )
-
-        self.send_response({
-            'info': "Project group created",
-            'data': projects
-        })
-
-    async def resolve_user_id(self, user):
-        """
-        Resolve user_id from either a username (string) or user_id (int).
-        """
-        if user is None:
-            return None
-        try:
-            return int(user)
-        except (ValueError, TypeError):
-            pass
-
-        # Otherwise, look up by username
-        rows = await self.pg.execute(
-            "SELECT id FROM bioprotect.users WHERE username = %s", [user], return_format="Array")
-        if not rows:
-            raise ServicesError(f"User '{user}' not found.")
-        return rows[0]["id"]
 
     async def resolve_and_check_project(self, project_id=None, user=None):
         """
@@ -738,23 +674,15 @@ class ProjectHandler(BaseHandler):
         Replaces old updateSpecies/spec.dat functionality.
         """
         self.validate_args(self.request.arguments, ['interest_features'])
-
-        user = self.get_argument("user", None)
-        user_id = await self.resolve_user_id(user)
-
         pid = await self.resolve_and_check_project(project_id)
-        print('project_id: ', project_id)
 
         features = self.get_argument("interest_features")
-        print('features: ', features)
         values = self.get_argument("target_values", None)
-        print('values: ', values)
         spf_vals = self.get_argument("spf_values", None)
 
         # parse lists
         feature_ids = [int(x) for x in features.split(",") if x.strip()]
         targets = [x.strip() for x in values.split(",")] if values else []
-        print('targets: ', targets)
         spfs = [x.strip() for x in spf_vals.split(",")] if spf_vals else []
 
         # basic length check (non-fatal; we still link features)
@@ -763,16 +691,12 @@ class ProjectHandler(BaseHandler):
                 "Lengths of interest_features, target_values, and spf_values must match.")
 
         # 3) upsert new data
-        print('feature_ids: ', feature_ids)
         for idx, fid in enumerate(feature_ids):
-            print('idx, fid: ', idx, fid)
             tv = float(targets[idx]) if targets and idx < len(
                 targets) else None
             spf = float(spfs[idx]) if spfs and idx < len(spfs) else None
             weight = None
             target_type = "prop"  # or allow from payload
-            print('project_id, fid, target_type, tv, spf, weight: ',
-                  pid, fid, target_type, tv, spf, weight)
 
             await self.pg.execute(
                 "SELECT bioprotect.update_project_feature(%s, %s, %s, %s, %s, %s)",

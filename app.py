@@ -51,25 +51,18 @@ from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
 from rasterio.io import MemoryFile
-from services.file_service import (add_parameter_to_file,
-                                   check_zipped_shapefile, delete_all_files,
-                                   delete_zipped_shapefile,
-                                   get_files_in_folder, get_output_file,
-                                   read_file, unzip_file, unzip_shapefile,
-                                   update_file_parameters, write_df_to_file,
+from services.file_service import (delete_zipped_shapefile,
+                                   get_output_file,
+                                   read_file,  unzip_shapefile,
+                                   update_file_parameters,
                                    write_to_file)
 from services.martin_service import restart_martin
-from services.project_service import (get_project_data, set_folder_paths,
-                                      write_csv)
+from services.project_service import write_csv
 from services.run_command_service import run_command
 from services.service_error import ServicesError, raise_error
-from services.user_service import (dismiss_notification, get_users,
-                                   reset_notifications)
 from sqlalchemy import create_engine, exc
 from tornado.escape import json_decode
-from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 from tornado.ioloop import IOLoop
-from tornado.iostream import StreamClosedError
 from tornado.log import LogFormatter
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
 from tornado.process import Subprocess
@@ -85,8 +78,8 @@ PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
                      "getProjectsWithGrids", "getAtlasLayers"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile", "getMarxanLog", "PreprocessFeature", "preprocessPlanningUnits", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "updateWDPA", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "addParameter", "resetDatabase", "cleanup", "importProject", 'updateCosts', 'deleteCost'],
-    "User": ["testRoleAuthorisation", "clearRunLogs", "updateWDPA", "shutdown", "addParameter", "resetDatabase", "cleanup"],
+    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile", "getMarxanLog", "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
+    "User": ["testRoleAuthorisation", "clearRunLogs", "shutdown"],
     "Admin": []
 }
 """Dict that controls access to REST services using role-based authentication. Add REST services that you want to lock down to specific roles - a class added to an array will make that method unavailable for that role"""
@@ -133,8 +126,8 @@ LOGGING_LEVEL = logging.INFO
 
 # pdoc3 dict to whitelist private members for the documentation
 __pdoc__ = {}
-privateMembers = ['get_geometry_type', 'add_parameter_to_file', 'check_zipped_shapefile', 'cleanup', 'clone_project', 'create_user', 'create_zipfile', 'delete_all_files', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'del_tileset', 'delete_zipped_shapefile', 'dismiss_notification',  'finish_feature_import', '_getAllProjects', 'get_dict_value', 'get_files_in_folder',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_project_data', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
-                  'get_safe_project_name', 'get_unique_feature_name', 'get_user_data', 'get_users', 'get_users_data', 'normalize_dataframe', 'pad_dict', '_preprocessProtectedAreas', 'puid_array_to_df', 'raise_error', 'read_file', '_reprocessProtectedAreas', 'reset_notifications', 'run_command', '_setCORS', 'set_folder_paths', 'set_global_vars', 'unzip_file', 'unzip_shapefile', 'update_dataframe', 'update_file_parameters', 'update_run_log', '_uploadTileset', 'validate_args', 'write_csv', 'write_to_file', 'write_df_to_file', 'zip_folder']
+privateMembers = ['get_geometry_type', 'clone_project', 'create_user', 'create_zipfile', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'del_tileset', 'delete_zipped_shapefile',  'finish_feature_import', '_getAllProjects', 'get_dict_value',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
+                  'get_safe_project_name', 'get_unique_feature_name', 'get_user_data', 'get_users_data', 'normalize_dataframe', 'pad_dict', '_preprocessProtectedAreas', 'puid_array_to_df', 'raise_error', 'read_file', '_reprocessProtectedAreas', 'run_command', '_setCORS', 'set_global_vars', 'unzip_shapefile', 'update_dataframe', 'update_file_parameters', '_uploadTileset', 'validate_args', 'write_csv', 'write_to_file', 'zip_folder']
 
 for m in privateMembers:
     __pdoc__[m] = True
@@ -274,79 +267,6 @@ def file_to_df(file_name):
         DataFrame: The data from the file.
     """
     return pd.read_csv(file_name, sep=None, engine='python') if os.path.exists(file_name) else pd.DataFrame()
-
-
-async def process_protected_areas(obj, planning_grid_name=None, folder=None):
-    """
-    Intersects planning grids with WDPA and processes the protected area intersections.
-
-    Args:
-        obj (BaseHandler): The request handler instance.
-        planning_grid_name (str, optional): The name of the planning grid for preprocessing.
-        folder (str, optional): The folder containing project data for reprocessing.
-
-    Returns:
-        list[str]: A list of reprocessed project folders (if folder is provided), otherwise None.
-    """
-    threshold = 0.5
-
-    if folder:
-        # Reprocess all projects in the specified folder
-        project_folders = glob.glob(os.path.join(folder, "*/"))
-
-        for project_folder in project_folders:
-            tmp_obj = ExtendableObject()
-            tmp_obj.project = "unimportant"
-            tmp_obj.project_folder = os.path.join(
-                os.path.dirname(project_folder), os.sep)
-
-            # Load project metadata
-            await get_project_data(pg, tmp_obj)
-
-            # Get the planning grid name
-            planning_grid_name = tmp_obj.projectData['metadata']['PLANNING_UNIT_NAME']
-
-            # Notify client about preprocessing status
-            obj.send_response({'status': "Preprocessing",
-                              'info': f'Preprocessing {planning_grid_name}'})
-
-            # Preprocess protected areas
-            await process_protected_areas(obj, planning_grid_name=planning_grid_name, folder=os.path.join(tmp_obj.project_folder, 'input'))
-
-        return project_folders
-
-    elif planning_grid_name:
-        # Preprocess for the given planning grid
-        query = sql.SQL("""
-            SELECT DISTINCT iucn_cat, grid.puid
-            FROM bioprotect.wdpa, bioprotect.{} grid
-            WHERE ST_Intersects(wdpa.geometry, grid.geometry)
-              AND wdpaid IN (
-                  SELECT wdpaid
-                  FROM (
-                      SELECT envelope
-                      FROM bioprotect.metadata_planning_units
-                      WHERE feature_class_name = %s
-                  ) AS sub, bioprotect.wdpa
-                  WHERE ST_Intersects(wdpa.geometry, envelope)
-              )
-            ORDER BY 1, 2
-        """).format(sql.Identifier(planning_grid_name))
-
-        intersection_data = await obj.executeQuery(
-            query,
-            data=[planning_grid_name],
-            return_format="DataFrame"
-        )
-
-        # Save the intersection data to file
-        output_file_path = os.path.join(
-            folder, "protected_area_intersections.dat")
-        intersection_data.to_csv(output_file_path, index=False)
-
-    else:
-        raise ValueError(
-            "Either 'planning_grid_name' or 'folder' must be provided.")
 
 
 # gets the marxan log after a run
@@ -651,129 +571,6 @@ def _setCORS(obj):
         raise HTTPError(403, NO_REFERER_ERROR)
 
 
-def get_run_logs():
-    """Fetches the run logs and updates the number of completed runs for running projects.
-    Returns:
-        pd.DataFrame: The updated DataFrame with run logs.
-    """
-    # Load the data from the run log file
-    df = file_to_df(os.path.join(
-        project_paths.PROJECT_FOLDER, "runlog.dat"))
-    if df.empty:
-        return df  # Return immediately if the file is empty or missing
-
-    def update_runs(row):
-        """Helper function to update the 'runs' column for a single row."""
-        # Construct the output folder path
-        output_folder = os.path.join(
-            project_paths.USERS_FOLDER,
-            row['user'],
-            row['project'],
-            "output"
-        )
-        # Count the number of completed runs
-        num_runs_completed = len(
-            glob.glob(os.path.join(output_folder, "output_r*")))
-        # Update the 'runs' value with the new count
-        return f"{num_runs_completed}{row['runs'].split('/', 1)[-1]}"
-
-    # Apply the update logic to rows where the status is 'Running'
-    running_projects = df['status'] == 'Running'
-    df.loc[running_projects, 'runs'] = df.loc[running_projects].apply(
-        update_runs, axis=1)
-    return df
-
-
-def update_run_log(pid, start_time, runs_completed, runs_required, status):
-    """
-    Updates the run log with the details of a Marxan job when it has stopped for any reason.
-
-    Args:
-        pid (int): The process ID of the Marxan run.
-        start_time (datetime): The time the run started.
-        runs_completed (int): The number of runs that have completed.
-        runs_required (int): The number of runs required.
-        status (str): The status of the run (e.g., 'Stopped', 'Completed', 'Killed').
-
-    Returns:
-        str: The status of the run with the given pid.
-
-    Raises:
-        ServicesError: If unable to update the log file.
-    """
-    try:
-        # Load the run log
-        run_log_path = os.path.join(project_paths.PROJECT_FOLDER, "runlog.dat")
-        run_log = get_run_logs()
-
-        # Locate the index of the record to update
-        record_index = run_log.loc[run_log['pid'] == pid].index[0]
-    except (IndexError, FileNotFoundError, KeyError):
-        raise ServicesError(f"Unable to update run log for pid {
-                            pid} with status {status}.")
-    else:
-        # Update the record in place
-        current_time = datetime.datetime.now()
-        if start_time:
-            run_log.at[record_index, 'endtime'] = current_time.strftime(
-                "%d/%m/%y %H:%M:%S")
-            run_log.at[record_index, 'runtime'] = f"{
-                (current_time - start_time).seconds}s"
-
-        if runs_completed is not None:
-            run_log.at[record_index, 'runs'] = f"{
-                runs_completed}/{runs_required}"
-
-        # Update the status only if it is currently 'Running'
-        if run_log.at[record_index, 'status'] == 'Running':
-            run_log.at[record_index, 'status'] = status
-
-        # Write the updated log back to the file
-        run_log.to_csv(run_log_path, index=False, sep='\t')
-
-        return run_log.at[record_index, 'status']
-
-
-async def cleanup():
-    """
-    Performs maintenance tasks to remove orphaned tables, temporary tables,
-    and outdated clumping projects from the server.
-
-    Args:
-        None
-
-    Returns:
-        None
-    """
-    # Database cleanup
-    database_cleanup_queries = [
-        "SELECT bioprotect.deletedissolvedwdpafeatureclasses()",
-        "SELECT bioprotect.deleteorphanedfeatures()",
-        "SELECT bioprotect.deletescratchfeatureclasses()"
-    ]
-    for query in database_cleanup_queries:
-        await pg.execute(query)
-
-    # File cleanup - Remove files older than 1 day in the clump folder
-    clump_files = glob.glob(os.path.join(project_paths.CLUMP_FOLDER, "*"))
-    one_day_ago = datetime.datetime.now() - datetime.timedelta(days=1)
-    for file_path in clump_files:
-        file_mod_time = datetime.datetime.fromtimestamp(
-            os.path.getmtime(file_path))
-        if file_mod_time < one_day_ago:
-            os.remove(file_path)
-
-    # Folder cleanup - Remove orphaned project folders
-    users = get_users()
-    for user in users:
-        user_projects = glob.glob(os.path.join(
-            project_paths.USERS_FOLDER, user, "*/"))
-        for project_path in user_projects:
-            # Remove project folder if it's empty
-            if not os.listdir(project_path):
-                shutil.rmtree(project_path)
-
-
 ####################################################################################################################################################################################################################################################################
 # generic classes
 ####################################################################################################################################################################################################################################################################
@@ -869,15 +666,6 @@ class methodNotFound(BaseHandler):
             raise_error(self, error_message)
 
 
-def set_user_folder_paths(obj, username, project_result):
-    project_name = project_result[0].get("name")
-    print('project_name: ', project_name)
-    set_folder_paths(obj, {
-        "user": [username.encode("utf-8")],
-        "project": [project_name.encode("utf-8")]
-    }, project_paths.USERS_FOLDER)
-
-
 class AuthHandler(BaseHandler):
 
     async def post(self):
@@ -965,9 +753,6 @@ class AuthHandler(BaseHandler):
             """
 
             project_result = await pg.execute(project_query, [user['id']], return_format="Dict")
-
-            # set folder paths for user when they login
-            set_user_folder_paths(self, username, project_result)
 
             # Select the last accessed project if it exists
             last_project_id = user.get("last_project")
@@ -1204,60 +989,6 @@ class GetSolution(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class getResults(BaseHandler):
-    """REST HTTP handler. Gets the combined results for the project. This includes the Marxan log, the best solution, the output summary and summed solutions. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "log": The Marxan log for the run,
-            "mvbest": list[]: A list of records from the Marxan output_mvbest file,
-            "summary": list[]: A list of records from the Marxan output_sum file,
-            "ssoln": list[]: A list of records from the Marxan output_ssoln file
-        }
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['user', 'project'])
-            set_folder_paths(self, self.request.arguments,
-                             project_paths.USERS_FOLDER)
-            # get the log
-            get_bp_log(self)
-            # get the best solution
-            best_solution_file = os.path.join(
-                self.output_folder, "output_mvbest")
-            # self.bestSolution = file_to_df(get_output_file(best_solution_file))
-            self.bestSolution = pd.DataFrame()
-
-            # get the output sum
-            output_sum_file = os.path.join(self.output_folder, "output_sum")
-            # self.outputSummary = file_to_df(get_output_file(output_sum_file))
-            self.outputSummary = pd.DataFrame()
-
-            # get the summed solution
-            # summed_sol_df = file_to_df(get_output_file(
-            #     os.path.join(self.output_folder, "output_ssoln")))
-            summed_sol_df = pd.DataFrame()
-
-            self.summedSolution = normalize_dataframe(
-                summed_sol_df, "number", "planning_unit")
-            # set the response
-
-            self.send_response({'info': 'Results loaded', 'log': self.bpLog,
-                                'mvbest': self.bestSolution.to_dict(orient="split")["data"],
-                                'summary': self.outputSummary.to_dict(orient="split")["data"],
-                                'ssoln': self.summedSolution})
-        except (ServicesError):
-            self.send_response({'info': 'No results available'})
-
-
 class getServerData(BaseHandler):
     """REST HTTP handler. Gets the server configuration data from the server.dat file as an abject. The required arguments in the request.arguments parameter are:
 
@@ -1363,35 +1094,6 @@ class createFeaturePreprocessingFileFromImport(BaseHandler):
             # set the response
             self.send_response(
                 {'info': "feature_preprocessing.dat file populated"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class addParameter(BaseHandler):
-    """REST HTTP handler. Creates a new parameter in a *.dat file, either the user (user.dat), project (project.dat) or server (server.dat), by iterating through all the files and adding the key/value if it doesnt already exist. The required arguments in the request.arguments parameter are:
-    Args:
-        type (string): The type of configuration file to add the parameter to. One of server, user or project.
-        key (string): The key to create/update.
-        value (string): The value to set.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {"info": Informational message}
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments - the type parameter is one of {'user','project'}
-            validate_args(self.request.arguments, [
-                'type', 'key', 'value'])
-            # add the parameter
-            results = add_parameter_to_file(self.get_argument('type'),
-                                            self.get_argument('key'),
-                                            self.get_argument('value'),
-                                            project_paths.USERS_FOLDER,
-                                            project_paths.PROJECT_FOLDER)
-            # set the response
-            self.send_response({'info': results})
         except ServicesError as e:
             raise_error(self, e.args[0])
 
@@ -1572,138 +1274,6 @@ class deleteShapefile(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class stopProcess(BaseHandler):
-    """REST HTTP handler. Kills a running process - this is either a Marxan run or a PostGIS query. The required arguments in the request.arguments parameter are:
-
-    Args:
-        pid (string): The process identifier.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    Raises:
-        ServicesError: If the process does not exist.
-    """
-
-    async def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['pid'])
-            pid = self.get_argument('pid')[1:]
-            try:
-                if (self.get_argument('pid')[:1] == 'm'):
-                    # to distinguish between a process killed by the user and by the OS, we need to update the runlog.dat file to set this process as stopped and not killed
-                    update_run_log(int(pid), None, None, None, 'Stopped')
-                    # now kill the process
-                    os.kill(int(pid), signal.SIGKILL)
-                else:
-                    # cancel the query
-                    await pg.execute("SELECT pg_cancel_backend(%s);", [pid])
-            except OSError:
-                raise ServicesError("The pid does not exist")
-            except PermissionError:
-                raise ServicesError(
-                    "Unable to stop process: PermissionDenied")
-            else:
-                self.send_response({'info': "pid '" + pid + "' terminated"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class getRunLogs(BaseHandler):
-    """REST HTTP handler. Gets the run log. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "data": dict[]: A list of runs. Each dict contains the keys: endtime,pid,project,runs,runtime,starttime,status,user
-        }
-    """
-
-    def get(self):
-        try:
-            runlog = get_run_logs()
-            self.send_response({'info': "Run log returned",
-                                'data': runlog.to_dict(orient="records")})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class clearRunLogs(BaseHandler):
-    """REST HTTP handler. Clears the run log. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        try:
-            runlog = get_run_logs()
-            runlog.loc[runlog['pid'] == -
-                       1].to_csv(project_paths.PROJECT_FOLDER + "runlog.dat", index=False, sep='\t')
-            self.send_response({'info': "Run log cleared"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class dismissNotification(BaseHandler):
-    """REST HTTP handler. Appends the notificationid in the users "notifications.dat" to dismiss the notification. The required arguments in the request.arguments parameter are:
-
-    Args:
-        notificationid (string): The id of the notification to dismiss.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['notificationid'])
-            # dismiss the notification
-            dismiss_notification(self, self.get_argument('notificationid'))
-            self.send_response({'info': "Notification dismissed"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class resetNotifications(BaseHandler):
-    """REST HTTP handler. Resets all notification for the currently authenticated user by clearing the "notifications.dat". The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        try:
-            # reset the notification
-            reset_notifications(self)
-            self.send_response({'info': "Notifications reset"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 class testRoleAuthorisation(BaseHandler):
     """REST HTTP handler. For testing role access to servivces. The required arguments in the request.arguments parameter are:
 
@@ -1719,27 +1289,6 @@ class testRoleAuthorisation(BaseHandler):
 
     def get(self):
         self.send_response({'info': "Service successful"})
-
-
-class cleanup(BaseHandler):
-    """REST HTTP handler. Cleans up the database and clumping files. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    async def get(self):
-        try:
-            await cleanup()
-            self.send_response({'info': "Cleanup succesful"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
 
 
 class shutdown(BaseHandler):
@@ -1815,193 +1364,6 @@ class RestartMartin(BaseHandler):
 ####################################################################################################################################################################################################################################################################
 # WebSocketHandler subclasses
 ####################################################################################################################################################################################################################################################################
-
-
-class runMarxan(SocketHandler):
-    """REST WebSocket Handler. Starts a Marxan run on the server and streams back the output through WebSocket messages. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project to run.
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "user": The name of the user,
-            "project": The name of the project that is running,
-            "info": Contains the Marxan streaming log (Unix only),
-            "elapsedtime": The elapsed time in seconds of the run,
-            "pid": The process id of the Marxan subprocess,
-            "status": One of Preprocessing, pid, RunningMarxan or Finished
-        }
-    """
-
-    async def open(self):
-        """Authenticate and authorise the request and start the run if it is not already running.
-        """
-        try:
-            await super().open({'info': "Running Marxan.."})
-        except ServicesError:
-            pass
-        else:
-            user = self.get_argument("user")
-            project = self.get_argument("project")
-            # see if the project is already running - if it is then return an error
-            df = file_to_df(
-                project_paths.PROJECT_FOLDER + "runlog.dat")
-            filtered_df = df.loc[
-                (df['status'] == 'Running') &
-                (df['user'] == user) &
-                (df['project'] == project)
-            ]
-            if not filtered_df.empty:
-                self.close({'error': "The project is already running."})
-            else:
-                # set the current folder to the project folder so files can be found in the input.dat file
-                if (os.path.exists(self.project_folder)):
-                    os.chdir(self.project_folder)
-                    # delete all of the current output files
-                    delete_all_files(self.output_folder)
-                    # run marxan
-                    # the "exec " in front allows you to get the pid of the child process, i.e. marxan, and therefore to be able to kill the process using os.kill(pid, signal.SIGTERM) instead of the tornado process - see here: https://stackoverflow.com/questions/4789837/how-to-terminate-a-python-subprocess-launched-with-shell-true/4791612#4791612
-                    try:
-                        if platform.system() != "Windows":
-                            # in Unix operating systems, the log is streamed from stdout to a Tornado STREAM
-                            self.marxanProcess = Subprocess(
-                                [db_config.MARXAN_EXECUTABLE], stdout=Subprocess.STREAM, stdin=PIPE)
-                            # add a callback when the process finishes
-                            self.marxanProcess.set_exit_callback(
-                                self.finishOutput)
-                        else:
-                            # custom class as the Subprocess.STREAM option does not work on Windows - see here: https://www.tornadoweb.org/en/stable/process.html?highlight=Subprocess#tornado.process.Subprocess
-                            self.marxanProcess = BPSubProcess(
-                                [db_config.MARXAN_EXECUTABLE], stdout=PIPE, stdin=PIPE)
-                            # to ensure that the child process is stopped when it ends on windows
-                            self.marxanProcess.stdout.close()
-                            # add a callback when the process finishes on windows
-                            self.marxanProcess.set_exit_callback_windows(
-                                self.finishOutput)
-                        # make sure that the marxan process will end by sending ENTER to the stdin
-                        self.marxanProcess.stdin.write('\n'.encode("utf-8"))
-                        self.marxanProcess.stdin.close()
-                    except (WindowsError) as e:  # pylint:disable=undefined-variable
-                        if (e.winerror == 1260):
-                            self.close({'error': "The executable '" + db_config.MARXAN_EXECUTABLE +
-                                        "' is blocked by group policy. For more information, contact your system administrator."})
-                    else:  # no errors
-                        # get the number of runs that were in the input.dat file
-
-                        if not hasattr(self, "projectData"):
-                            await get_project_data(pg, self)
-
-                        # Extract the NUMREPS value from runParameters
-                        num_reps = next(
-                            (int(param['value']) for param in self.projectData['runParameters']
-                             if param['key'] == 'NUMREPS'),
-                            None
-                        )
-
-                        if num_reps is None:
-                            raise ValueError(
-                                "NUMREPS parameter not found in runParameters.")
-
-                        self.numRunsRequired = num_reps
-                        # log the run to the run log file
-                        if (self.user != '_clumping'):  # dont log any clumping runs
-                            self.logRun()
-                        # return the pid so that the process can be stopped - prefix with an 'm' indicating that the pid is for a marxan run
-                        self.send_response(
-                            {'pid': 'm' + str(self.marxanProcess.pid), 'status': 'pid'})
-                        # callback on the next I/O loop
-                        IOLoop.current().spawn_callback(self.stream_marxan_output)
-                else:  # project does not exist
-                    self.close({'error': "Project '" + self.get_argument("project") + "' does not exist",
-                                'project': self.get_argument("project"), 'user': self.get_argument("user")})
-
-    async def stream_marxan_output(self):
-        """Called on the first IOLoop callback and then streams the marxan output back to the client through WebSocket messages. Not currently supported on Windows.
-        """
-        if platform.system() != "Windows":
-            try:
-                while True:
-                    # read from the stdout stream
-                    line = await self.marxanProcess.stdout.read_bytes(1024, partial=True)
-                    self.send_response({'info': line.decode(
-                        "utf-8"), 'status': 'RunningMarxan', 'pid': 'm' + str(self.marxanProcess.pid)})
-            except (StreamClosedError):
-                pass
-        else:
-            try:
-                self.send_response(
-                    {'info': "Streaming log not currently supported on Windows\n", 'status': 'RunningMarxan'})
-                # while True: #on Windows this is a blocking function
-                # #read from the stdout file object
-                # line = self.marxanProcess.stdout.readline()
-                # self.send_response({'info': line, 'status':'RunningMarxan'})
-                # #bit of a hack to see when it has finished running
-                # if line.find("Press return to exit") > -1:
-                # #make sure that the marxan process will end by sending a new line character to the process in windows
-                # self.marxanProcess.communicate(input='\n')
-                # break
-
-            except (BufferError):
-                log("BufferError")
-                pass
-            except (StreamClosedError):
-                log("StreamClosedError")
-                pass
-
-    def logRun(self):
-        """Writes the details of the started marxan job to the "runlog.dat" file as a single line.
-        """
-        # get the user name
-        self.user = self.get_argument('user')
-        self.project = self.get_argument('project')
-        # create the data record - pid, user, project, starttime, endtime, runtime, runs (e.g. 3/10), status = running, completed, stopped (by user), killed (by OS)
-        record = [str(self.marxanProcess.pid), self.user, self.project, datetime.datetime.now(
-        ).strftime("%d/%m/%y %H:%M:%S"), '', '', '0/' + str(self.numRunsRequired), 'Running']
-        # add the tab separators
-        recordLine = "\t".join(record)
-        # append the record to the run log file
-        write_to_file(project_paths.PROJECT_FOLDER + "runlog.dat",
-                      recordLine + "\n", "a")
-
-    def finishOutput(self, returnCode):
-        """Finishes writing the output of a stream, writes the run log and closes the web socket connection. This is called when the run finishes or when it is stopped or killer by the operating system.
-
-        Args:
-            returnCode (string): Passed into the function.
-        Returns:
-            None
-        """
-        try:
-            # close the output stream
-            self.marxanProcess.stdout.close()
-            if (self.user != '_clumping'):  # dont log clumping runs
-                # get the number of runs completed
-                numRunsCompleted = len(
-                    glob.glob(self.output_folder + "output_r*"))
-                # write the response depending on if the run completed or not
-                if (numRunsCompleted == self.numRunsRequired):
-                    update_run_log(self.marxanProcess.pid, self.startTime,
-                                   numRunsCompleted, self.numRunsRequired, 'Completed')
-                    self.close({'info': 'Run completed',
-                                'project': self.project, 'user': self.user})
-                else:  # if the user stopped it then the run log should already have a status of Stopped
-                    actualStatus = update_run_log(
-                        self.marxanProcess.pid, self.startTime, numRunsCompleted, self.numRunsRequired, 'Killed')
-                    if (actualStatus == 'Stopped'):
-                        self.close({'error': 'Run stopped by ' + self.user,
-                                    'project': self.project, 'user': self.user})
-                    else:
-                        self.close({'error': 'Run stopped by operating system',
-                                    'project': self.project, 'user': self.user})
-            else:
-                self.close({'info': 'Run completed',
-                            'project': self.project,
-                            'user': self.user})
-        except ServicesError as e:
-            self.close({'error': e.args[0]})
 
 
 class importFeatures(SocketHandler):
@@ -2248,402 +1610,8 @@ class QueryWebSocketHandler(SocketHandler):
         except asyncio.CancelledError:
             self.close({'error': "Preprocessing stopped by " + self.user})
 
-####################################################################################################################################################################################################################################################################
-# WebSocket subclasses
-####################################################################################################################################################################################################################################################################
 
 
-class ProcessProtectedAreas(QueryWebSocketHandler):
-    """
-    REST WebSocket Handler for processing protected areas by intersecting them with planning grids.
-    Supports preprocessing for a single project or reprocessing for multiple projects.
-
-    Args:
-        user (str): The name of the user (required for reprocessing).
-        project (str): The name of the project (required for preprocessing).
-        planning_grid_name (str): The name of the planning grid (required for preprocessing).
-
-    Returns:
-        WebSocket dict messages with keys:
-            "info": Informational messages on the operation,
-            "elapsedtime": The elapsed time in seconds of the run,
-            "status": "Preprocessing" or "Finished",
-            "intersections": A list of intersection data normalized by IUCN category (for preprocessing only).
-    """
-
-    async def open(self):  # sourcery skip: use-contextlib-suppress
-        try:
-            # Determine the mode (preprocessing or reprocessing) based on provided arguments
-            if 'planning_grid_name' in self.request.arguments:
-                await self.preprocess()
-            elif 'user' in self.request.arguments:
-                await self.reprocess()
-            else:
-                raise ValueError(
-                    "Invalid arguments. Provide either 'planning_grid_name' or 'user'.")
-        except ServicesError:  # Handle authentication/authorization errors
-            pass
-
-    async def preprocess(self):
-        """
-        Preprocess protected areas for a single project.
-        """
-        validate_args(self.request.arguments, [
-            'user', 'project', 'planning_grid_name'])
-
-        planning_grid_name = self.get_argument('planning_grid_name')
-        await process_protected_areas(self, planning_grid_name=planning_grid_name, folder=self.input_folder)
-
-        # Load intersection data
-        protected_areas_df = file_to_df(
-            os.path.join(self.input_folder, "protected_area_intersections.dat")
-        )
-        self.protectedAreaIntersectionsData = normalize_dataframe(
-            protected_areas_df, "iucn_cat", "puid"
-        )
-
-        # Respond with results
-        if not self.protectedAreaIntersectionsData:
-            self.close(
-                {'error': "No intersections between the protected areas and planning grid."})
-        else:
-            self.close({
-                'info': 'Preprocessing finished',
-                'intersections': self.protectedAreaIntersectionsData
-            })
-
-    async def reprocess(self):
-        """
-        Reprocess protected areas for all projects in the specified folder.
-        """
-        validate_args(self.request.arguments, ['user'])
-
-        user = self.get_argument('user')
-        folder = (
-            project_paths.CASE_STUDIES_FOLDER
-            if user == 'case_studies' else os.path.join(project_paths.USERS_FOLDER, user)
-        )
-
-        project_folders = await process_protected_areas(self, folder=folder)
-
-        # Respond with results
-        self.close({'info': 'Reprocessing finished',
-                   'projects': project_folders})
-
-
-class preprocessPlanningUnits(QueryWebSocketHandler):
-    """REST WebSocket Handler. Preprocesses the planning units to get the boundary lengths where they intersect - produces the bounds.dat file. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message,
-            "elapsedtime": The elapsed time in seconds of the run,
-            "status": One of Preprocessing or Finished
-        }
-    """
-
-    async def open(self):
-        try:
-            await super().open({'info': "Calculating boundary lengths"})
-        except ServicesError:  # authentication/authorisation error
-            pass
-        else:
-            validate_args(self.request.arguments, ['user', 'project'])
-            # get the project data
-            await get_project_data(pg, self)
-            if (not self.projectData["metadata"]["OLDVERSION"]):
-                # new version of marxan - get the boundary lengths
-                feature_class_name = get_unique_feature_name("tmp_")
-                await pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(sql.Identifier(feature_class_name)))
-                # do the intersection
-                results = await self.executeQuery(sql.SQL("CREATE TABLE bioprotect.{feature_class_name} AS SELECT DISTINCT a.puid id1, b.puid id2, ST_Length(ST_CollectionExtract(ST_Intersection(ST_Transform(a.geometry, 3410), ST_Transform(b.geometry, 3410)), 2))/1000 boundary  FROM bioprotect.{planning_unit_name} a, bioprotect.{planning_unit_name} b  WHERE a.puid < b.puid AND ST_Touches(a.geometry, b.geometry);").format(feature_class_name=sql.Identifier(feature_class_name), planning_unit_name=sql.Identifier(self.projectData["metadata"]["PLANNING_UNIT_NAME"])))
-                # delete the file if it already exists
-                if (os.path.exists(self.input_folder + "bounds.dat")):
-                    os.remove(self.input_folder + "bounds.dat")
-                # write the boundary lengths to file
-                await pg.execute(sql.SQL("SELECT * FROM bioprotect.{};").format(sql.Identifier(feature_class_name)), return_format="File", filename=self.input_folder + "bounds.dat")
-                # delete the tmp table
-                await pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(sql.Identifier(feature_class_name)))
-                # update the input.dat file
-                update_file_parameters(
-                    self.project_folder + "input.dat", {'BOUNDNAME': 'bounds.dat'})
-            # set the response
-            self.close({'info': 'Boundary lengths calculated'})
-
-
-class resetDatabase(QueryWebSocketHandler):
-    """REST WebSocket Handler. Resets the database and files to their original state. This can only be run if the server configuration parameter project_paths.ENABLE_RESET is set to True. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Contains detailed progress information on the database reset,
-            "elapsedtime": The elapsed time in seconds of the run,
-            "status": One of Preprocessing or Finished
-        }
-    """
-
-    async def open(self):
-        try:
-            await super().open({'info': "Resetting database.."})
-        except ServicesError:
-            pass
-        else:
-            # check the request is not coming from the local machine, i.e. being run directly and not from a web client which is safer
-            if self.request.remote_ip == "127.0.0.1":
-                self.close({'error': "Unable to run from localhost"})
-            else:
-                # run git reset --hard
-                cmd = "git reset --hard"
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Running git reset --hard"})
-                result = await run_command(cmd)
-                # delete all users other than admin, guest and _clumping
-                user_folders = glob.glob(
-                    project_paths.USERS_FOLDER + "*/")
-                for user_folder in user_folders:
-                    if os.path.split(user_folder[:-1])[1] not in ['admin', '_clumping', 'guest']:
-                        shutil.rmtree(user_folder)
-                # delete the features that are not in use
-                specDatFiles = get_files_in_folder(
-                    project_paths.CASE_STUDIES_FOLDER, "spec.dat")
-                # iterate through the spec.dat files and get a unique list of feature ids
-                featureIdsToKeep = []
-                for file in specDatFiles:
-                    # load the spec.dat file
-                    df = file_to_df(file)
-                    # get the unique feature ids
-                    ids = df.id.unique().tolist()
-                    # merge these ids into the featureIds array
-                    featureIdsToKeep.extend(ids)
-                # delete the features that are not in use
-                df = await pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE NOT oid = ANY (ARRAY[%s]);", data=[featureIdsToKeep])
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Deleted features"})
-                # delete the planning grids that are not in use
-                planningGridFiles = get_files_in_folder(
-                    project_paths.CASE_STUDIES_FOLDER, "input.dat")
-                # iterate through the input.dat files and get a unique list of planning grids
-                planningGridsToKeep = []
-                for file in planningGridFiles:
-                    # get the input.dat file data
-                    tmpObj = ExtendableObject()
-                    tmpObj.project = "unimportant"
-                    tmpObj.project_folder = os.path.dirname(file) + os.sep
-                    await get_project_data(pg, tmpObj)
-                    # get the planning grid
-                    planningGridsToKeep.append(
-                        tmpObj.projectData["metadata"]['PLANNING_UNIT_NAME'])
-                df = await pg.execute("DELETE FROM bioprotect.metadata_planning_units WHERE NOT feature_class_name = ANY (ARRAY[%s]);", data=[planningGridsToKeep])
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Deleted planning grids"})
-                # run a cleanup
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Cleaning up.."})
-                await cleanup()
-                self.close({'info': "Reset complete"})
-
-
-class updateWDPA(QueryWebSocketHandler):
-    """REST WebSocket Handler. Updates the WDPA table in PostGIS using the publically available downloadUrl. The required arguments in the request.arguments parameter are:
-
-    Args:
-        downloadUrl (string): The url endpoint where the new version of the WDPA can be downloaded from. This is normally set in the Marxan Registry.
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Contains detailed progress information on the update,
-            "elapsedtime": The elapsed time in seconds of the update,
-            "status": One of Preprocessing or Finished
-        }
-    """
-    # authenticate and get the user folder and project folders
-
-    async def open(self):
-        try:
-            await super().open({'info': "Updating WDPA.."})
-        except ServicesError:  # authentication/authorisation error
-            pass
-        else:
-            validate_args(self.request.arguments, ['downloadUrl'])
-            if "unittest" in list(self.request.arguments.keys()):
-                unittest = True
-                # if we are running a unit test then download the WDPA from a minimal zipped file geodatabase on google storage
-                downloadUrl = 'https://storage.googleapis.com/geeimageserver.appspot.com/WDPA_Jun2020.zip'
-            else:
-                unittest = False
-                downloadUrl = self.get_argument("downloadUrl")
-            try:
-                # download the new wdpa zip
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Downloading " + downloadUrl})
-                await self.asyncDownload(downloadUrl, project_paths.IMPORT_FOLDER + "wdpa.zip")
-            except (ServicesError) as e:  # download failed
-                self.close({'error': e.args[0], 'info': 'WDPA not updated'})
-            else:
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "WDPA downloaded"})
-                try:
-                    # download finished - upzip the file geodatabase
-                    self.send_response({
-                        'status': 'Preprocessing',
-                        'info': "Unzipping file geodatabase '" + "wdpa.zip" + "'"
-                    })
-                    files = await IOLoop.current().run_in_executor(None, unzip_file, project_paths.IMPORT_FOLDER, "wdpa.zip")
-                    # check the contents of the unzipped file - the contents should include a folder ending in .gdb - this is the file geodatabase
-                    fileGDBPath = [f for f in files if f[-5:]
-                                   == '.gdb' + os.sep][0]
-                except IndexError:  # file geodatabase not found
-                    self.close(
-                        {'error': "The WDPA file geodatabase was not found in the zip file", 'info': 'WDPA not updated'})
-                # error unzipping - probably the disk space has run out
-                except (ServicesError) as e:
-                    self.close(
-                        {'error': e.args[0], 'info': 'WDPA not updated'})
-                else:
-                    self.send_response(
-                        {'status': 'Preprocessing', 'info': "Unzipped file geodatabase"})
-                    # delete the zip file
-                    os.remove(project_paths.IMPORT_FOLDER + "wdpa.zip")
-                    # get the name of the source feature class - this will be WDPA_poly_<shortmonth><year>, e.g. WDPA_poly_Jun2020 and can be taken from the file geodatabase path, e.g. WDPA_Jun2020_Public/WDPA_Jun2020_Public.gdb/
-                    sourceFeatureClass = 'WDPA_poly_' + fileGDBPath[5:12]
-                    try:
-                        # import the new wdpa into a temporary PostGIS feature class in EPSG:4326
-                        # get a unique feature class name for the tmp imported feature class - this is necessary as ogr2ogr automatically creates a spatial index called <featureclassname>_geometry_geom_idx on import - which will end up being the name of the index on the wdpa table preventing further imports (as the index will already exist)
-                        feature_class_name = get_unique_feature_name(
-                            "wdpa_")
-                        self.send_response(
-                            {'status': "Preprocessing", 'info': "Importing '" + sourceFeatureClass + "' into PostGIS.."})
-                        # import the wdpa to a tmp feature class
-                        await pg.import_file_GDBFeatureClass(project_paths.IMPORT_FOLDER, fileGDBPath, sourceFeatureClass, feature_class_name, splitAtDateline=False)
-                        self.send_response(
-                            {'status': "Preprocessing", 'info': "Imported into '" + feature_class_name + "'"})
-                        if not unittest:
-                            # rename the existing wdpa feature class
-                            await pg.execute("ALTER TABLE bioprotect.wdpa RENAME TO wdpa_old;")
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Renamed 'wdpa' to 'wdpa_old'"})
-                            # rename the tmp feature class
-                            await pg.execute(sql.SQL("ALTER TABLE bioprotect.{} RENAME TO wdpa;").format(sql.Identifier(feature_class_name)))
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Renamed '" + feature_class_name + "' to 'wdpa'"})
-                            # drop the columns that are not needed
-                            await pg.execute("ALTER TABLE bioprotect.wdpa DROP COLUMN IF EXISTS ogc_fid,DROP COLUMN IF EXISTS wdpa_pid,DROP COLUMN IF EXISTS pa_def,DROP COLUMN IF EXISTS name,DROP COLUMN IF EXISTS orig_name,DROP COLUMN IF EXISTS desig_eng,DROP COLUMN IF EXISTS desig_type,DROP COLUMN IF EXISTS int_crit,DROP COLUMN IF EXISTS marine,DROP COLUMN IF EXISTS rep_m_area,DROP COLUMN IF EXISTS gis_m_area,DROP COLUMN IF EXISTS rep_area,DROP COLUMN IF EXISTS gis_area,DROP COLUMN IF EXISTS no_take,DROP COLUMN IF EXISTS no_tk_area,DROP COLUMN IF EXISTS status_yr,DROP COLUMN IF EXISTS gov_type,DROP COLUMN IF EXISTS own_type,DROP COLUMN IF EXISTS mang_auth,DROP COLUMN IF EXISTS mang_plan,DROP COLUMN IF EXISTS verif,DROP COLUMN IF EXISTS metadataid,DROP COLUMN IF EXISTS sub_loc,DROP COLUMN IF EXISTS parent_iso;")
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Removed unneccesary columns"})
-                            # delete the old wdpa feature class
-                            await pg.execute("DROP TABLE IF EXISTS bioprotect.wdpa_old;")
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Deleted 'wdpa_old' table"})
-                            # delete all of the existing dissolved country wdpa feature classes
-                            await pg.execute("SELECT * FROM bioprotect.deleteDissolvedWDPAFeatureClasses()")
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Deleted dissolved country WDPA feature classes"})
-                        else:
-                            # delete the tmp feature
-                            await pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{}").format(sql.Identifier(feature_class_name)))
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Unittest has not replaced existing WDPA file"})
-                    except (OSError) as e:  # TODO Add other exception classes especially PostGIS ones
-                        self.close(
-                            {'error': 'No space left on device importing the WDPA into PostGIS', 'info': 'WDPA not updated'})
-                    else:
-                        if not unittest:
-                            # delete all of the existing intersections between planning units and the old version of the WDPA
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': 'Invalidating existing WDPA intersections'})
-                            intersection_files = get_files_in_folder(
-                                project_paths.USERS_FOLDER, "protected_area_intersections.dat")
-
-                            # Path to the empty template file
-                            empty_file_path = os.path.join(
-                                project_paths.EMPTY_PROJECT_TEMPLATE_FOLDER, "input", "protected_area_intersections.dat")
-
-                            # Replace each file with the empty template
-                            for file_path in intersection_files:
-                                shutil.copyfile(empty_file_path, file_path)
-                            # redo the protected area preprocessing on any of the case studies that are included by default with all newly registered users - otherwise the existing data in the input/protected_area_intersections.dat files will be out-of-date
-                            await _reprocessProtectedAreas(self, project_paths.CASE_STUDIES_FOLDER)
-                            # update the WDPA_VERSION variable in the server.dat file
-                            update_file_parameters(
-                                project_paths.PROJECT_FOLDER + "server.dat", {"WDPA_VERSION": self.get_argument("wdpaVersion")})
-                        else:
-                            self.send_response(
-                                {'status': "Preprocessing", 'info': "Unittest has not invalidated existing WDPA intersections"})
-                        # send the response
-                        self.close(
-                            {'info': 'WDPA update completed succesfully'})
-                finally:
-                    # delete the zip file
-                    if os.path.exists(project_paths.IMPORT_FOLDER + "wdpa.zip"):
-                        os.remove(
-                            project_paths.IMPORT_FOLDER + "wdpa.zip")
-                    # delete the unzipped files
-                    for f in files:
-                        if os.path.exists(project_paths.IMPORT_FOLDER + f):
-                            try:
-                                os.remove(project_paths.IMPORT_FOLDER + f)
-                            except IsADirectoryError:
-                                shutil.rmtree(
-                                    project_paths.IMPORT_FOLDER + f)
-
-    async def asyncDownload(self, url, file):
-        """Downloads the WDPA asyncronously.
-
-        Args:
-            url (string): The url to download the file geodatabase from.
-            file (string): The name of the file to save as.
-        Returns:
-            None
-        """
-        # initialise a variable to hold the size downloaded
-        file_size_dl = 0
-
-        try:
-            http_client = AsyncHTTPClient()
-            # Disable request timeout
-            request = HTTPRequest(url, request_timeout=None)
-            response = await http_client.fetch(request, streaming_callback=None, raise_error=True)
-
-            # Get the content length if available
-            file_size = int(response.headers.get("Content-Length", 0))
-            file_size_dl = 0
-
-            try:
-                with open(file, "wb") as f:
-                    async for chunk in response.body_stream:
-                        f.write(chunk)
-                        file_size_dl += len(chunk)
-
-                        # Update the download progress
-                        self.ping_message = f"{
-                            int((file_size_dl / file_size) * 100)} Completed "
-
-            except Exception as e:
-                raise ServicesError("Error getting a file: %s" % e)
-            finally:
-                f.close()
-                delattr(self, 'ping_message')
-
-        except Exception as e:
-            raise ServicesError("Error getting the url: %s" % url)
-        except (OSError) as e:  # out of disk space probably
-            f.close()
-            os.remove(file)
-            raise ServicesError("Out of disk space on device")
-# ****
-#  *********
-#  *****************
-#  ***********************
 #  ***********************************
 #  *******************************************
 #  ******************************************************
@@ -3213,24 +2181,10 @@ class Application(tornado.web.Application):
             ("/server/getShapefileFieldnames", getShapefileFieldnames),
 
             ("/server/getMarxanLog", getMarxanLog),
-            ("/server/getResults", getResults),
             ("/server/getSolution", GetSolution),
             ("/server/preprocessFeature", PreprocessFeature, dict(pg=pg)),
-            ("/server/preprocessPlanningUnits", preprocessPlanningUnits),
-            ("/server/processProtectedAreas", ProcessProtectedAreas),
 
-            ("/server/runMarxan", runMarxan),
-            ("/server/stopProcess", stopProcess),
-            ("/server/getRunLogs", getRunLogs),
-            ("/server/clearRunLogs", clearRunLogs),
-            ("/server/updateWDPA", updateWDPA),
-
-            ("/server/dismissNotification", dismissNotification),
-            ("/server/resetNotifications", resetNotifications),
             ("/server/testRoleAuthorisation", testRoleAuthorisation),
-            ("/server/addParameter", addParameter),
-            ("/server/resetDatabase", resetDatabase),
-            ("/server/cleanup", cleanup),
             ("/server/shutdown", shutdown),
             ("/server/testTornado", testTornado),
             ("/server/restart-martin", RestartMartin),

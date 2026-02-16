@@ -13,7 +13,6 @@ from services.file_service import (check_zipped_shapefile,
                                    get_key_values_from_file,
                                    get_shapefile_fieldnames,
                                    normalize_dataframe, unzip_shapefile)
-from services.project_service import set_folder_paths, write_csv
 from services.service_error import ServicesError, raise_error
 from sqlalchemy import create_engine
 from tornado import escape
@@ -57,14 +56,19 @@ class PlanningUnitHandler(BaseHandler):
         return create_engine(db_url)
 
     def get_projects_for_planning_grid(self, feature_class_name):
-        user_folder = self.proj_paths.USERS_FOLDER
-        input_dat_files = get_files_in_folder(user_folder, "input.dat")
+        # ************************************************************
+        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
+        # ***********************************************************
+        projects = []
+        # get_projects_for_feature(
+        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
+        # user_folder = self.proj_paths.USERS_FOLDER
 
-        projects = [{
-            'user': relpath(file_path, user_folder).split(sep)[0],
-            'name': relpath(file_path, user_folder).split(sep)[1]
-        } for file_path in input_dat_files
-            if get_key_values_from_file(file_path).get('PLANNING_UNIT_NAME') == feature_class_name]
+        # projects = [{
+        #     'user': relpath(file_path, user_folder).split(sep)[0],
+        #     'name': relpath(file_path, user_folder).split(sep)[1]
+        # } for file_path in input_dat_files
+        #     if get_key_values_from_file(file_path).get('PLANNING_UNIT_NAME') == feature_class_name]
 
         return projects
 

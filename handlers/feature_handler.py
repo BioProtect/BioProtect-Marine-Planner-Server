@@ -7,7 +7,6 @@ from handlers.base_handler import BaseHandler
 from psycopg2 import sql
 from services.file_service import (create_zipfile, file_to_df,
                                    get_key_values_from_file, write_to_file)
-from services.project_service import get_projects_for_feature
 from services.service_error import ServicesError, raise_error
 
 
@@ -123,9 +122,12 @@ class FeatureHandler(BaseHandler):
         if feature_data[0].get("created_by") == "global admin":
             raise ServicesError(
                 "This is a system feature and cannot be deleted.")
-
-        projects = get_projects_for_feature(
-            feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
+        # ************************************************************
+        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
+        # ************************************************************
+        projects = []
+        # get_projects_for_feature(
+        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
         if projects:
             raise ServicesError(
                 "The feature cannot be deleted as it is used in one or more projects.")
@@ -221,9 +223,12 @@ class FeatureHandler(BaseHandler):
         """Lists all projects containing a specific feature."""
 
         self.validate_args(self.request.arguments, ['feature-id'])
-
-        projects = get_projects_for_feature(
-            int(self.get_argument('feature-id')), self.proj_paths.USERS_FOLDER)
+        # ************************************************************
+        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
+        # ************************************************************
+        projects = []
+        # get_projects_for_feature(
+        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
 
         self.send_response({
             'info': "Projects info returned",

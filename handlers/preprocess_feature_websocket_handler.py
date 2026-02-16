@@ -31,8 +31,7 @@ class PreprocessFeature(SocketHandler):
     """
 
     def initialize(self, pg):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
 
     async def open(self):
         try:
@@ -42,12 +41,26 @@ class PreprocessFeature(SocketHandler):
             return  # Authentication/authorization error
 
         self.validate_args(self.request.arguments, [
-                           'project_id', 'feature_id', 'feature_class_name', 'planning_grid_id'])
+                           'project_id', 'feature_id', 'planning_grid_id'])
 
         project_id = int(self.get_argument("project_id"))
         feature_id = int(self.get_argument("feature_id"))
-        feature_class = self.get_argument("feature_class_name")
-        planning_grid_id = self.get_argument("planning_grid_id")
+        planning_grid_id = int(self.get_argument("planning_grid_id"))
+
+        row = await self.pg.execute(
+            """
+            SELECT feature_class_name
+            FROM bioprotect.metadata_interest_features
+            WHERE unique_id = %s
+            """,
+            [feature_id],
+            return_format="Dict"
+        )
+
+        if not row:
+            raise ServicesError(f"No feature found for id {feature_id}")
+
+        feature_class = row[0]["feature_class_name"]
 
         try:
             # Determine geometry type
@@ -90,5 +103,19 @@ class PreprocessFeature(SocketHandler):
                     'pu_count': pu_count
                 })
 
+                self.close()
+
+            if geometry_type == "ST_Point":
+                self.send_response({
+                    'info': f"Feature '{feature_class}' is a point layer – no preprocessing required",
+                    'feature_class': feature_class,
+                    'id': feature_id,
+                    'pu_area': 0,
+                    'pu_count': 0,
+                })
+                self.close()
+                return
+
         except ServicesError as e:
             self.send_response({'error': e.args[0]})
+            self.close(clean=False)

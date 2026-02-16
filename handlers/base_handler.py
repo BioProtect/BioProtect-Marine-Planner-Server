@@ -23,8 +23,9 @@ class BaseHandler(RequestHandler):
         output_folder: A string with the path to the projects output folder (if the request.arguments contains a project key).
     """
 
-    def initialize(self):
+    def initialize(self, pg=None):
         self.proj_paths = proj_paths
+        self.pg = pg
 
     def prepare(self):
         print(f"Incoming {self.request.method} request to {self.request.uri}")

@@ -7,7 +7,6 @@ from handlers.base_handler import BaseHandler
 from psycopg2 import sql
 from services.file_service import (create_zipfile, file_to_df,
                                    get_key_values_from_file, write_to_file)
-from services.project_service import get_projects_for_feature
 from services.service_error import ServicesError, raise_error
 
 
@@ -18,8 +17,7 @@ class FeatureHandler(BaseHandler):
     """
 
     def initialize(self, pg, finish_feature_import):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.finish_feature_import = finish_feature_import
 
     def validate_args(self, args, required_keys):
@@ -64,7 +62,7 @@ class FeatureHandler(BaseHandler):
         try:
             action = self.get_argument('action', None)
 
-            if action == 'create_from_linestring':
+            if action == 'create-from-linestring':
                 await self.create_feature_from_linestring()
             else:
                 raise ServicesError("Invalid action specified.")
@@ -74,8 +72,8 @@ class FeatureHandler(BaseHandler):
 
     async def get_feature(self):
         """Fetches feature information from PostGIS."""
-        self.validate_args(self.request.arguments, ['unique_id'])
-        unique_id = self.get_argument("unique_id")
+        self.validate_args(self.request.arguments, ['id'])
+        unique_id = self.get_argument("id")
 
         query = (
             """
@@ -107,8 +105,8 @@ class FeatureHandler(BaseHandler):
 
     async def delete_feature(self):
         """Deletes a feature class and its associated metadata record."""
-        self.validate_args(self.request.arguments, ['feature_name'])
-        feature_class_name = self.get_argument('feature_name')
+        self.validate_args(self.request.arguments, ['feature'])
+        feature_class_name = self.get_argument('feature')
 
         feature_data = await self.pg.execute(
             """
@@ -124,9 +122,12 @@ class FeatureHandler(BaseHandler):
         if feature_data[0].get("created_by") == "global admin":
             raise ServicesError(
                 "This is a system feature and cannot be deleted.")
-
-        projects = get_projects_for_feature(
-            feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
+        # ************************************************************
+        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
+        # ************************************************************
+        projects = []
+        # get_projects_for_feature(
+        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
         if projects:
             raise ServicesError(
                 "The feature cannot be deleted as it is used in one or more projects.")
@@ -192,9 +193,9 @@ class FeatureHandler(BaseHandler):
     async def get_feature_planning_units(self):
         """Gets the planning unit IDs for a feature."""
 
-        self.validate_args(self.request.arguments, ['user', 'project', 'oid'])
+        self.validate_args(self.request.arguments, ['user', 'project', 'id'])
         # unique_ids = self.get_argument("oid")
-        ids = self.get_argument("unique_id")
+        ids = self.get_argument("id")
 
         file_name = os.path.join(self.input_folder,
                                  self.projectData["files"]["PUVSPRNAME"])
@@ -221,10 +222,13 @@ class FeatureHandler(BaseHandler):
     def list_projects_for_feature(self):
         """Lists all projects containing a specific feature."""
 
-        self.validate_args(self.request.arguments, ['feature_class_id'])
-
-        projects = get_projects_for_feature(
-            int(self.get_argument('feature_class_id')), self.proj_paths.USERS_FOLDER)
+        self.validate_args(self.request.arguments, ['feature-id'])
+        # ************************************************************
+        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
+        # ************************************************************
+        projects = []
+        # get_projects_for_feature(
+        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
 
         self.send_response({
             'info': "Projects info returned",

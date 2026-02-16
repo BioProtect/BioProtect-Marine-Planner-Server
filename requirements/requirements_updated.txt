@@ -20,7 +20,7 @@ asyncpg==0.30.0
 pyjwt==2.10.1
 h3
 asyncpg
-
+geoalchemy2
 ###### pip freeze
 
 # aiohttp==3.9.5

@@ -54,7 +54,7 @@ class DBConfig:
         return create_engine(
             f'postgresql+psycopg2://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{
                 self.DATABASE_HOST}:{self.PORT}/{self.DATABASE_NAME}',
-            pool_size=5,
+            pool_size=3,
             max_overflow=10,
             pool_timeout=30,
             pool_recycle=1800

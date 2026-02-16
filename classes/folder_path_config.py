@@ -10,7 +10,6 @@ import geopandas as gpd
 import json
 from dotenv import dotenv_values
 from pyproj import CRS
-from services.service_error import ServicesError
 
 
 class FolderPathConfig:
@@ -79,20 +78,10 @@ class FolderPathConfig:
 
     def initialize_paths(self):
         """Initializes folder paths and executable paths."""
-        self.USERS_FOLDER = self.set_path(
-            self.PROJECT_FOLDER, "users", True)
-        self.CLUMP_FOLDER = self.set_path(
-            self.USERS_FOLDER, "_clumping", True)
         self.EXPORT_FOLDER = self.set_path(
             self.PROJECT_FOLDER, "exports", True)
         self.IMPORT_FOLDER = self.set_path(
             self.PROJECT_FOLDER, "imports", True)
-        self.MARXAN_WEB_RESOURCES_FOLDER = self.set_path(
-            self.PROJECT_FOLDER, "_marxan_web_resources", True)
-        self.CASE_STUDIES_FOLDER = self.set_path(
-            self.MARXAN_WEB_RESOURCES_FOLDER, "case_studies", True)
-        self.EMPTY_PROJECT_TEMPLATE_FOLDER = self.set_path(
-            self.MARXAN_WEB_RESOURCES_FOLDER, "empty_project", True)
 
     def load_maresa_data(self, maresa_file):
         """Load and clean the MarESA data."""

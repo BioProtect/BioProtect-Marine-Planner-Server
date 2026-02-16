@@ -1,17 +1,11 @@
-import glob
 import json
 import shutil
-from os.path import basename, join, normpath
-from types import SimpleNamespace
+from os.path import join
 
 from asyncpg.exceptions import UniqueViolationError
 from handlers.base_handler import BaseHandler
 from passlib.hash import bcrypt
-from psycopg2 import sql
-from services.user_service import get_notifications_data
-from services.file_service import (
-    get_key_values_from_file, update_file_parameters)
-from services.project_service import clone_a_project, set_folder_paths
+from services.file_service import update_file_parameters
 from services.service_error import ServicesError, raise_error
 
 # JWT utility for generating tokens
@@ -24,8 +18,7 @@ class UserHandler(BaseHandler):
     """
 
     def initialize(self, pg, project_paths):
-        super().initialize()
-        self.pg = pg
+        super().initialize(pg=pg)
         self.project_paths = project_paths
 
     def validate_args(self, arguments, required_arguments):
@@ -155,7 +148,6 @@ class UserHandler(BaseHandler):
             """
         userData = await self.pg.execute(query, [self.get_current_user()], return_format="Dict")
 
-        notifications = get_notifications_data(self)
         self.send_response({
             'info': "User data received",
             "userData": userData,

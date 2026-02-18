@@ -145,35 +145,10 @@ class ProjectHandler(BaseHandler):
     async def get_project_by_id(self, project_id):
         """
         Fetch project details based on project ID.
-
-        :param self: Handler
-        :param project_id: project_id
-        :return: project id, name, description, date_created, planning_unit_id, old_version, is_private, costs (type), iucn_category, resolution,  and active cost profile
-        :rtype: Dict
-
         """
         query = "SELECT * FROM bioprotect.projects WHERE id = %s;"
-        result = await self.pg.execute(query, [project_id], return_format="Dict")
+        result = await self.pg.execute(query, [project_id], return_format="Array")
         return result[0] if result else None
-
-    def update_file_parameters(self, filename, new_params):
-        """
-        Updates specific parameters in a file. Parameters matching the keys in `new_params`
-        are updated, while others remain unchanged.
-        """
-        if not new_params:
-            return
-
-        file_content = read_file(filename)
-        lines = file_content.splitlines()
-        updated_lines = []
-        for line in lines:
-            updated_line = next((f"{key} {value}" for key, value in new_params.items() if line.startswith(key)),
-                                line)  # Keep the line unchanged if no match
-            updated_lines.append(updated_line)
-
-        # Write the updated content back to the file
-        write_to_file(filename, "\n".join(updated_lines))
 
     def normalise_planning_units(self, df, column_to_normalize_by, puid_column_name, classes=None, as_dict=True):
         if df.empty:
@@ -243,7 +218,6 @@ class ProjectHandler(BaseHandler):
             """, [project_id], return_format="Dict")
 
             # Fetch project features.
-
             features = await self.pg.execute(
                 "SELECT * FROM bioprotect.get_project_features(%s)", [project_id], return_format="Dict")
 
@@ -313,13 +287,22 @@ class ProjectHandler(BaseHandler):
 
     async def create_project(self):
         user_id = await self._get_authenticated_user_id()
+        data = json.loads(self.request.body or "{}")
 
-        name = self.get_argument('project')
-        description = self.get_argument('description')
-        planning_grid_name = self.get_argument('planning_grid_name')
+        name = data.get("project")
+        description = data.get("description")
+        planning_grid_name = data.get("planning_grid_name")
+        interest_features = data.get("interest_features", [])
+        target_values = data.get("target_values", [])
+        spf_values = data.get("spf_values", [])
+
+        if not name or not planning_grid_name:
+            raise ServicesError(
+                "Missing required fields: project, planning_grid_name")
+
         planning_unit_id = await self._resolve_planning_unit_id(planning_grid_name)
 
-        # 1. Create project in DB
+        # Create project in DB
         row = await self.pg.execute(
             """
             INSERT INTO bioprotect.projects
@@ -345,10 +328,29 @@ class ProjectHandler(BaseHandler):
             [user_id, project_id]
         )
 
-        # 3. Link features to this project
-        await self.update_project_features(project_id=project_id)
+        # Normalise features incase its a list or a csv str
+        if isinstance(interest_features, str):
+            feature_ids = [int(x)
+                           for x in interest_features.split(",") if x.strip()]
+        else:
+            feature_ids = [int(x) for x in interest_features]
 
-        # 4. return info
+        if isinstance(target_values, str):
+            targets = [x.strip()
+                       for x in target_values.split(",") if x.strip()]
+        else:
+            targets = target_values or []
+
+        if isinstance(spf_values, str):
+            spfs = [x.strip() for x in spf_values.split(",") if x.strip()]
+        else:
+            spfs = spf_values or []
+
+        # Link features to this project
+        if feature_ids:
+            await self._update_project_features_in_db(project_id, feature_ids, targets, spfs)
+
+        # return info
         self.send_response({
             'info': f"Project '{name}' created with features",
             'name': name,
@@ -495,6 +497,7 @@ class ProjectHandler(BaseHandler):
         """
         result = await self.pg.execute(query, [self.current_user], return_format="Dict")
         project = result[0] if result else None
+        return project
 
     async def fetch_project_data(self, project):
         """Fetches categorized project data from input.dat file."""
@@ -588,7 +591,21 @@ class ProjectHandler(BaseHandler):
     async def delete_project(self):
         user_id = await self._get_authenticated_user_id()
 
-        project_id = int(self.get_argument("project_id"))
+        # Support JSON and query arg
+        try:
+            data = json.loads(self.request.body or "{}")
+        except Exception:
+            data = {}
+
+        project_id = data.get("project_id") or self.get_argument(
+            "project_id", None)
+        if not project_id:
+            raise ServicesError("Missing project_id")
+
+        try:
+            project_id = int(project_id)
+        except ValueError:
+            raise ServicesError("Invalid project_id")
 
         await self._check_project_access(user_id, project_id, min_role="owner")
 
@@ -599,14 +616,23 @@ class ProjectHandler(BaseHandler):
 
         self.send_response({"info": "Project deleted"})
 
-    # GET `projects?action=rename&projectId=${projectId}&newName=${newName}`,
+    # POST `projects?action=rename
 
     async def rename_project(self):
-        self.validate_args(self.request.arguments, ['project', 'newName'])
-
         user_id = await self._get_authenticated_user_id()
-        project_id = self.get_argument("project_id", None)
-        new_name = self.get_argument('newName')
+
+        # Support JSON and query args
+        try:
+            data = json.loads(self.request.body or "{}")
+        except Exception:
+            data = {}
+
+        project_id = data.get("project_id") or self.get_argument(
+            "project_id", None)
+        new_name = data.get("newName") or self.get_argument("newName", None)
+
+        if not project_id or not new_name:
+            raise ServicesError("Missing project_id or newName")
 
         try:
             project_id = int(project_id)
@@ -641,10 +667,19 @@ class ProjectHandler(BaseHandler):
         """
         # 1) pick a project id: explicit > 'project_id' arg > legacy 'project' arg
         pid = project_id
-        print('1pid: ', pid)
+
+        # 1) explicit param wins
+        if pid is None:
+            # 2) try JSON body
+            try:
+                data = json.loads(self.request.body or "{}")
+            except Exception:
+                data = {}
+            pid = data.get("project_id")
+
+        # 3) query/form args
         if pid is None:
             pid = self.get_argument("project_id", None)
-            print('2pid: ', pid)
         if pid is None:
             pid = self.get_argument("project", None)  # legacy support
         if pid is None:
@@ -654,8 +689,6 @@ class ProjectHandler(BaseHandler):
             pid = int(pid)
         except (ValueError, TypeError):
             raise ServicesError("Invalid project_id.")
-
-        print('pid before query: ', pid)
 
         # 2) ensure project exists
         exists_row = await self.pg.execute(
@@ -668,42 +701,82 @@ class ProjectHandler(BaseHandler):
         print('pid being returned: ', pid)
         return pid
 
-    async def update_project_features(self, project_id=None):
+    async def _update_project_features_in_db(self, pid, feature_ids, targets, spfs):
         """
-        Updates project feature links and settings in DB.
-        Replaces old updateSpecies/spec.dat functionality.
+        Core logic: write project features to DB using bioprotect.update_project_feature.
+        feature_ids: list[int]
+        targets: list[str|float] or []
+        spfs: list[str|float] or []
         """
-        self.validate_args(self.request.arguments, ['interest_features'])
-        pid = await self.resolve_and_check_project(project_id)
-
-        features = self.get_argument("interest_features")
-        values = self.get_argument("target_values", None)
-        spf_vals = self.get_argument("spf_values", None)
-
-        # parse lists
-        feature_ids = [int(x) for x in features.split(",") if x.strip()]
-        targets = [x.strip() for x in values.split(",")] if values else []
-        spfs = [x.strip() for x in spf_vals.split(",")] if spf_vals else []
-
-        # basic length check (non-fatal; we still link features)
+        # Basic length check
         if (targets and len(targets) != len(feature_ids)) or (spfs and len(spfs) != len(feature_ids)):
             raise ServicesError(
-                "Lengths of interest_features, target_values, and spf_values must match.")
+                "Lengths of features, targets, and spf must match.")
 
-        # 3) upsert new data
         for idx, fid in enumerate(feature_ids):
             tv = float(targets[idx]) if targets and idx < len(
                 targets) else None
             spf = float(spfs[idx]) if spfs and idx < len(spfs) else None
             weight = None
-            target_type = "prop"  # or allow from payload
+            target_type = "prop"  # later if you want to support other types
 
             await self.pg.execute(
                 "SELECT bioprotect.update_project_feature(%s, %s, %s, %s, %s, %s)",
-                [pid, fid, target_type, tv, spf, weight])
+                [pid, fid, target_type, tv, spf, weight],
+            )
 
-        self.send_response({"info": "Project features updated",
-                            "project_id": pid})
+    # ----------------------------
+    # POST /projects?action=update_features
+    # ----------------------------
+    # JSON Body:
+    # {
+    #     "project_id": 123,
+    #     "interest_features": [1, 2, 3],
+    #     "target_values": [10, 20, 30],
+    #     "spf_values": [1, 2, 3]
+    # }
+
+    async def update_project_features(self, project_id=None):
+        """
+        Updates project feature links and settings in DB.
+        Replaces old updateSpecies/spec.dat functionality.
+        """
+        try:
+            data = json.loads(self.request.body or "{}")
+        except Exception:
+            data = {}
+
+        pid = data.get("project_id") or project_id
+        pid = await self.resolve_and_check_project(pid)
+
+        interest_features = data.get("interest_features", [])
+        target_values = data.get("target_values", [])
+        spf_values = data.get("spf_values", [])
+
+        # Normalise possible CSV -> lists, but prefer lists
+        if isinstance(interest_features, str):
+            feature_ids = [int(x)
+                           for x in interest_features.split(",") if x.strip()]
+        else:
+            feature_ids = [int(x) for x in interest_features]
+
+        if isinstance(target_values, str):
+            targets = [x.strip()
+                       for x in target_values.split(",") if x.strip()]
+        else:
+            targets = target_values or []
+
+        if isinstance(spf_values, str):
+            spfs = [x.strip() for x in spf_values.split(",") if x.strip()]
+        else:
+            spfs = spf_values or []
+
+        await self._update_project_features_in_db(pid, feature_ids, targets, spfs)
+
+        self.send_response({
+            "info": "Project features updated",
+            "project_id": pid
+        })
 
     # POST /projects?action=update
     # Body:
@@ -723,9 +796,7 @@ class ProjectHandler(BaseHandler):
             if argument not in ['user', 'project', 'callback']
         }
 
-        self.update_file_parameters(
-            join(self.project_folder, "input.dat"), params)
-
         self.send_response({
-            'info': ", ".join(params.keys()) + " parameters updated"
+            'info': "This function is a placeholder. It should update project parameters in the database based on the provided arguments.",
+            'received_params': params
         })

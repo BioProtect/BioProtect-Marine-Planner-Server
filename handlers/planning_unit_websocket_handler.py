@@ -45,38 +45,49 @@ class PlanningGridWebSocketHandler(SocketHandler):
             pass
 
     async def on_message(self, message):
+        """
+        Docstring for on_message
+
+        :param self: Description
+        :param message: data: {
+            "shapefile_path": "/path/to/shapefile.shp",
+            "alias": "Case Study Extents Water Only",
+            "description": "Description of the grid",
+            "resolution": 7}
+
+        Alias is used in bioprotect.h3_cells. 
+        Alias in the metadata tabel has the resolution attached (Res 7) to make it more user friendly
+        """
         # Parse incoming message
         # get all the necessary data
+
         data = json.loads(message)
         print('data: ', data)
         created_by = self.current_user
         shapefile_path = data.get('shapefile_path')
-        alias = data.get('alias')
+        project_area_name = data.get('alias')
         description = data.get('description')
-        resolution = int(data.get('resolution', 7))  # fallback if missing
-        if resolution not in (6, 7, 8, 9):  # include 9 if you're enabling it
+        resolution = int(data.get('resolution', 7))
+        if resolution not in (6, 7, 8, 9):
             raise ServicesError(
                 "Invalid resolution. Allowed values: 6, 7, 8, 9.")
 
-        if not all([shapefile_path, alias, description]):
+        if not all([shapefile_path, project_area_name, description]):
             raise ServicesError(
                 "Missing required fields in WebSocket message.")
 
         scale_level = self.get_scale_level(resolution)
-        view_name = f"v_h3_{self.normalize_name(alias)}_res{resolution}"
-        project_area_name = alias
+        view_name = f"v_h3_{self.normalize_name(project_area_name)}_res{resolution}"
+        alias = f"{project_area_name} (Res {resolution})"
 
         try:
-            # Start the processing steps
+            # Start the processing steps``
             # Check if it already exists
             existing = await self.pg.execute(
                 "SELECT 1 FROM bioprotect.metadata_planning_units WHERE feature_class_name = %s",
                 [view_name],
                 return_format="Dict"
             )
-            # if existing:
-            #     raise ServicesError(f"Planning grid '{alias}' already exists.")
-            create_new_version = data.get("create_new_version", False)
             if existing:
                 result = await self.pg.execute(
                     """
@@ -92,11 +103,10 @@ class PlanningGridWebSocketHandler(SocketHandler):
 
                 self.send_response({
                     "type": "grid_exists",
-                    "info": f"Planning grid '{alias}' already exists. Using existing grid.",
+                    "info": f"Planning grid '{view_name}' already exists. Using existing grid.",
                     "view_name": view_name,
                     "planning_unit_id": planning_unit_id
                 })
-
                 return
 
             self.send_response({'info': "📦 Reading shapefile..."})
@@ -118,8 +128,7 @@ class PlanningGridWebSocketHandler(SocketHandler):
             self.send_response({'info': "📦 Building records for db..."})
             for h in unique_cells:
 
-                coords = [(lon, lat)
-                          for lat, lon in h3.cell_to_boundary(h)]
+                coords = [(lon, lat)for lat, lon in h3.cell_to_boundary(h)]
                 records.append({
                     "h3_index": h,
                     "resolution": resolution,
@@ -183,6 +192,7 @@ class PlanningGridWebSocketHandler(SocketHandler):
 
             self.send_response(
                 {'info': "📝 Inserting planning unit metadata..."})
+
             await self.pg.execute(sql.SQL("""
                 INSERT INTO bioprotect.metadata_planning_units (
                     feature_class_name, alias, description, domain, _area,

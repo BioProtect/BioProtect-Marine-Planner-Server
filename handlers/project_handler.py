@@ -142,14 +142,6 @@ class ProjectHandler(BaseHandler):
         except ServicesError as e:
             raise_error(self, e.args[0])
 
-    async def get_project_by_id(self, project_id):
-        """
-        Fetch project details based on project ID.
-        """
-        query = "SELECT * FROM bioprotect.projects WHERE id = %s;"
-        result = await self.pg.execute(query, [project_id], return_format="Array")
-        return result[0] if result else None
-
     def normalise_planning_units(self, df, column_to_normalize_by, puid_column_name, classes=None, as_dict=True):
         if df.empty:
             return []
@@ -374,7 +366,10 @@ class ProjectHandler(BaseHandler):
             raise ServicesError("Invalid project ID")
 
         # 1 - gets project details from the project table in the database
-        project = await self.get_project_by_id(project_id) if project_id else None
+        result = await self.pg.execute(
+            "SELECT * FROM bioprotect.projects WHERE id = %s;",
+            [project_id], return_format="Array")
+        project = result[0] if result else None
         if project is None:
             raise ServicesError(f"That project does not exist")
 

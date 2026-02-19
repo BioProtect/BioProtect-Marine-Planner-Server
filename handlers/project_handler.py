@@ -280,10 +280,12 @@ class ProjectHandler(BaseHandler):
     async def create_project(self):
         user_id = await self._get_authenticated_user_id()
         data = json.loads(self.request.body or "{}")
+        print('data: ', data)
 
         name = data.get("project")
         description = data.get("description")
         planning_grid_name = data.get("planning_grid_name")
+        resolution = data.get("resolution", 7)
         interest_features = data.get("interest_features", [])
         target_values = data.get("target_values", [])
         spf_values = data.get("spf_values", [])
@@ -298,11 +300,11 @@ class ProjectHandler(BaseHandler):
         row = await self.pg.execute(
             """
             INSERT INTO bioprotect.projects
-                (name, description, planning_unit_id)
-            VALUES (%s, %s, %s)
+                (name, description, planning_unit_id, default_resolution)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
             """,
-            [name, description, planning_unit_id],
+            [name, description, planning_unit_id, resolution],
             return_format="Array"
         )
 
@@ -310,7 +312,7 @@ class ProjectHandler(BaseHandler):
             raise ServicesError("Failed to create project")
         project_id = row[0]["id"]
 
-        # 2 Link owner
+        # Link owner
         await self.pg.execute(
             """
             INSERT INTO bioprotect.user_projects
@@ -318,6 +320,19 @@ class ProjectHandler(BaseHandler):
             VALUES (%s, %s, 'owner')
             """,
             [user_id, project_id]
+        )
+
+        # Populate project_pus (critical)
+        await self.pg.execute(
+            """
+            INSERT INTO bioprotect.project_pus (project_id, h3_index)
+            SELECT %s AS project_id, hc.h3_index
+            FROM bioprotect.h3_cells hc
+            JOIN bioprotect.metadata_planning_units mpu
+                ON LOWER(TRIM(hc.project_area)) = LOWER(TRIM(split_part(mpu.alias, ' (', 1)))
+            WHERE mpu.unique_id = %s
+            """,
+            [project_id, planning_unit_id]
         )
 
         # Normalise features incase its a list or a csv str

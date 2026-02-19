@@ -781,7 +781,30 @@ class ProjectHandler(BaseHandler):
         else:
             spfs = spf_values or []
 
-        await self._update_project_features_in_db(pid, feature_ids, targets, spfs)
+        # -----------------------------
+        # DELETE removed features
+        # -----------------------------
+        if feature_ids:
+            await self.pg.execute(
+                """
+                DELETE FROM bioprotect.project_features
+                WHERE project_id = %s
+                AND feature_unique_id <> ALL(%s)
+                """,
+                [pid, feature_ids],   # list passed as array param
+            )
+        else:
+            # If empty list, remove all features
+            await self.pg.execute(
+                "DELETE FROM bioprotect.project_features WHERE project_id = %s",
+                [pid],
+            )
+
+         # -----------------------------
+        # UPSERT remaining features
+        # -----------------------------
+        if feature_ids:
+            await self._update_project_features_in_db(pid, feature_ids, targets, spfs)
 
         self.send_response({
             "info": "Project features updated",

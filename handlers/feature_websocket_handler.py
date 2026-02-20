@@ -84,8 +84,8 @@ class FeatureHandler(SocketHandler):
         try:
             # Fetch GML data
             gml = await IOLoop.current().run_in_executor(None, self.get_gml, endpoint, feature_type)
-            gml_path = os.path.join(self.proj_paths.IMPORT_FOLDER, f"{
-                                    feature_class_name}.gml")
+            gml_path = os.path.join(
+                self.proj_paths.IMPORT_FOLDER, f"{feature_class_name}.gml")
             write_to_file(gml_path, gml)
 
             # Import GML into PostGIS
@@ -174,8 +174,8 @@ class FeatureHandler(SocketHandler):
 
     async def handle_import_error(self, error, feature_name):
         if "already exists" in error.args[0]:
-            self.close({'error': f"The feature '{
-                       feature_name}' already exists", 'info': 'Failed to import features'})
+            self.close({'error': f"The feature '{feature_name}' already exists",
+                       'info': 'Failed to import features'})
         else:
             self.close(
                 {'error': error.args[0], 'info': 'Failed to import features'})
@@ -185,7 +185,7 @@ class FeatureHandler(SocketHandler):
 
     def cleanup_gml_files(self, feature_class_name):
         for ext in [".gml", ".gfs"]:
-            file_path = os.path.join(self.proj_paths.IMPORT_FOLDER, f"{
-                                     feature_class_name}{ext}")
+            file_path = os.path.join(
+                self.proj_paths.IMPORT_FOLDER, f"{feature_class_name}{ext}")
             if os.path.exists(file_path):
                 os.remove(file_path)

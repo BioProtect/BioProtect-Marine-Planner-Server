@@ -126,7 +126,7 @@ LOGGING_LEVEL = logging.INFO
 
 # pdoc3 dict to whitelist private members for the documentation
 __pdoc__ = {}
-privateMembers = ['get_geometry_type', 'clone_project', 'create_user', 'create_zipfile', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'del_tileset', 'delete_zipped_shapefile',  'finish_feature_import', '_getAllProjects', 'get_dict_value',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
+privateMembers = ['get_geometry_type', 'clone_project', 'create_user', 'create_zipfile', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'delete_zipped_shapefile',  'finish_feature_import', '_getAllProjects', 'get_dict_value',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
                   'get_safe_project_name', 'get_unique_feature_name', 'get_user_data', 'get_users_data', 'normalize_dataframe', 'pad_dict', '_preprocessProtectedAreas', 'puid_array_to_df', 'raise_error', 'read_file', '_reprocessProtectedAreas', 'run_command', '_setCORS', 'set_global_vars', 'unzip_shapefile', 'update_dataframe', 'update_file_parameters', '_uploadTileset', 'validate_args', 'write_csv', 'write_to_file', 'zip_folder']
 
 for m in privateMembers:
@@ -135,8 +135,7 @@ for m in privateMembers:
 
 def log_server_info():
     """Logs server-related information."""
-    log(f"Server {SERVER_VERSION} listening on port {
-        db_config.SERVER_PORT} ..", Fore.GREEN)
+    log(f"Server {SERVER_VERSION} port {db_config.SERVER_PORT} ..", Fore.GREEN)
     log(pad_dict("Operating system:", platform.system()))
     log(pad_dict("Tornado version:", tornado.version))
     log(pad_dict("Permitted domains:", ",".join(
@@ -180,8 +179,7 @@ def log_other_info():
 
     # Construct the test URL
     host_part = "<host>"
-    port_part = f":{
-        db_config.SERVER_PORT}" if db_config.SERVER_PORT != '80' else ""
+    port_part = f":{db_config.SERVER_PORT}" if db_config.SERVER_PORT != '80' else ""
     test_path = "/server/testTornado"
     test_url = f"{protocol}{host_part}{port_part}{test_path}"
 
@@ -382,22 +380,6 @@ def upload_tileset(filename, tileset_name):
             f"An error occurred during the upload process: {e}")
 
 
-def del_tileset(tileset_id):
-    """Deletes a tileset on Mapbox using the tilesets API.
-
-    Args:
-        tilesetid (string): The tileset to delete.
-    Returns:
-        None
-    """
-    url = f"https://api.mapbox.com/tilesets/v1/{MAPBOX_USER}.{
-        tileset_id}?access_token={project_paths.MBAT}"
-    response = requests.delete(url)
-    if response.status_code != 204:
-        raise ServicesError(f"Failed to delete tileset '{tileset_id}'. "f"Response: {
-                            response.status_code} - {response.text}")
-
-
 def get_unique_feature_name(prefix):
     # mapbox tileset ids are limited to 32 characters
     return prefix + uuid.uuid4().hex[:(32 - len(prefix))]
@@ -442,8 +424,8 @@ async def finish_feature_import(feature_class_name, name, description, source, u
             .format(sql.Identifier(feature_class_name))
         )
     except psycopg2.errors.InvalidTableDefinition as e:
-        logging.warning(f"Primary key already exists for {
-                        feature_class_name}: {e}")
+        logging.warning(
+            f"Primary key already exists for {feature_class_name}: {e}")
 
     # Insert metadata for the feature
     try:
@@ -535,8 +517,8 @@ def get_shapefile_fieldnames(shapefile):
         return [layer_definition.GetFieldDefn(i).GetName() for i in range(layer_definition.GetFieldCount())]
 
     except RuntimeError as e:
-        raise ServicesError(f"Error reading shapefile '{
-                            shapefile}': {e.args[0]}")
+        raise ServicesError(
+            f"Error reading shapefile '{shapefile}': {e.args[0]}")
 
 
 def _setCORS(obj):
@@ -944,15 +926,15 @@ class GetSolution(BaseHandler):
             try:
                 # Retrieve the solution file name
                 file_name = get_output_file(
-                    os.path.join(self.output_folder, f"{
-                                 SOLUTION_FILE_PREFIX}{int(solution_id):05d}")
+                    os.path.join(self.output_folder,
+                                 f"{SOLUTION_FILE_PREFIX}{int(solution_id):05d}")
                 )
             except ServicesError as e:
                 # Handle missing solution (likely a clumping project)
                 self.solution = []
                 if user != "_clumping":
-                    raise ServicesError(f"Solution '{solution_id}' in project '{
-                                        project}' no longer exists.") from e
+                    raise ServicesError(
+                        f"Solution '{solution_id}' in project '{project}' no longer exists.") from e
             else:
                 if os.path.exists(file_name):
                     # Load and normalize solution data
@@ -963,8 +945,8 @@ class GetSolution(BaseHandler):
             # Handle missing values file for non-clumping projects
             if user != '_clumping':
                 mv_file_name = get_output_file(
-                    os.path.join(self.output_folder, f"{
-                                 MISSING_VALUES_FILE_PREFIX}{int(solution_id):05d}")
+                    os.path.join(self.output_folder,
+                                 f"{MISSING_VALUES_FILE_PREFIX}{int(solution_id):05d}")
                 )
                 solution_df = file_to_df(mv_file_name)
                 self.missingValues = solution_df.to_dict(orient="split")[
@@ -1609,7 +1591,6 @@ class QueryWebSocketHandler(SocketHandler):
             self.close({'error': "Preprocessing stopped by operating system"})
         except asyncio.CancelledError:
             self.close({'error': "Preprocessing stopped by " + self.user})
-
 
 
 #  ***********************************

@@ -29,3 +29,5 @@ install.packages(c("sf","DBI","RPostgres","prioritizr","Matrix","jsonlite","rcbc
 **prioritizr automatically detects and uses rcbc if installed. You may need to install gurobi or rsymphony if you want alternative solvers — but rcbc is fully supported.**
 
 `sudo apt update &&  sudo apt install -y coinor-libcbc-dev coinor-libcbc3 coinor-cbc`
+
+rcbc needs installing from git see here - https://github.com/dirkschumacher/rcbc

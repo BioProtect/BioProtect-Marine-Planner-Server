@@ -1808,7 +1808,7 @@ class UploadRasterHandler(BaseHandler):
                 for pressure in pad_data:
                     new_band = band.copy()
                     update_band = new_band*pressure["rppscore"]
-                    title = f"data/pressures/{replace_chars(pressure["pressuretitle"])}.tif"
+                    title = f"data/pressures/{replace_chars(pressure['pressuretitle'])}.tif"
 
                     with rasterio.open(title, 'w', **meta) as dst:
                         dst.write(update_band, 1)

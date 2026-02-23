@@ -4,6 +4,8 @@ import json
 from services.service_error import ServicesError, raise_error
 from handlers.websocket_handler import SocketHandler
 
+import pty
+
 # server/prioritizr?action=run&user=<id>&project_id=<pid>
 
 
@@ -16,7 +18,23 @@ class PrioritizrWSHandler(SocketHandler):
         super().initialize(pg=pg)
         self.r_script_path = r_script_path
         self.proc = None
+        self.master_fd = None
         self.run_id = None
+
+    async def run_r_with_pty(self, cmd, env):
+        master_fd, slave_fd = pty.openpty()
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            env=env,
+            preexec_fn=os.setsid  # important
+        )
+
+        # Return both process and pty master end
+        return proc, master_fd
 
     async def open(self):
         try:
@@ -84,19 +102,33 @@ class PrioritizrWSHandler(SocketHandler):
         })
 
         env = os.environ.copy()
-        cmd = ["Rscript", self.r_script_path, str(self.run_id)]
+        # cmd = ["Rscript", self.r_script_path, str(self.run_id)]
+        cmd = [
+            "Rscript", "--vanilla", "--slave", "--no-save",
+            self.r_script_path,
+            str(self.run_id)
+        ]
+
+        # --------------------------
+        #  START R WITH A PSEUDO-TTY
+        # --------------------------
+        master_fd, slave_fd = pty.openpty()
+        self.master_fd = master_fd
 
         self.proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
             env=env,
+            preexec_fn=os.setsid  # important
         )
 
-        await asyncio.gather(
-            self._stream_output("stdout", self.proc.stdout),
-            self._stream_output("stderr", self.proc.stderr),
-        )
+        # Close slave FD in parent
+        os.close(slave_fd)
+
+        # Start streaming PTY output
+        await self._read_pty()
 
         rc = await self.proc.wait()
 
@@ -127,27 +159,40 @@ class PrioritizrWSHandler(SocketHandler):
             "info": "Prioritizr run completed"
         })
 
-    async def _stream_output(self, stream_name, stream):
+    async def _read_pty(self):
+        """
+        Read lines from the PTY master FD and stream to DB + websocket.
+        """
+        loop = asyncio.get_event_loop()
+
         while True:
-            line = await stream.readline()
-            if not line:
+            try:
+                data = await loop.run_in_executor(None, os.read, self.master_fd, 1024)
+            except OSError:
                 break
 
-            msg = line.decode("utf-8", errors="replace").rstrip("\n")
+            if not data:
+                break
 
-            await self.pg.execute(
-                """
-                INSERT INTO bioprotect.prioritizr_run_logs (run_id, stream, message)
-                VALUES (%s, %s, %s)
-                """,
-                data=[self.run_id, stream_name, msg],
-            )
+            text = data.decode("utf-8", errors="replace")
+            lines = text.splitlines()
 
-            self.send_response({
-                "status": "Running",
-                "stream": stream_name,
-                "message": msg
-            })
+            for line in lines:
+                line = line.rstrip()
+
+                await self.pg.execute(
+                    """
+                    INSERT INTO bioprotect.prioritizr_run_logs (run_id, stream, message)
+                    VALUES (%s, %s, %s)
+                    """,
+                    data=[self.run_id, "pty", line],
+                )
+
+                self.send_response({
+                    "status": "Running",
+                    "stream": "pty",
+                    "message": line
+                })
 
     def on_close(self):
         if self.proc and self.proc.returncode is None:

@@ -26,6 +26,7 @@ import psutil
 import psycopg2
 import rasterio
 import requests
+from handlers.bioprotect_engage_handler import BioProtectEngageHandler
 import tornado.options
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
@@ -439,7 +440,7 @@ async def finish_feature_import(feature_class_name, name, description, source, u
                 )
                 SELECT %s, %s, %s, now(), sub._area, %s, sub.extent, %s, %s
                 FROM (
-                    SELECT ST_Area(ST_Transform(geom, 3410)) AS _area, box2d(geom) AS extent
+                    SELECT ST_Area(ST_Transform(geom, 4326)) AS _area, box2d(geom) AS extent
                     FROM (
                         SELECT ST_Union(geometry) AS geom FROM bioprotect.{}
                     ) AS sub2
@@ -654,8 +655,9 @@ class AuthHandler(BaseHandler):
         try:
             # comment:
             body = json_decode(self.request.body)
-            username = body.get("user")
-            pwd = body.get("pwd")
+            username = body.get("username")
+            pwd = body.get("password")
+            engage = body.get("engage", False)
 
             if not username or not pwd:
                 self.set_status(400)
@@ -673,6 +675,11 @@ class AuthHandler(BaseHandler):
             if not result:
                 self.set_status(401)
                 self.write({"message": "Unauthorized."})
+                self.send_response({
+                    "status": 401,
+                    "info": "Unauthorized. No user found with the provided username.",
+                    "type": "error"
+                })
                 return
 
             user = result[0]
@@ -682,6 +689,11 @@ class AuthHandler(BaseHandler):
             if not bcrypt.verify(pwd, user["password_hash"]):
                 self.set_status(401)
                 self.write({"message": "Unauthorized."})
+                self.send_response({
+                    "status": 401,
+                    "info": "Unauthorized. No user found with the provided username.",
+                    "type": "error"
+                })
                 return
 
             # Remove expired refresh tokens
@@ -724,34 +736,41 @@ class AuthHandler(BaseHandler):
             user.pop("password_hash")
             user.pop("refresh_tokens")
 
-            # Fetch user's projects
-            project_query = """
-                SELECT p.id, p.name, p.description, p.date_created, up.role
-                FROM bioprotect.projects p
-                JOIN bioprotect.user_projects up
-                ON up.project_id = p.id
-                WHERE up.user_id = %s
-                ORDER BY LOWER(p.name)
-            """
+            if not engage:
+                # Fetch user's projects
+                project_query = """
+                    SELECT p.id, p.name, p.description, p.date_created, up.role
+                    FROM bioprotect.projects p
+                    JOIN bioprotect.user_projects up
+                    ON up.project_id = p.id
+                    WHERE up.user_id = %s
+                    ORDER BY LOWER(p.name)
+                """
 
-            project_result = await pg.execute(project_query, [user['id']], return_format="Dict")
+                project_result = await pg.execute(project_query, [user['id']], return_format="Dict")
 
-            # Select the last accessed project if it exists
-            last_project_id = user.get("last_project")
-            selected_project = next(
-                (p for p in project_result if p["id"] == last_project_id),
-                project_result[0] if project_result else None
-            )
+                # Select the last accessed project if it exists
+                last_project_id = user.get("last_project")
+                selected_project = next(
+                    (p for p in project_result if p["id"] == last_project_id),
+                    project_result[0] if project_result else None
+                )
 
-            # Respond with access token and user data
-            self.send_response({
-                "userId": user['id'],
-                "accessToken": access_token,
-                "userData": user,
-                "project": selected_project,
-                # Send user data along with authentication
-                # "dismissedNotification": notifications
-            })
+                # Respond with access token and user data
+                self.send_response({
+                    "userId": user['id'],
+                    "accessToken": access_token,
+                    "userData": user,
+                    "project": selected_project,
+                    # Send user data along with authentication
+                    # "dismissedNotification": notifications
+                })
+            else:
+                self.send_response({
+                    "userId": user['id'],
+                    "accessToken": access_token,
+                    "userData": user,
+                })
         except ServicesError as e:
             raise_error(self, e.args[0])
 
@@ -2137,6 +2156,7 @@ class Application(tornado.web.Application):
             ("/server/prioritizr", PrioritizrHandler, dict(pg=pg)),
             ("/server/prioritizr-ws", PrioritizrWSHandler, dict(pg=pg,
                                                                 r_script_path="./services/run_prioritzr.R")),
+            ("/server/engage", BioProtectEngageHandler, dict(pg=pg)),
 
             ("/server/updateCosts", updateCosts),
             ("/server/deleteCost", deleteCost),

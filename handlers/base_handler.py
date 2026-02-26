@@ -46,6 +46,8 @@ class BaseHandler(RequestHandler):
         """Writes CORS headers in the response to prevent CORS errors in the client"""
         allowed_origins = [
             "vmudai1.datascienceinstitute.ie",
+            "http://140.203.155.210",
+            "vmai02.datascienceinstitute.ie",
             "localhost",
             "127.0.0.1"
         ]

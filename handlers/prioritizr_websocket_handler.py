@@ -1,8 +1,10 @@
 import asyncio
-import os
 import json
-from services.service_error import ServicesError, raise_error
+import os
+import pty
+
 from handlers.websocket_handler import SocketHandler
+from services.service_error import ServicesError, raise_error
 
 # server/prioritizr?action=run&user=<id>&project_id=<pid>
 
@@ -16,6 +18,7 @@ class PrioritizrWSHandler(SocketHandler):
         super().initialize(pg=pg)
         self.r_script_path = r_script_path
         self.proc = None
+        self.master_fd = None
         self.run_id = None
 
     async def open(self):
@@ -32,7 +35,6 @@ class PrioritizrWSHandler(SocketHandler):
         # === validate ===
         self.validate_args(self.request.arguments, ["user", "project_id"])
         project_id = int(self.get_argument("project_id"))
-
         params_raw = self.get_argument("params", None)
         params = json.loads(params_raw) if params_raw else {}
 
@@ -51,7 +53,8 @@ class PrioritizrWSHandler(SocketHandler):
 
         self.send_response({
             "status": "Queued",
-            "run_id": self.run_id
+            "run_id": self.run_id,
+            "info": f"Prioritizr run {self.run_id} queued. Preparing to start..."
         })
 
         # === prepare DB input ===
@@ -83,24 +86,66 @@ class PrioritizrWSHandler(SocketHandler):
             "run_id": self.run_id
         })
 
-        env = os.environ.copy()
-        cmd = ["Rscript", self.r_script_path, str(self.run_id)]
+        try:
+            env = os.environ.copy()
+            # cmd = ["Rscript", self.r_script_path, str(self.run_id)]
+            cmd = [
+                "Rscript", "--vanilla", "--slave",
+                self.r_script_path,
+                str(self.run_id)
+            ]
 
-        self.proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
+            # --------------------------
+            #  START R WITH A PSEUDO-TTY
+            # --------------------------
+            master_fd, slave_fd = pty.openpty()
+            self.master_fd = master_fd
 
-        await asyncio.gather(
-            self._stream_output("stdout", self.proc.stdout),
-            self._stream_output("stderr", self.proc.stderr),
-        )
+            self.proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                env=env,
+                start_new_session=True,  # important
+            )
 
-        rc = await self.proc.wait()
+            # Close slave FD in parent
+            os.close(slave_fd)
 
-        if rc != 0:
+            # Start streaming PTY output
+            await self._read_pty_until_exit()
+            rc = await self.proc.wait()
+            await self._drain_pty()
+
+            if rc != 0:
+                await self.pg.execute(
+                    """
+                    UPDATE bioprotect.prioritizr_runs
+                    SET status='failed', error=%s
+                    WHERE id=%s
+                    """,
+                    data=[f"R exited with code {rc}", self.run_id],
+                )
+                self.close({
+                    "status": "Failed",
+                    "run_id": self.run_id,
+                    "error": f"R exited with code {rc}",
+                    "info": f"R exited with code {rc}",
+                })
+                return
+
+            await self.pg.execute(
+                "UPDATE bioprotect.prioritizr_runs SET status='done' WHERE id=%s",
+                data=[self.run_id],
+            )
+
+            self.close({
+                "status": "Finished",
+                "run_id": self.run_id,
+                "info": "Prioritizr run completed"
+            })
+        except Exception as e:
             await self.pg.execute(
                 """
                 UPDATE bioprotect.prioritizr_runs
@@ -112,46 +157,66 @@ class PrioritizrWSHandler(SocketHandler):
             self.close({
                 "status": "Failed",
                 "run_id": self.run_id,
-                "error": f"R exited with code {rc}"
+                "error": f"R exited with code {rc}",
+                "info": f"R exited with code {rc}",
             })
             return
 
-        await self.pg.execute(
-            "UPDATE bioprotect.prioritizr_runs SET status='done' WHERE id=%s",
-            data=[self.run_id],
-        )
-
-        self.close({
-            "status": "Finished",
-            "run_id": self.run_id,
-            "info": "Prioritizr run completed"
-        })
-
-    async def _stream_output(self, stream_name, stream):
+    async def _read_pty_until_exit(self):
+        """Non-blocking read loop: stream PTY output while process is alive."""
+        loop = asyncio.get_event_loop()
         while True:
-            line = await stream.readline()
-            if not line:
+            if self.proc.returncode is not None:
                 break
+            try:
+                data = await loop.run_in_executor(None, os.read, self.master_fd, 1024)
+            except OSError:
+                break
+            if data:
+                await self._ingest_text(data.decode("utf-8", errors="replace"))
+            else:
+                await asyncio.sleep(0.02)
 
-            msg = line.decode("utf-8", errors="replace").rstrip("\n")
+    async def _drain_pty(self):
+        """After process exit, drain any remaining bytes in the PTY buffer."""
+        loop = asyncio.get_event_loop()
+        while True:
+            try:
+                data = await loop.run_in_executor(None, os.read, self.master_fd, 1024)
+            except OSError:
+                break
+            if not data:
+                break
+            await self._ingest_text(data.decode("utf-8", errors="replace"))
 
+    async def _ingest_text(self, text: str):
+        # PTYs may split arbitrarily; splitlines keeps behaviour sane
+        for line in text.splitlines():
+            line = line.rstrip("\r\n")
+            # Persist to DB
             await self.pg.execute(
                 """
                 INSERT INTO bioprotect.prioritizr_run_logs (run_id, stream, message)
                 VALUES (%s, %s, %s)
                 """,
-                data=[self.run_id, stream_name, msg],
+                data=[self.run_id, "pty", line],
             )
-
+            # Push over websocket
             self.send_response({
                 "status": "Running",
-                "stream": stream_name,
-                "message": msg
+                "stream": "pty",
+                "message": line
             })
 
     def on_close(self):
+        # Kill child process group; systemd KillMode=control-group helps too
         if self.proc and self.proc.returncode is None:
             try:
                 self.proc.kill()
+            except Exception:
+                pass
+        if self.master_fd:
+            try:
+                os.close(self.master_fd)
             except Exception:
                 pass

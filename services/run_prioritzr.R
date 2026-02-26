@@ -10,6 +10,21 @@
 #  - write results into prioritizr_run_results
 #  - Also: use cat(...); flush.console() so Tornado can stream lines.
 
+# debugging
+cat("R version: ", R.version.string, "\n")
+flush.console()
+cat("LibPaths: ", paste(.libPaths(), collapse = "|"), "\n")
+flush.console()
+cat("Working Directory: ", getwd(), "\n")
+flush.console()
+
+options(echo = TRUE)
+options(error = function() {
+    traceback(2)
+    flush.console()
+})
+flush.console()
+
 rm(list = ls())
 
 suppressPackageStartupMessages({
@@ -30,6 +45,14 @@ logline <- function(...) {
     if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
 }
 
+
+cat("Loaded libraries...\n")
+flush.console()
+library(sf)
+library(prioritizr)
+library(RPostgres)
+cat("All libraries loaded.\n")
+flush.console()
 
 # ---- 1) Read run_id ----------
 args <- commandArgs(trailingOnly = TRUE)

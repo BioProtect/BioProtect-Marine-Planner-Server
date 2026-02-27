@@ -17,3 +17,12 @@ def restart_martin():
         print({"ok": False, "stdout": e.stdout,
               "stderr": e.stderr, "code": e.returncode})
         return {"ok": False, "stdout": e.stdout, "stderr": e.stderr, "code": e.returncode}
+
+
+def restart_martin():
+    cmd = ["sudo", "/bin/systemctl", "restart", "martin"]
+    try:
+        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return {"ok": True, "stdout": out.stdout}
+    except subprocess.CalledProcessError as e:
+        return {"ok": False, "stdout": e.stdout, "stderr": e.stderr, "code": e.returncode}

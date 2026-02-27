@@ -1,9 +1,13 @@
 import subprocess
+import os
 
 
 def restart_martin():
-    # 'reload' will invoke ExecReload (TERM => restart behavior); 'restart' is fine too.
-    # NOTE: no --user, no sudo
+    uid = os.getuid()  # must be the user that owns the user service (carlos)
+    env = os.environ.copy()
+    env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
+    env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{uid}/bus"
+
     cmd = ["systemctl", "--user", "restart", "martin.service"]
 
     print('cmd: ', cmd)
@@ -14,6 +18,4 @@ def restart_martin():
 
         return {"ok": True, "stdout": out.stdout}
     except subprocess.CalledProcessError as e:
-        print({"ok": False, "stdout": e.stdout,
-              "stderr": e.stderr, "code": e.returncode})
         return {"ok": False, "stdout": e.stdout, "stderr": e.stderr, "code": e.returncode}

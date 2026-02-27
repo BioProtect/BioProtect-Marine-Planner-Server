@@ -11,6 +11,8 @@ from psycopg2 import sql
 from handlers.base_handler import BaseHandler
 from services.service_error import ServicesError, raise_error
 from classes.postgis_class import get_pg
+from services.martin_service import restart_martin
+
 
 MAPBOX_USER = "craicerjack"  # keep consistent with app.py
 
@@ -175,6 +177,9 @@ class BioProtectEngageHandler(BaseHandler):
             )
 
             unique_id = meta_rows[0]["unique_id"] if meta_rows else None
+
+            self.send_response({'info': "🔄 Reloading Martin..."})
+            restart_martin()
 
             self.send_response(
                 {

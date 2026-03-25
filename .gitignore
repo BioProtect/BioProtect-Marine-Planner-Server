@@ -25,6 +25,7 @@ dump.sql
 /data/uploaded_rasters/*
 /data/dunmore*
 /data/tralee*
+/data/*
 
 
 

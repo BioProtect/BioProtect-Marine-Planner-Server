@@ -191,17 +191,22 @@ class FeatureHandler(BaseHandler):
         })
 
     async def get_feature_planning_units(self):
-        """Gets the planning unit IDs for a feature."""
+        """Gets the planning unit h3_index values where a feature occurs."""
 
-        self.validate_args(self.request.arguments, ['user', 'project', 'id'])
-        # unique_ids = self.get_argument("oid")
-        ids = self.get_argument("id")
+        self.validate_args(self.request.arguments, ['project_id', 'id'])
+        project_id = int(self.get_argument("project_id"))
+        feature_id = int(self.get_argument("id"))
 
-        file_name = os.path.join(self.input_folder,
-                                 self.projectData["files"]["PUVSPRNAME"])
-        df = pd.read_csv(file_name, sep=None, engine='python') if os.path.exists(
-            file_name) else pd.DataFrame()
-        puids = df.loc[df['species'] == int(ids)]['pu'].unique().tolist()
+        rows = await self.pg.execute(
+            """
+            SELECT DISTINCT h3_index
+            FROM bioprotect.pu_feature_amounts
+            WHERE project_id = %s AND feature_unique_id = %s
+            """,
+            data=[project_id, feature_id],
+            return_format="Array"
+        )
+        puids = [row["h3_index"] for row in rows] if rows else []
 
         self.send_response({"data": puids})
 

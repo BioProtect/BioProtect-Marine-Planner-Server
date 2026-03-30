@@ -47,6 +47,7 @@ from handlers.user_handler import UserHandler
 from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
+from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
 from mapbox import Uploader
 from osgeo import ogr
 from passlib.hash import bcrypt
@@ -2190,10 +2191,14 @@ class Application(tornado.web.Application):
             ("/server/testTornado", testTornado),
             ("/server/restart-martin", RestartMartin),
 
-            ("/server/uploadRaster", UploadRasterHandler),
-            ("/server/saveRaster", SaveRasterHandler),
+            ("/server/uploadRaster", UploadRasterHandler),       # legacy
+            ("/server/saveRaster", SaveRasterHandler),             # legacy
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
-            ("/server/runCumumlativeImpact", CumulativeImpactHandler),
+            ("/server/runCumumlativeImpact", CumulativeImpactHandler),  # legacy
+
+            # New vector-based activity upload and cumulative impact
+            ("/server/uploadActivity", UploadActivityHandler, dict(pg=pg)),
+            ("/server/runCumulativeImpact", RunCumulativeImpactHandler, dict(pg=pg)),
             ("/server/uploadFile", uploadFile),
 
 

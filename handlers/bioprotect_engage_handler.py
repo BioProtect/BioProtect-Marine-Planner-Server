@@ -178,7 +178,6 @@ class BioProtectEngageHandler(BaseHandler):
 
             unique_id = meta_rows[0]["unique_id"] if meta_rows else None
 
-            self.send_response({'info': "🔄 Reloading Martin..."})
             restart_martin()
 
             self.send_response(

@@ -12,6 +12,7 @@ from handlers.base_handler import BaseHandler
 from services.service_error import ServicesError, raise_error
 from classes.postgis_class import get_pg
 from services.martin_service import restart_martin
+from handlers.notification_handler import broadcast
 
 
 MAPBOX_USER = "craicerjack"  # keep consistent with app.py
@@ -179,6 +180,11 @@ class BioProtectEngageHandler(BaseHandler):
             unique_id = meta_rows[0]["unique_id"] if meta_rows else None
 
             restart_martin()
+
+            broadcast("feature-created", {
+                "featureClassName": feature_class_name,
+                "metadataId": unique_id,
+            })
 
             self.send_response(
                 {

@@ -48,6 +48,7 @@ from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
+from handlers.notification_handler import NotificationHandler
 from mapbox import Uploader
 from osgeo import ogr
 from passlib.hash import bcrypt
@@ -2158,6 +2159,7 @@ class Application(tornado.web.Application):
             ("/server/prioritizr-ws", PrioritizrWSHandler, dict(pg=pg,
                                                                 r_script_path="./services/run_prioritzr.R")),
             ("/server/engage", BioProtectEngageHandler, dict(pg=pg)),
+            ("/server/notifications", NotificationHandler),
 
             ("/server/updateCosts", updateCosts),
             ("/server/deleteCost", deleteCost),

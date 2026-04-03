@@ -53,9 +53,8 @@ class UploadActivityHandler(SocketHandler):
             await super().open({'info': "Uploading activity..."})
         except ServicesError as e:
             print('ServicesError as e: ', e)
-            pass
+            return
 
-    async def on_message(self, message):
         try:
             self.validate_args(self.request.arguments,
                                ['activity', 'filename', 'description'])
@@ -289,9 +288,9 @@ class UploadActivityHandler(SocketHandler):
         query = sql.SQL("""
             INSERT INTO bioprotect.metadata_activities
                 (creation_date, description, source, created_by,
-                 filename, activity, activity_name, upload_type, extent)
+                 filename, activity, activity_name, extent)
             SELECT
-                now(), %s, %s, %s, %s, %s, %s, %s,
+                now(), %s, %s, %s, %s, %s, %s,
                 Box2D(ST_Extent(geometry))
             FROM bioprotect.{activity_table}
             RETURNING id;
@@ -305,8 +304,7 @@ class UploadActivityHandler(SocketHandler):
                 self.get_current_user(),
                 filename.lower(),
                 activity,
-                activity_table,
-                upload_type
+                activity_table
             ],
             return_format="Array"
         )
@@ -344,9 +342,8 @@ class RunCumulativeImpactHandler(SocketHandler):
             })
         except ServicesError as e:
             print('ServicesError as e: ', e)
-            pass
+            return
 
-    async def on_message(self, message):
         try:
             self.validate_args(self.request.arguments,
                                ['project_id', 'activity_ids', 'profile_name'])

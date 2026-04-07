@@ -355,6 +355,37 @@ class RunCumulativeImpactHandler(SocketHandler):
             profile_name = self.get_argument('profile_name')
             description = self.get_argument('description', '')
 
+            # Step 0: Check features have been preprocessed
+            feature_check = await self.pg.execute(
+                """
+                SELECT COUNT(DISTINCT pfa.feature_unique_id) AS preprocessed_count,
+                       (SELECT COUNT(*) FROM bioprotect.project_features
+                        WHERE project_id = %s) AS total_features
+                FROM bioprotect.pu_feature_amounts pfa
+                WHERE pfa.project_id = %s
+                """,
+                data=[project_id, project_id],
+                return_format="Array"
+            )
+
+            preprocessed = feature_check[0]['preprocessed_count']
+            total = feature_check[0]['total_features']
+
+            if preprocessed == 0:
+                raise ServicesError(
+                    "No features have been preprocessed for this project. "
+                    "Please preprocess at least one feature before running "
+                    "the cumulative impact function."
+                )
+
+            if preprocessed < total:
+                self.send_response({
+                    'status': 'Preprocessing',
+                    'info': f'Warning: only {preprocessed} of {total} features '
+                            f'have been preprocessed. Unprocessed features will '
+                            f'be excluded from the impact calculation.'
+                })
+
             # Step 1: Create/refresh pressures for all selected activities
             self.send_response({
                 'status': 'Preprocessing',

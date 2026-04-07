@@ -12,7 +12,7 @@ from shapely.geometry import Polygon
 from sqlalchemy import create_engine, text
 
 
-class PlanningGridWebSocketHandler(SocketHandler):
+class PlanningGridWSHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 

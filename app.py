@@ -39,8 +39,7 @@ from functions.utils import (create_cost_from_impact, cumul_impact,
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
 from handlers.planning_unit_handler import PlanningUnitHandler
-from handlers.planning_unit_websocket_handler import \
-    PlanningGridWebSocketHandler
+from handlers.planning_unit_websocket_handler import PlanningGridWSHandler
 from handlers.preprocess_feature_websocket_handler import PreprocessFeature
 from handlers.project_handler import ProjectHandler
 from handlers.user_handler import UserHandler
@@ -48,6 +47,9 @@ from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
+from handlers.cost_handler import (UpdateCostsHandler, DeleteCostHandler,
+                                   SetActiveCostProfileHandler,
+                                   CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
 from mapbox import Uploader
 from osgeo import ogr
@@ -81,7 +83,7 @@ PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
                      "getProjectsWithGrids", "getAtlasLayers"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile", "getMarxanLog", "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
+    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
     "User": ["testRoleAuthorisation", "clearRunLogs", "shutdown"],
     "Admin": []
 }
@@ -795,200 +797,6 @@ class getCountries(BaseHandler):
             content = await pg.execute("SELECT DISTINCT (t.name_iso31), t.iso3, CASE WHEN m.iso3 IS NULL THEN False ELSE True END has_marine FROM bioprotect.gaul_2015_simplified_1km t LEFT JOIN bioprotect.eez_simplified_1km m on t.iso3 = m.iso3 WHERE t.iso3 NOT LIKE '%|%' ORDER BY t.name_iso31;", return_format="Dict")
             self.send_response({'records': content})
         except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class updateCosts(BaseHandler):
-    """REST HTTP handler. Updates a projects costs in the PUNAME file using the named cost profile. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        costname (string): The name of the cost profile to use (i.e. the *.cost file).
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    async def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, [
-                'user', 'project', 'costname'])
-            # update the costs
-            costname = self.get_argument("costname")
-            cost_file_path = os.path.join(
-                self.input_folder, f"{costname}.cost")
-            puname_file_path = os.path.join(
-                self.input_folder, self.projectData["files"]["PUNAME"])
-
-            # Load the PUNAME file into a DataFrame
-            puname_df = file_to_df(puname_file_path)
-
-            if costname == UNIFORM_COST_NAME:
-                # Apply a uniform cost of 1 to all entries
-                puname_df['cost'] = 1
-            else:
-                # Verify the existence of the specified cost file
-                if not os.path.exists(cost_file_path):
-                    raise ServicesError(
-                        f"The cost file '{costname}' does not exist.")
-                # Load and merge cost data with PUNAME data
-                cost_df = pd.read_csv(
-                    cost_file_path, sep=None, engine='python')
-                puname_df = cost_df.join(puname_df[['status']])
-
-            # Update the input.dat file with the selected costname
-            input_dat_path = os.path.join(self.project_folder, "input.dat")
-            update_file_parameters(input_dat_path, {'COSTS': costname})
-
-            # Save the updated PUNAME data
-            await write_csv(self, "PUNAME", puname_df)
-
-            # set the response
-            self.send_response({"info": 'Costs updated'})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class deleteCost(BaseHandler):
-    """REST HTTP handler. Deletes a cost profile. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        costname (string): The name of the cost profile to delete (i.e. the *.cost file).
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, [
-                'user', 'project', 'costname'])
-            # delete the cost
-            costname = self.get_argument("costname")
-            cost_file_path = os.path.join(
-                self.input_folder, f"{costname}.cost")
-
-            # Check if the cost file exists, and delete it if it does
-            if not os.path.exists(cost_file_path):
-                raise ServicesError(
-                    f"The cost file '{costname}' does not exist.")
-
-            os.remove(cost_file_path)
-            # set the response
-            self.send_response({"info": 'Cost deleted'})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class getMarxanLog(BaseHandler):
-    """REST HTTP handler. Gets the Marxan log for the project. Currently not used. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "log": The contents of the Marxan log
-        }
-    """
-
-    def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['user', 'project'])
-            # get the log
-            get_bp_log(self)
-            # set the response
-            self.send_response({"log": self.bpLog})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class GetSolution(BaseHandler):
-    """
-    REST HTTP handler to retrieve an individual solution.
-
-    Required Arguments:
-        user (str): The name of the user.
-        project (str): The name of the project.
-        solution (str): The solution ID to retrieve.
-
-    Returns:
-        dict: Contains:
-            - "mv": List of data from the Marxan missing values file for the solution (output_mv*). Not returned for clumping projects.
-            - "user": Name of the user.
-            - "project": Name of the project.
-            - "solution": The solution data retrieved.
-        If an error occurs, the response includes an 'error' key with the error message.
-    """
-
-    def get(self):
-        try:
-            # Validate input arguments
-            validate_args(self.request.arguments, [
-                'user', 'project', 'solution'])
-            user = self.get_argument("user")
-            project = self.get_argument("project")
-            solution_id = self.get_argument("solution")
-
-            try:
-                # Retrieve the solution file name
-                file_name = get_output_file(
-                    os.path.join(self.output_folder,
-                                 f"{SOLUTION_FILE_PREFIX}{int(solution_id):05d}")
-                )
-            except ServicesError as e:
-                # Handle missing solution (likely a clumping project)
-                self.solution = []
-                if user != "_clumping":
-                    raise ServicesError(
-                        f"Solution '{solution_id}' in project '{project}' no longer exists.") from e
-            else:
-                if os.path.exists(file_name):
-                    # Load and normalize solution data
-                    df = file_to_df(file_name)
-                    self.solution = normalize_dataframe(
-                        df, df.columns[1], df.columns[0])
-
-            # Handle missing values file for non-clumping projects
-            if user != '_clumping':
-                mv_file_name = get_output_file(
-                    os.path.join(self.output_folder,
-                                 f"{MISSING_VALUES_FILE_PREFIX}{int(solution_id):05d}")
-                )
-                solution_df = file_to_df(mv_file_name)
-                self.missingValues = solution_df.to_dict(orient="split")[
-                    "data"]
-
-                # Send response with solution and missing values
-                self.send_response({
-                    'solution': self.solution,
-                    'mv': self.missingValues,
-                    'user': user,
-                    'project': project
-                })
-            else:
-                # Send response for clumping projects
-                self.send_response({
-                    'solution': self.solution,
-                    'user': user,
-                    'project': project
-                })
-        except ServicesError as e:
-            # Handle and raise errors
             raise_error(self, e.args[0])
 
 
@@ -1791,143 +1599,6 @@ class GetUploadedActivitiesHandler(BaseHandler):
             print(self, e.args[0])
 
 
-class UploadRasterHandler(BaseHandler):
-    async def post(self):
-        try:
-            log("Uploading Raster..... ", Fore.YELLOW)
-            validate_args(self.request.arguments, [
-                'activity', 'filename'])
-            activity = self.get_argument('activity')
-            filename = self.get_argument('filename').lower()
-            uploaded_rast = self.request.files['value'][0].body
-
-            pad_data = await pg.execute(
-                """
-                SELECT activitytitle, pressuretitle, rppscore
-                FROM bioprotect.pad
-                WHERE activitytitle = %s
-                """,
-                data=[activity],
-                return_format="Array"
-            )
-
-            log('reprojecting and normalising uploaded raster....', Fore.YELLOW)
-            with MemoryFile(uploaded_rast) as memfile:
-                ds = memfile.open()
-                uploaded = reproject_and_normalise_upload(
-                    raster_name=filename,
-                    data=ds,
-                    reprojection_crs=project_paths.gis_config["jose_crs_str"],
-                    wgs84=project_paths.gis_config["wgs84_str"],
-                )
-
-            log('Creating pressures....', Fore.YELLOW)
-
-            with rasterio.open(uploaded, 'r+') as src:
-                meta = src.meta
-                band = np.ma.masked_values(src.read(1, masked=True), 0)
-                for pressure in pad_data:
-                    new_band = band.copy()
-                    update_band = new_band*pressure["rppscore"]
-                    title = f"data/pressures/{replace_chars(pressure['pressuretitle'])}.tif"
-
-                    with rasterio.open(title, 'w', **meta) as dst:
-                        dst.write(update_band, 1)
-
-            self.send_response({
-                'info': f"File {filename} uploaded and pressures created",
-                'file': filename
-            })
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-        except Exception as e:
-            import traceback
-            print("Unexpected error:", str(e))
-            traceback.print_exc()
-            raise_error(self, "Unhandled exception: " + str(e))
-
-
-class SaveRasterHandler(SocketHandler):
-    async def initialize(self):
-        return await super().initialize()
-
-    async def open(self):
-        try:
-            await super().open({'info': "Uploading raster to..."})
-        except ServicesError as e:  # authentication/authorisation error
-            print('ServicesError as e: ', e)
-            pass
-        else:
-            log("Saving Raster..... ", Fore.YELLOW)
-            validate_args(self.request.arguments,
-                          ['activity', 'filename', 'description'])
-            activity = self.get_argument('activity')
-            filename = self.get_argument('filename').lower()
-            description = self.get_argument('description')
-            raster_loc = 'data/tmp/' + filename
-            activity_name = get_unique_feature_name("activity_")
-            connection = db_config.psql_str()
-            log(f"ACTIVITY:{activity} - FILENAME:{filename} ======= RasterLocation: {raster_loc} - connection: {connection}")
-
-            try:
-                assert os.path.isfile(
-                    raster_loc), f"Raster file not found: {raster_loc}"
-                # check=True ensures an error is raised if the command fails
-                # subprocess.run([
-                #     "raster2pgsql", "-s", "100026", "-d", "-I", "-C", "-F",
-                #     raster_loc, f"bioprotect.{activity_name}", connection], check=True)
-
-                raster2pgsql_cmd = [
-                    "raster2pgsql", "-s", "100026", "-d", "-I", "-C", "-F",
-                    raster_loc, f"bioprotect.{activity_name}"
-                ]
-
-                psql_cmd = ["psql", db_config.build_connection_string()]
-
-                # Pipe raster2pgsql into psql
-                raster_proc = subprocess.Popen(
-                    raster2pgsql_cmd, stdout=subprocess.PIPE)
-                subprocess.run(psql_cmd, stdin=raster_proc.stdout, check=True)
-                raster_proc.stdout.close()
-
-            except TypeError as e:
-                print('e: ', e)
-                self.close({
-                    'error': e.args[0],
-                    'info': 'Error saving raster to database....'
-                })
-            data_array = None
-            try:
-                query = sql.SQL("""
-                    INSERT INTO bioprotect.metadata_activities
-                    (creation_date, description, source, created_by,
-                     filename, activity, activity_name, extent)
-                    SELECT
-                        now(), %s, %s, %s, %s, %s, %s, rast.extent
-                    FROM
-                        (SELECT Box2D(ST_Envelope(rast)) extent
-                    FROM
-                        (SELECT rid, rast FROM bioprotect.{}) as rast2 ) as rast
-                    RETURNING id""").format(sql.Identifier(activity_name))
-
-                data_array = await pg.execute(query, data=[
-                    description, "raster", "cartig", filename.lower(), activity, activity_name
-                ], return_format="Array")
-                print('data_array: ', data_array)
-
-                self.close(close_message={
-                    'info': "Raster uploaded and saved to database",
-                    'data_array': data_array
-                })
-
-            except (ServicesError) as e:
-                print('e: ', e)
-                await self.close(close_message={
-                    'error': e.args[0],
-                    'info': 'Error uploading to database....'
-                })
-
-
 def setup_sens_matrix():
     print('Setting up sensitivity matrix....')
     habitat_list = [item['label']
@@ -1975,120 +1646,6 @@ async def _finishImportingImpact(feature_class_name, activity, description, user
         if id is not None:
             return id[0]
         return
-
-
-class CumulativeImpactHandler(SocketHandler):
-    async def open(self):
-        try:
-            await super().open({'info': "Running Cumulative Impact Function..."})
-        except ServicesError as e:  # authentication/authorisation error
-            print('ServicesError as e: ', e)
-            pass
-        else:
-            # validate the input arguments
-            id = None
-            nodata_val = 0
-            validate_args(self.request.arguments, ['selectedIds'])
-            activityIds = self.get_argument('selectedIds')
-            print('activityIds: ', activityIds)
-            sql = "select activity, description from bioprotect.metadata_activities where id = %s ;" % activityIds
-            records = await pg.execute(sql, return_format="Array")
-            records = records[0]
-            activity = records[0]
-            description = records[1]
-            connect_str = db_config.psql_str()
-            feature_class_name = get_unique_feature_name("impact_")
-            self.send_response(
-                {'Preprocessing': "Building sensitivity matrix..."})
-            stressors_list = get_tif_list('/data/pressures', 'tif')
-            ecosys_list = get_tif_list('/data/rasters/ecosystem', 'tif')
-            sens_mat = setup_sens_matrix()
-            self.send_response(
-                {'Preprocessing': "Running Cumulative impact function..."})
-            print({'Preprocessing': "Running Cumulative impact function..."})
-
-            impact, meta = cumul_impact(ecosys_list,
-                                        sens_mat,
-                                        stressors_list,
-                                        nodata_val)
-
-            self.send_response({'Preprocessing': "Reprojecting rasters..."})
-            print({'Preprocessing': "Reprojecting rasters..."})
-            reproject_raster_to_all_habs(tmp_file='./data/tmp/impact2.tif',
-                                         data=impact,
-                                         meta=meta,
-                                         out_file='./data/tmp/impact.tif')
-            impact_file = 'data/tmp/impact.tif'
-            cropped_impact = 'data/uploaded_rasters/'+feature_class_name+'.tif'
-
-            reproject_raster(input_path='data/tmp/impact.tif',
-                             output_folder=impact_file,
-                             reference_raster='data/rasters/all_habitats.tif')
-
-            wgs84_rast = reproject_raster(file_path=impact_file,
-                                          output_folder='data/uploaded_rasters/')
-            try:
-                self.send_response(
-                    {'info': 'Saving cumulative impact raster to database...'})
-                cmds = [
-                    "raster2pgsql", "-s", "4326", "-c", "-I", "-C", "-F",
-                    wgs84_rast, f"bioprotect.{feature_class_name}", connect_str
-                ]
-                subprocess.run(cmds, check=True)
-            except TypeError as e:
-                self.send_response(
-                    {'error': 'Unable to save Cumulative Impact raster to database...'})
-                print(
-                    "Pass in the location of the file as a string, not anything else....")
-
-            try:
-                self.send_response(
-                    {'info': 'Saving to meta data table and uploading to mapbox...'})
-                id = await _finishImportingImpact(feature_class_name,
-                                                  activity.replace(
-                                                      ' ', '_').lower(),
-                                                  description,
-                                                  self.get_current_user())
-                self.close(close_message={
-                    'info': "Cumulative Impact run and raster uploaded to mapbox",
-                    # 'uploadId': uploadId
-                })
-
-            except (ServicesError) as e:
-                print('e: ', e)
-                self.close(close_message={
-                    'error': e.args[0],
-                    'info': 'Failed to run CI function....'
-                })
-
-
-class CreateCostsFromImpactHandler(SocketHandler):
-    async def open(self):
-        print('CreateCostsFromImpactHandler: ')
-        try:
-            await super().open({'info': "Creating Costs from Cumulative Impact..."})
-        except ServicesError as e:  # authentication/authorisation error
-            print('ServicesError as e: ', e)
-            pass
-        else:
-            id = None
-            nodata_val = 0
-            validate_args(self.request.arguments,
-                          ['user', 'project', 'pu_filename',
-                           'impact_filename', 'impact_type'])
-            sql = "select filename from bioprotect.%s;" % self.get_argument(
-                'impact_filename')
-            records = await pg.execute(sql, return_format="Array")
-            impact_filename = records[0][0]
-            file_loc = "data/uploaded_rasters/" + impact_filename
-            create_cost_from_impact(self.get_argument('user'),
-                                    self.get_argument('project'),
-                                    self.get_argument('pu_filename'),
-                                    file_loc,
-                                    self.get_argument('impact_type'))
-            self.close({
-                'info': "New cost file created from Cumulative Impact",
-            })
 
 
 def add_shapefile_to_db(filename, gridname, tablename):
@@ -2161,9 +1718,10 @@ class Application(tornado.web.Application):
             ("/server/engage", BioProtectEngageHandler, dict(pg=pg)),
             ("/server/notifications", NotificationHandler),
 
-            ("/server/updateCosts", updateCosts),
-            ("/server/deleteCost", deleteCost),
-            ("/server/createCostsFromImpact", CreateCostsFromImpactHandler),
+            ("/server/updateCosts", UpdateCostsHandler),
+            ("/server/deleteCost", DeleteCostHandler),
+            ("/server/setActiveCostProfile", SetActiveCostProfileHandler, dict(pg=pg)),
+            ("/server/createCostsFromImpact", CreateCostsFromImpactHandler, dict(pg=pg)),
 
             ("/server/createFeaturePreprocessingFileFromImport",
              createFeaturePreprocessingFileFromImport),
@@ -2172,7 +1730,7 @@ class Application(tornado.web.Application):
             ("/server/deleteShapefile", deleteShapefile),
 
             ("/server/createPlanningUnitGrid",
-             PlanningGridWebSocketHandler, dict(pg=pg)),  # websocket
+             PlanningGridWSHandler, dict(pg=pg)),  # websocket
 
             ("/server/getServerData", getServerData),
             ("/server/getAtlasLayers", GetAtlasLayersHandler),
@@ -2184,8 +1742,6 @@ class Application(tornado.web.Application):
             ("/server/unzipShapefile", unzipShapefile),
             ("/server/getShapefileFieldnames", getShapefileFieldnames),
 
-            ("/server/getMarxanLog", getMarxanLog),
-            ("/server/getSolution", GetSolution),
             ("/server/preprocessFeature", PreprocessFeature, dict(pg=pg)),
 
             ("/server/testRoleAuthorisation", testRoleAuthorisation),
@@ -2193,12 +1749,7 @@ class Application(tornado.web.Application):
             ("/server/testTornado", testTornado),
             ("/server/restart-martin", RestartMartin),
 
-            ("/server/uploadRaster", UploadRasterHandler),       # legacy
-            ("/server/saveRaster", SaveRasterHandler),             # legacy
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
-            ("/server/runCumumlativeImpact", CumulativeImpactHandler),  # legacy
-
-            # New vector-based activity upload and cumulative impact
             ("/server/uploadActivity", UploadActivityHandler, dict(pg=pg)),
             ("/server/runCumulativeImpact", RunCumulativeImpactHandler, dict(pg=pg)),
             ("/server/uploadFile", uploadFile),

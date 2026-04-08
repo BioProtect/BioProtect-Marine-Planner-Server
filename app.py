@@ -1719,7 +1719,7 @@ class Application(tornado.web.Application):
             ("/server/notifications", NotificationHandler),
 
             ("/server/updateCosts", UpdateCostsHandler),
-            ("/server/deleteCost", DeleteCostHandler),
+            ("/server/deleteCost", DeleteCostHandler, dict(pg=pg)),
             ("/server/setActiveCostProfile", SetActiveCostProfileHandler, dict(pg=pg)),
             ("/server/createCostsFromImpact", CreateCostsFromImpactHandler, dict(pg=pg)),
 

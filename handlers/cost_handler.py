@@ -77,30 +77,44 @@ class UpdateCostsHandler(BaseHandler):
 
 
 class DeleteCostHandler(BaseHandler):
-    """Deletes a cost profile file.
+    """Deletes a cost profile and its associated values from the database.
 
     Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        costname (string): The name of the cost profile to delete (*.cost file).
+        cost_profile_id (int): The cost profile ID to delete.
     Returns:
-        {"info": "Cost deleted"}
+        {"info": "Cost profile deleted"}
     """
 
-    def get(self):
+    async def get(self):
         try:
-            validate_args(self.request.arguments,
-                          ['user', 'project', 'costname'])
-            costname = self.get_argument("costname")
-            cost_file_path = os.path.join(
-                self.input_folder, f"{costname}.cost")
+            validate_args(self.request.arguments, ['cost_profile_id'])
+            cost_profile_id = int(self.get_argument("cost_profile_id"))
 
-            if not os.path.exists(cost_file_path):
+            # Check if this profile is the active profile on any project
+            active_check = await self.pg.execute(
+                "SELECT id, name FROM bioprotect.projects "
+                "WHERE active_cost_profile_id = %s;",
+                data=[cost_profile_id],
+                return_format="Array"
+            )
+            if active_check:
+                project_name = active_check[0].get("name", "a project")
                 raise ServicesError(
-                    f"The cost file '{costname}' does not exist.")
+                    f"Cannot delete: this cost profile is currently "
+                    f"active on project '{project_name}'.")
 
-            os.remove(cost_file_path)
-            self.send_response({"info": 'Cost deleted'})
+            # Delete (cost_profile_values cascade automatically)
+            result = await self.pg.execute(
+                "DELETE FROM bioprotect.cost_profiles WHERE id = %s "
+                "RETURNING id;",
+                data=[cost_profile_id],
+                return_format="Array"
+            )
+            if not result:
+                raise ServicesError(
+                    f"Cost profile {cost_profile_id} not found.")
+
+            self.send_response({"info": "Cost profile deleted"})
         except ServicesError as e:
             raise_error(self, e.args[0])
 

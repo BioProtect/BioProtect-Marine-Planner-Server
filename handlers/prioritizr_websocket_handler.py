@@ -69,10 +69,23 @@ class PrioritizrWSHandler(SocketHandler):
             "run_id": self.run_id
         })
 
-        await self.pg.execute(
-            "SELECT bioprotect.prepare_prioritizr_input(%s)",
-            data=[self.run_id],
-        )
+        try:
+            await self.pg.execute(
+                "SELECT bioprotect.prepare_prioritizr_input(%s)",
+                data=[self.run_id],
+            )
+        except Exception as e:
+            await self.pg.execute(
+                "UPDATE bioprotect.prioritizr_runs SET status='failed', error=%s WHERE id=%s",
+                data=[str(e), self.run_id],
+            )
+            self.close({
+                "status": "Failed",
+                "run_id": self.run_id,
+                "error": str(e),
+                "info": f"Failed to prepare input: {e}",
+            })
+            return
 
         # === start R ===
         await self.pg.execute(

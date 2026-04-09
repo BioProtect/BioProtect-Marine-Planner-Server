@@ -335,6 +335,18 @@ class ProjectHandler(BaseHandler):
             [project_id, planning_unit_id]
         )
 
+        # Precompute boundary edges if not already done for this grid
+        existing_edges = await self.pg.execute(
+            "SELECT 1 FROM bioprotect.grid_boundary_edges WHERE planning_unit_id = %s LIMIT 1",
+            data=[planning_unit_id],
+            return_format="Array"
+        )
+        if not existing_edges:
+            await self.pg.execute(
+                "SELECT bioprotect.populate_grid_boundary_edges(%s)",
+                data=[planning_unit_id]
+            )
+
         # Normalise features incase its a list or a csv str
         if isinstance(interest_features, str):
             feature_ids = [int(x)
@@ -750,11 +762,18 @@ class ProjectHandler(BaseHandler):
         """
         Updates project feature links and settings in DB.
         Replaces old updateSpecies/spec.dat functionality.
+        Accepts either JSON body or FormData.
         """
+        data = {}
         try:
             data = json.loads(self.request.body or "{}")
         except Exception:
-            data = {}
+            # Fallback: parse as form data (FormData from frontend)
+            data = {
+                k: self.get_argument(k, None)
+                for k in ("project_id", "interest_features", "target_values", "spf_values")
+                if self.get_argument(k, None) is not None
+            }
 
         pid = data.get("project_id") or project_id
         pid = await self.resolve_and_check_project(pid)

@@ -1714,7 +1714,7 @@ class Application(tornado.web.Application):
                                                                  upload_tileset=upload_tileset)),
             ("/server/prioritizr", PrioritizrHandler, dict(pg=pg)),
             ("/server/prioritizr-ws", PrioritizrWSHandler, dict(pg=pg,
-                                                                r_script_path="./services/run_prioritzr.R")),
+                                                                r_script_path="./services/run_prioritzr_v2.R")),
             ("/server/engage", BioProtectEngageHandler, dict(pg=pg)),
             ("/server/notifications", NotificationHandler),
 

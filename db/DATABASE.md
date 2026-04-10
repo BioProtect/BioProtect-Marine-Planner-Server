@@ -274,7 +274,8 @@ CREATE TABLE IF NOT EXISTS bioprotect.prioritizr_runs (
     input_table     TEXT,
     feature_cols    TEXT[],
     error           TEXT,
-    label           TEXT,
+    label           TEXT,                -- short user-facing run name
+    description     TEXT,                -- free-form notes shown in run list
     resolved_config JSONB,
     feature_map     JSONB
 );

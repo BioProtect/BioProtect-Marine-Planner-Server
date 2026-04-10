@@ -129,18 +129,19 @@ if (is.null(feature_cols) || length(feature_cols) == 0) {
 # ---- 3.5) Detect optional (locked_in/locked_out) columns in input_table ----------
 input_parts <- strsplit(input_table, ".", fixed = TRUE)[[1]]
 input_schema <- if (length(input_parts) == 2) input_parts[1] else "public"
-input_name   <- if (length(input_parts) == 2) input_parts[2] else input_parts[1]
+input_name <- if (length(input_parts) == 2) input_parts[2] else input_parts[1]
 
 available_cols <- dbGetQuery(
-  conn,
-  sprintf(
-    paste(
-      "SELECT column_name",
-      "FROM information_schema.columns",
-      "WHERE table_schema = '%s' AND table_name = '%s'"
-    ),
-    input_schema, input_name
-  )
+    conn,
+    sprintf(
+        paste(
+            "SELECT column_name",
+            "FROM information_schema.columns",
+            "WHERE table_schema = '%s' AND table_name = '%s'"
+        ),
+        input_schema,
+        input_name
+    )
 )$column_name
 
 has_locked_in <- "locked_in" %in% available_cols
@@ -149,8 +150,10 @@ has_locked_out <- "locked_out" %in% available_cols
 # Optimizer params
 TARGET_PROP <- as.numeric(config$target_prop[1] %||% 0.30)
 MODE <- tolower(trimws(as.character(config$mode[1] %||% "species")))
-if (!MODE %in% c("species", "area")) MODE <- "species"
-BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||% 0.005)
+if (!MODE %in% c("species", "area")) {
+    MODE <- "species"
+}
+BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||% 0.000)
 LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||% 0.1)
 GAP <- as.numeric(config$gap[1] %||% 0.04)
 TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||% 1200)
@@ -175,8 +178,12 @@ logline(
 # one scan and avoids joins.
 # sel <- c("pu_id", "geometry", "cost", "area_km2", feature_cols)
 sel <- c("pu_id", "geometry", "cost", "area_km2")
-if (has_locked_in)  sel <- c(sel, "locked_in")
-if (has_locked_out) sel <- c(sel, "locked_out")
+if (has_locked_in) {
+    sel <- c(sel, "locked_in")
+}
+if (has_locked_out) {
+    sel <- c(sel, "locked_out")
+}
 sel <- c(sel, feature_cols)
 
 qry <- paste0("SELECT ", paste(sel, collapse = ", "), " FROM ", input_table)
@@ -210,15 +217,21 @@ if (any(!is.finite(PU$area_km2) | PU$area_km2 <= 0)) {
 
 logline("Loaded PUs:", nrow(PU))
 # ---- 4.4) Locked-in / locked-out cleanup ----
-if (!("locked_in" %in% names(PU)))  PU$locked_in  <- FALSE
-if (!("locked_out" %in% names(PU))) PU$locked_out <- FALSE
+if (!("locked_in" %in% names(PU))) {
+    PU$locked_in <- FALSE
+}
+if (!("locked_out" %in% names(PU))) {
+    PU$locked_out <- FALSE
+}
 
-PU$locked_in  <- as.logical(as.integer(PU$locked_in))
+PU$locked_in <- as.logical(as.integer(PU$locked_in))
 PU$locked_out <- as.logical(as.integer(PU$locked_out))
 
 # Prevent impossible PUs (both locked in and locked out)
 if (any(PU$locked_in & PU$locked_out, na.rm = TRUE)) {
-  stop("Some PUs are both locked_in and locked_out. Fix input_table before running.")
+    stop(
+        "Some PUs are both locked_in and locked_out. Fix input_table before running."
+    )
 }
 
 # -------------------------------
@@ -238,23 +251,31 @@ feature_cols <- valid_features
 logline("Using features:", paste(feature_cols, collapse = ", "))
 
 # ---- 4.6) Per-feature relative targets ----------
-feature_targets <- setNames(rep(TARGET_PROP, length(feature_cols)), feature_cols)
+feature_targets <- setNames(
+    rep(TARGET_PROP, length(feature_cols)),
+    feature_cols
+)
 
 if ("feature_targets_json" %in% names(config)) {
-  raw_targets <- config$feature_targets_json[1]
-  
-  if (!is.null(raw_targets) && !is.na(raw_targets) && nzchar(raw_targets)) {
-    parsed_targets <- unlist(jsonlite::fromJSON(raw_targets), use.names = TRUE)
-    
-    if (length(parsed_targets) > 0) {
-      parsed_targets <- as.numeric(parsed_targets)
-      parsed_targets <- parsed_targets[names(parsed_targets) %in% feature_cols]
-      
-      if (length(parsed_targets) > 0) {
-        feature_targets[names(parsed_targets)] <- parsed_targets
-      }
+    raw_targets <- config$feature_targets_json[1]
+
+    if (!is.null(raw_targets) && !is.na(raw_targets) && nzchar(raw_targets)) {
+        parsed_targets <- unlist(
+            jsonlite::fromJSON(raw_targets),
+            use.names = TRUE
+        )
+
+        if (length(parsed_targets) > 0) {
+            parsed_targets <- as.numeric(parsed_targets)
+            parsed_targets <- parsed_targets[
+                names(parsed_targets) %in% feature_cols
+            ]
+
+            if (length(parsed_targets) > 0) {
+                feature_targets[names(parsed_targets)] <- parsed_targets
+            }
+        }
     }
-  }
 }
 
 # ---- 5) Boundary matrix from precomputed edges (or runtime fallback) ----------
@@ -364,11 +385,19 @@ if (MODE == "area") {
 
 # Add locked constraints only if there are locked PUs
 if (any(PU$locked_in, na.rm = TRUE)) {
-    logline("Adding locked-in constraints:", sum(PU$locked_in, na.rm = TRUE), "PUs")
+    logline(
+        "Adding locked-in constraints:",
+        sum(PU$locked_in, na.rm = TRUE),
+        "PUs"
+    )
     pblm <- pblm |> add_locked_in_constraints(locked_in = "locked_in")
 }
 if (any(PU$locked_out, na.rm = TRUE)) {
-    logline("Adding locked-out constraints:", sum(PU$locked_out, na.rm = TRUE), "PUs")
+    logline(
+        "Adding locked-out constraints:",
+        sum(PU$locked_out, na.rm = TRUE),
+        "PUs"
+    )
     pblm <- pblm |> add_locked_out_constraints(locked_out = "locked_out")
 }
 

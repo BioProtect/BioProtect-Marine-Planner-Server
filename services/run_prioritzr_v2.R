@@ -1,0 +1,449 @@
+# Prioritizr optimizer (Postgres + H3 adjacency)
+# Usage: Rscript Prioritizr_Postgres_V2.R params.json
+# Usage: Rscript Prioritizr_Postgres_V2.R run_id (params.json is replaced by run_id)
+
+# Key changes:
+#  - argv is just run_id
+#  - read config from get_prioritizr_run_config(run_id)
+#  - read PUs from input_table using feature_cols
+#  - build boundary matrix using get_project_h3_adjacency(project_id)
+#  - write results into prioritizr_run_results
+#  - Also: use cat(...); flush.console() so Tornado can stream lines.
+#changes made 26-03 by Pablo:
+#Optional lock-in and lock-out support
+#Optional feature-specific relative targets support
+
+rm(list = ls())
+
+suppressPackageStartupMessages({
+    library(sf)
+    library(DBI)
+    library(RPostgres)
+    library(prioritizr)
+    library(Matrix)
+    library(jsonlite)
+})
+
+logline <- function(...) {
+    cat(..., "\n")
+    flush.console()
+}
+
+`%||%` <- function(x, y) {
+    if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
+}
+
+
+# ---- 1) Read run_id ----------
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) < 1) {
+    stop("Usage: Rscript Prioritizr_Postgres_RunId.R <run_id>")
+}
+run_id <- suppressWarnings(as.integer(args[1]))
+if (!is.finite(run_id) || run_id <= 0) {
+    stop("Invalid run_id")
+}
+
+# ---- 2) DB connect (use env vars or defaults) ----------
+PG_HOST <- Sys.getenv("PGHOST", "localhost")
+PG_PORT <- as.integer(Sys.getenv("PGPORT", "5432"))
+PG_DB <- Sys.getenv("PGDATABASE", "bioprotect")
+PG_USER <- Sys.getenv("PGUSER", "postgres")
+PG_PASS <- Sys.getenv("PGPASSWORD", "postgres")
+
+logline("Connecting to Postgres…")
+conn <- dbConnect(
+    Postgres(),
+    host = PG_HOST,
+    port = PG_PORT,
+    dbname = PG_DB,
+    user = PG_USER,
+    password = PG_PASS
+)
+on.exit(try(dbDisconnect(conn), silent = TRUE), add = TRUE)
+
+db_info <- dbGetQuery(
+    conn,
+    "
+    SELECT
+    current_database()  AS db,
+    current_user        AS user,
+    inet_server_addr()  AS server_ip,
+    inet_server_port()  AS server_port
+    "
+)
+logline("DB INFO:")
+logline(capture.output(print(db_info)))
+
+sp <- dbGetQuery(conn, "SHOW search_path")
+logline("search_path:")
+logline(sp$search_path)
+
+
+# ---- 3) Load run config ----------
+config <- dbGetQuery(
+    conn,
+    sprintf(
+        "SELECT * FROM bioprotect.get_prioritizr_run_config(%s)",
+        run_id
+    )
+)
+if (nrow(config) != 1) {
+    stop("Run config not found for run_id=", run_id)
+}
+
+project_id <- as.integer(config$project_id[1])
+input_table <- config$input_table[1]
+feature_cols_raw <- config$feature_cols[[1]]
+
+# feature_cols may arrive as:
+# - a character vector (ideal), OR
+# - a Postgres array literal string like "{f_19,f_21,...}"
+feature_cols <- NULL
+if (is.character(feature_cols_raw) && length(feature_cols_raw) > 1) {
+    feature_cols <- feature_cols_raw
+} else if (is.character(feature_cols_raw) && length(feature_cols_raw) == 1) {
+    tmp <- gsub("[{}\"]", "", feature_cols_raw)
+    tmp <- trimws(tmp)
+    feature_cols <- if (nzchar(tmp)) {
+        trimws(strsplit(tmp, ",")[[1]])
+    } else {
+        character(0)
+    }
+} else {
+    feature_cols <- as.character(unlist(feature_cols_raw))
+}
+
+feature_cols <- feature_cols[nzchar(feature_cols)]
+if (length(feature_cols) == 0) {
+    stop("Run has no feature_cols.")
+}
+
+if (is.null(input_table) || !nzchar(input_table)) {
+    stop("Run has no input_table. Did you call prepare_prioritizr_input?")
+}
+if (is.null(feature_cols) || length(feature_cols) == 0) {
+    stop("Run has no feature_cols.")
+}
+
+# ---- 3.5) Detect optional (locked_in/locked_out) columns in input_table ----------
+input_parts <- strsplit(input_table, ".", fixed = TRUE)[[1]]
+input_schema <- if (length(input_parts) == 2) input_parts[1] else "public"
+input_name <- if (length(input_parts) == 2) input_parts[2] else input_parts[1]
+
+available_cols <- dbGetQuery(
+    conn,
+    sprintf(
+        paste(
+            "SELECT column_name",
+            "FROM information_schema.columns",
+            "WHERE table_schema = '%s' AND table_name = '%s'"
+        ),
+        input_schema,
+        input_name
+    )
+)$column_name
+
+has_locked_in <- "locked_in" %in% available_cols
+has_locked_out <- "locked_out" %in% available_cols
+
+# Optimizer params
+TARGET_PROP <- as.numeric(config$target_prop[1] %||% 0.30)
+MODE <- tolower(trimws(as.character(config$mode[1] %||% "species")))
+if (!MODE %in% c("species", "area")) {
+    MODE <- "species"
+}
+BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||% 0.000)
+LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||% 0.1)
+GAP <- as.numeric(config$gap[1] %||% 0.04)
+TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||% 1200)
+
+logline("Run:", run_id, " Project:", project_id)
+logline("Input table:", input_table)
+logline("Features:", length(feature_cols))
+logline(
+    "Mode:",
+    MODE,
+    " Target:",
+    TARGET_PROP,
+    " Gap:",
+    GAP,
+    " TimeLimit:",
+    TIME_LIMIT_SEC
+)
+
+
+# ---- 4) Read PU input table (wide) ----------
+# select geometry because st_read expects it; cost + area + feature cols.
+# one scan and avoids joins.
+# sel <- c("pu_id", "geometry", "cost", "area_km2", feature_cols)
+sel <- c("pu_id", "geometry", "cost", "area_km2")
+if (has_locked_in) {
+    sel <- c(sel, "locked_in")
+}
+if (has_locked_out) {
+    sel <- c(sel, "locked_out")
+}
+sel <- c(sel, feature_cols)
+
+qry <- paste0("SELECT ", paste(sel, collapse = ", "), " FROM ", input_table)
+
+logline("Reading PUs from prepared input table…")
+PU <- tryCatch(
+    sf::st_read(conn, query = qry, quiet = TRUE),
+    error = function(e) stop("Failed to read prepared PU input: ", e$message)
+)
+
+PU$pu_id <- as.character(PU$pu_id)
+# Sanitize feature columns -> numeric, NAs -> 0
+for (f in feature_cols) {
+    PU[[f]] <- suppressWarnings(as.numeric(PU[[f]]))
+    PU[[f]][!is.finite(PU[[f]])] <- 0
+}
+
+# Cost fallback
+PU$cost <- suppressWarnings(as.numeric(PU$cost))
+PU$cost[!is.finite(PU$cost)] <- 1
+
+PU$area_km2 <- suppressWarnings(as.numeric(PU$area_km2))
+if (any(!is.finite(PU$area_km2) | PU$area_km2 <= 0)) {
+    bad <- sum(!is.finite(PU$area_km2) | PU$area_km2 <= 0)
+    stop(
+        "Found ",
+        bad,
+        " planning units with non-finite or non-positive area_km2"
+    )
+}
+
+logline("Loaded PUs:", nrow(PU))
+# ---- 4.4) Locked-in / locked-out cleanup ----
+if (!("locked_in" %in% names(PU))) {
+    PU$locked_in <- FALSE
+}
+if (!("locked_out" %in% names(PU))) {
+    PU$locked_out <- FALSE
+}
+
+PU$locked_in <- as.logical(as.integer(PU$locked_in))
+PU$locked_out <- as.logical(as.integer(PU$locked_out))
+
+# Prevent impossible PUs (both locked in and locked out)
+if (any(PU$locked_in & PU$locked_out, na.rm = TRUE)) {
+    stop(
+        "Some PUs are both locked_in and locked_out. Fix input_table before running."
+    )
+}
+
+# -------------------------------
+# 4.5) Drop zero-coverage features
+# -------------------------------
+# use a numeric matrix to avoid colSums complaining
+feat_mat <- as.matrix(PU[, feature_cols, drop = FALSE])
+storage.mode(feat_mat) <- "double"
+feat_sums <- colSums(feat_mat, na.rm = TRUE)
+
+valid_features <- names(feat_sums[is.finite(feat_sums) & feat_sums > 0])
+if (length(valid_features) == 0) {
+    stop("All features have zero coverage in this project")
+}
+
+feature_cols <- valid_features
+logline("Using features:", paste(feature_cols, collapse = ", "))
+
+# ---- 4.6) Per-feature relative targets ----------
+feature_targets <- setNames(
+    rep(TARGET_PROP, length(feature_cols)),
+    feature_cols
+)
+
+if ("feature_targets_json" %in% names(config)) {
+    raw_targets <- config$feature_targets_json[1]
+
+    if (!is.null(raw_targets) && !is.na(raw_targets) && nzchar(raw_targets)) {
+        parsed_targets <- unlist(
+            jsonlite::fromJSON(raw_targets),
+            use.names = TRUE
+        )
+
+        if (length(parsed_targets) > 0) {
+            parsed_targets <- as.numeric(parsed_targets)
+            parsed_targets <- parsed_targets[
+                names(parsed_targets) %in% feature_cols
+            ]
+
+            if (length(parsed_targets) > 0) {
+                feature_targets[names(parsed_targets)] <- parsed_targets
+            }
+        }
+    }
+}
+
+# ---- 5) Boundary matrix from precomputed edges (or runtime fallback) ----------
+# Note: adjacency returns undirected unique pairs (pu_id, nbr_id).
+# Mirror edges to make bm symmetric.
+logline("Loading boundary edges…")
+
+bm <- NULL
+
+# Try precomputed edges first (fast read from grid_boundary_edges table)
+h3_adjacency <- dbGetQuery(
+    conn,
+    sprintf(
+        "SELECT pu_id, nbr_id, boundary FROM bioprotect.get_project_boundary_edges(%s)",
+        project_id
+    )
+)
+
+if (nrow(h3_adjacency) == 0) {
+    # Fallback: compute at runtime (fine for small grids, slow for 100K+)
+    logline("No precomputed edges found, computing from H3 adjacency…")
+    h3_adjacency <- dbGetQuery(
+        conn,
+        sprintf(
+            "SELECT pu_id, nbr_id, boundary FROM bioprotect.get_project_h3_adjacency(%s)",
+            project_id
+        )
+    )
+}
+
+if (nrow(h3_adjacency) == 0) {
+    logline("No adjacency edges found; continuing without boundary penalties.")
+} else {
+    logline("Building boundary matrix from", nrow(h3_adjacency), "edges…")
+    ids <- PU$pu_id
+    n <- length(ids)
+
+    h3_adjacency$pu_id <- as.character(h3_adjacency$pu_id)
+    h3_adjacency$nbr_id <- as.character(h3_adjacency$nbr_id)
+
+    i <- match(h3_adjacency$pu_id, ids)
+    j <- match(h3_adjacency$nbr_id, ids)
+    ok <- !is.na(i) & !is.na(j) & i != j
+
+    if (!any(ok)) {
+        logline(
+            "Adjacency edges did not match PU ids; continuing without boundary penalties."
+        )
+    } else {
+        x <- suppressWarnings(as.numeric(h3_adjacency$boundary[ok]))
+        x[!is.finite(x) | x < 0] <- 0
+
+        # build symmetric sparse matrix
+        bm0 <- Matrix::sparseMatrix(
+            i = c(i[ok], j[ok]),
+            j = c(j[ok], i[ok]),
+            x = c(x, x),
+            dims = c(n, n),
+            dimnames = list(ids, ids)
+        )
+
+        # set diagonal = total perimeter proxy (sum of shared boundaries)
+        # (not perfect outer-perimeter, but satisfies prioritizr's expectation)
+        rs <- Matrix::rowSums(bm0)
+        Matrix::diag(bm0) <- as.numeric(rs)
+
+        # coerce to symmetric dsCMatrix (expected by prioritizr boundary handling)
+        bm <- as(Matrix::forceSymmetric(bm0, uplo = "U"), "dsCMatrix")
+        logline("Boundary matrix built. nnz=", length(bm@x))
+    }
+}
+
+
+# ---- 6) Build & solve problem ----------
+fw <- setNames(rep(1, length(feature_cols)), feature_cols)
+
+if (MODE == "area") {
+    if (!"area_km2" %in% names(PU)) {
+        PU$area_km2 <- rep(1, nrow(PU))
+    }
+    if (any(!is.finite(PU$area_km2) | PU$area_km2 <= 0)) {
+        bad <- sum(!is.finite(PU$area_km2) | PU$area_km2 <= 0)
+        stop(
+            "Found ",
+            bad,
+            " planning units with non-finite or non-positive area_km2 values"
+        )
+    }
+
+    budget <- TARGET_PROP * sum(PU$area_km2, na.rm = TRUE)
+
+    pblm <- problem(PU, features = feature_cols, cost_column = "area_km2") |>
+        add_min_shortfall_objective(budget = budget) |>
+        add_relative_targets(feature_targets) |>
+        add_feature_weights(fw) |>
+        add_linear_penalties(penalty = LINEAR_COST_PENALTY, data = PU$cost) |>
+        add_binary_decisions() |>
+        add_cbc_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
+} else {
+    pblm <- problem(PU, features = feature_cols, cost_column = "cost") |>
+        add_min_set_objective() |>
+        add_relative_targets(feature_targets) |>
+        add_feature_weights(fw) |>
+        add_binary_decisions() |>
+        add_cbc_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
+}
+
+# Add locked constraints only if there are locked PUs
+if (any(PU$locked_in, na.rm = TRUE)) {
+    logline(
+        "Adding locked-in constraints:",
+        sum(PU$locked_in, na.rm = TRUE),
+        "PUs"
+    )
+    pblm <- pblm |> add_locked_in_constraints(locked_in = "locked_in")
+}
+if (any(PU$locked_out, na.rm = TRUE)) {
+    logline(
+        "Adding locked-out constraints:",
+        sum(PU$locked_out, na.rm = TRUE),
+        "PUs"
+    )
+    pblm <- pblm |> add_locked_out_constraints(locked_out = "locked_out")
+}
+
+if (!is.null(bm)) {
+    pblm <- pblm |>
+        add_boundary_penalties(penalty = BOUNDARY_PENALTY, data = bm)
+}
+
+logline("Solving…")
+s <- solve(pblm, force = TRUE)
+
+# ---- 7) Export ID and the solution ----------
+sol_col <- if ("solution_1" %in% names(s)) {
+    "solution_1"
+} else if ("solution" %in% names(s)) {
+    "solution"
+} else {
+    stop("No solution column found (expected 'solution_1' or 'solution').")
+}
+
+sol_vec <- as.integer(s[[sol_col]])
+sol_vec[!is.finite(sol_vec)] <- 0L
+out <- data.frame(
+    h3_index = as.character(s$pu_id),
+    solution = sol_vec,
+    stringsAsFactors = FALSE
+)
+
+logline("Writing results to DB…")
+dbBegin(conn)
+tryCatch(
+    {
+        dbWriteTable(
+            conn,
+            name = Id(schema = "bioprotect", table = "prioritizr_run_results"),
+            value = transform(out, run_id = run_id),
+            append = TRUE,
+            row.names = FALSE
+        )
+
+        dbCommit(conn)
+    },
+    error = function(e) {
+        dbRollback(conn)
+        stop("Failed writing results: ", e$message)
+    }
+)
+
+logline("Done. Results rows:", nrow(out))

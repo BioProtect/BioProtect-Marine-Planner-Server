@@ -117,8 +117,6 @@ class BaseHandler(RequestHandler):
         finally:
             callback = self.get_argument("callback", None)
             if callback:
-                print('callback: ', callback)
-                content = f"{callback}({content})"
                 self.write(f"{callback}({content})")
             else:
                 self.write(content)

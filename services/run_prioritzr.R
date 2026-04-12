@@ -226,8 +226,8 @@ logline("Using features:", paste(feature_cols, collapse = ", "))
 # mirror edges to make bm symmetric.
 logline("Building boundary from H3 adjacency…")
 
-# MAX_PU_FOR_BOUNDARY <- 60000
-MAX_PU_FOR_BOUNDARY <- 0
+MAX_PU_FOR_BOUNDARY <- 60000
+# MAX_PU_FOR_BOUNDARY <- 0
 bm <- NULL
 if (nrow(PU) > MAX_PU_FOR_BOUNDARY) {
     logline("PU count >", MAX_PU_FOR_BOUNDARY, "- skipping boundary penalties")

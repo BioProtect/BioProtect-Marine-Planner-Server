@@ -46,14 +46,15 @@ class PrioritizrHandler(BaseHandler):
                     params,
                     input_table,
                     feature_cols,
-                    feature_map
+                    feature_map,
+                    label,
+                    description
                 FROM bioprotect.prioritizr_runs
                 WHERE project_id = %s
                 ORDER BY created_at DESC
                 """)
 
         data = await self.pg.execute(query, data=[project_id], return_format="DataFrame")
-        print('list runs data: ', data)
         self.send_response({"data": data.to_dict(orient="records")})
 
     # --------------------------------------------------
@@ -71,12 +72,13 @@ class PrioritizrHandler(BaseHandler):
                     params,
                     input_table,
                     feature_cols,
-                    feature_map
+                    feature_map,
+                    label,
+                    description
                 FROM bioprotect.prioritizr_runs
                 WHERE id = %s
                 """)
         data = await self.pg.execute(query, data=[run_id], return_format="DataFrame")
-        print('GET run data for run-id: ', run_id, data)
         self.send_response({"info": "Run returned",
                             "data": data.to_dict(orient="records")})
 

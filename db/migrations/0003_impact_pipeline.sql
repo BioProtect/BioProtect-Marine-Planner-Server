@@ -43,11 +43,6 @@ CREATE TABLE IF NOT EXISTS bioprotect.pressures (
     created_at   timestamp without time zone DEFAULT now()
 );
 
-ALTER TABLE bioprotect.pressures
-    DROP CONSTRAINT IF EXISTS pressures_activity_id_fkey;
-ALTER TABLE bioprotect.pressures
-    ADD  CONSTRAINT pressures_activity_id_fkey
-    FOREIGN KEY (activity_id) REFERENCES bioprotect.metadata_activities(id);
 
 CREATE INDEX IF NOT EXISTS idx_pressures_activity_id
     ON bioprotect.pressures USING btree (activity_id);

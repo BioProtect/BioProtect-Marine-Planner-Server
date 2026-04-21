@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS bioprotect.get_prioritizr_run_config(bigint);
 CREATE OR REPLACE FUNCTION bioprotect.get_prioritizr_run_config(p_run_id bigint)
 RETURNS TABLE (
   run_id bigint,

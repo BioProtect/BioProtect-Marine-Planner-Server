@@ -33,16 +33,20 @@ CREATE INDEX IF NOT EXISTS idx_grid_boundary_edges_grid
 
 -- ============================================================
 -- 2. pressures
+--    Old schema had raster_data + srid columns; new schema uses
+--    a vector geometry column. Pressures are computed data so it
+--    is safe to drop and recreate the table.
 -- ============================================================
-CREATE TABLE IF NOT EXISTS bioprotect.pressures (
-    id           SERIAL PRIMARY KEY,
-    activity_id  integer,
-    pressuretitle text NOT NULL,
-    rppscore     numeric NOT NULL,
-    geometry     public.geometry(Geometry, 4326) NOT NULL,
-    created_at   timestamp without time zone DEFAULT now()
-);
+DROP TABLE IF EXISTS bioprotect.pressures CASCADE;
 
+CREATE TABLE bioprotect.pressures (
+    id            SERIAL PRIMARY KEY,
+    activity_id   integer,
+    pressuretitle text    NOT NULL,
+    rppscore      numeric NOT NULL,
+    geometry      public.geometry(Geometry, 4326) NOT NULL,
+    created_at    timestamp without time zone DEFAULT now()
+);
 
 CREATE INDEX IF NOT EXISTS idx_pressures_activity_id
     ON bioprotect.pressures USING btree (activity_id);

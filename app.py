@@ -741,12 +741,17 @@ class AuthHandler(BaseHandler):
             user.pop("refresh_tokens")
 
             if not engage:
-                # Fetch user's projects
+                # Fetch user's projects with associated planning unit info
                 project_query = """
-                    SELECT p.id, p.name, p.description, p.date_created, up.role
+                    SELECT p.id, p.name, p.description, p.date_created, up.role,
+                           mpu.tilesetid AS pu_tilesetid,
+                           mpu.alias AS pu_alias,
+                           mpu.feature_class_name AS pu_feature_class_name
                     FROM bioprotect.projects p
                     JOIN bioprotect.user_projects up
                     ON up.project_id = p.id
+                    LEFT JOIN bioprotect.metadata_planning_units mpu
+                    ON mpu.unique_id = p.planning_unit_id
                     WHERE up.user_id = %s
                     ORDER BY LOWER(p.name)
                 """

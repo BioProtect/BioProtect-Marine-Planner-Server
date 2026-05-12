@@ -28,6 +28,9 @@ class PrioritizrHandler(BaseHandler):
         if action == "get-results":
             return await self.get_results()
 
+        if action == "get-feature-representation":
+            return await self.get_feature_representation()
+
         self.write({"error": f"Unknown action '{action}'"})
         self.set_status(400)
 
@@ -81,6 +84,101 @@ class PrioritizrHandler(BaseHandler):
         data = await self.pg.execute(query, data=[run_id], return_format="DataFrame")
         self.send_response({"info": "Run returned",
                             "data": data.to_dict(orient="records")})
+
+    # --------------------------------------------------
+    async def get_feature_representation(self):
+        """
+        For one or more run IDs, compute how much of each project feature is
+        represented in the solution (selected hexes).  When multiple runs are
+        supplied the representation is averaged across them so the gauge shows
+        the mean achievement across the currently visualised runs.
+
+        Query params:
+            run-ids  — comma-separated list of integer run IDs (e.g. "12,14,15")
+        """
+        raw = self.get_argument("run-ids", "")
+        try:
+            run_ids = [int(r.strip()) for r in raw.split(",") if r.strip()]
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "run-ids must be comma-separated integers"})
+            return
+
+        if not run_ids:
+            self.set_status(400)
+            self.write({"error": "run-ids is required"})
+            return
+
+        query = """
+            WITH run_info AS (
+                -- Use the project from the first supplied run; all runs must
+                -- belong to the same project.
+                SELECT project_id
+                FROM   bioprotect.prioritizr_runs
+                WHERE  id = ANY(%s)
+                LIMIT  1
+            ),
+            totals AS (
+                -- Total amount of each feature across ALL project hexes
+                SELECT pfa.feature_unique_id,
+                       SUM(pfa.amount) AS total_amount
+                FROM   bioprotect.pu_feature_amounts pfa
+                JOIN   run_info ON pfa.project_id = run_info.project_id
+                GROUP  BY pfa.feature_unique_id
+            ),
+            per_run AS (
+                -- Amount of each feature captured in the solution per run
+                SELECT rr.run_id,
+                       pfa.feature_unique_id,
+                       SUM(pfa.amount) AS represented_amount
+                FROM   bioprotect.pu_feature_amounts pfa
+                JOIN   run_info ON pfa.project_id = run_info.project_id
+                JOIN   bioprotect.prioritizr_run_results rr
+                         ON  rr.h3_index = pfa.h3_index
+                         AND rr.run_id   = ANY(%s)
+                         AND rr.solution = 1
+                GROUP  BY rr.run_id, pfa.feature_unique_id
+            ),
+            averaged AS (
+                -- Average across all selected runs
+                SELECT feature_unique_id,
+                       AVG(represented_amount) AS avg_represented
+                FROM   per_run
+                GROUP  BY feature_unique_id
+            )
+            SELECT
+                pf.feature_unique_id,
+                mif.alias                                          AS feature_name,
+                pf.target_value,
+                COALESCE(t.total_amount,  0)                       AS total_amount,
+                COALESCE(a.avg_represented, 0)                     AS represented_amount,
+                CASE
+                    WHEN COALESCE(t.total_amount, 0) > 0
+                    THEN ROUND(
+                             (COALESCE(a.avg_represented, 0)
+                              / t.total_amount * 100)::numeric, 2)
+                    ELSE 0
+                END                                                AS represented_percent
+            FROM   bioprotect.project_features pf
+            JOIN   run_info ON pf.project_id = run_info.project_id
+            JOIN   bioprotect.metadata_interest_features mif
+                     ON mif.unique_id = pf.feature_unique_id
+            LEFT JOIN totals t ON t.feature_unique_id = pf.feature_unique_id
+            LEFT JOIN averaged a ON a.feature_unique_id = pf.feature_unique_id
+            ORDER  BY mif.alias
+        """
+
+        data = await self.pg.execute(
+            query,
+            data=[run_ids, run_ids],
+            return_format="DataFrame"
+        )
+
+        self.send_response({
+            "info": "Feature representation returned",
+            "run_ids": run_ids,
+            "data": data.to_dict(orient="records"),
+        })
 
     # --------------------------------------------------
     async def get_results(self):

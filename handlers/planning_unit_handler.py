@@ -268,24 +268,24 @@ class PlanningUnitHandler(BaseHandler):
             else None
         )
 
-        # Fetch all feature amounts for this PU
+        # Fetch feature amounts for this PU — only features that are actually
+        # present in the hex (amount > 0).  The previous LEFT JOIN returned
+        # every project feature with amount = NULL for missing ones.
         feature_rows = await self.pg.execute(
             """
-            SELECT 
+            SELECT
                 f.unique_id AS feature_id,
-                f.alias AS feature_name,
-                COALESCE(pfa.amount, NULL) AS amount
-            FROM bioprotect.project_features pf
+                f.alias     AS feature_name,
+                pfa.amount
+            FROM bioprotect.pu_feature_amounts pfa
             JOIN bioprotect.metadata_interest_features f
-            ON f.unique_id = pf.feature_unique_id
-            LEFT JOIN bioprotect.pu_feature_amounts pfa
-            ON pfa.feature_unique_id = pf.feature_unique_id
-            AND pfa.project_id = pf.project_id
-            AND pfa.h3_index = %s
-            WHERE pf.project_id = %s
+              ON f.unique_id = pfa.feature_unique_id
+            WHERE pfa.project_id = %s
+              AND pfa.h3_index   = %s
+              AND pfa.amount     > 0
             ORDER BY f.alias
             """,
-            [h3_index, project_id],
+            [project_id, h3_index],
             return_format="Dict"
         )
 

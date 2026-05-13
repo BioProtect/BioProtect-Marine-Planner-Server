@@ -33,6 +33,9 @@ logline <- function(...) {
     if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
 }
 
+# Use HiGHS if available, otherwise fall back to CBC
+add_solver <- if (requireNamespace("highs", quietly = TRUE)) add_highs_solver else add_cbc_solver
+
 
 # ---- 1) Read run_id ----------
 args <- commandArgs(trailingOnly = TRUE)
@@ -373,14 +376,14 @@ if (MODE == "area") {
         add_feature_weights(fw) |>
         add_linear_penalties(penalty = LINEAR_COST_PENALTY, data = PU$cost) |>
         add_binary_decisions() |>
-        add_cbc_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
+        add_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
 } else {
     pblm <- problem(PU, features = feature_cols, cost_column = "cost") |>
         add_min_set_objective() |>
         add_relative_targets(feature_targets) |>
         add_feature_weights(fw) |>
         add_binary_decisions() |>
-        add_cbc_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
+        add_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
 }
 
 # Add locked constraints only if there are locked PUs

@@ -201,15 +201,15 @@ def cmd_deploy_objects(conn, obj_type):
 
 
 def cmd_deploy_all(conn):
-    """Deploy functions + views + seeds, then run pending migrations."""
-    print("=== Deploying functions ===")
+    """Run migrations first (tables/schema), then deploy functions, views, seeds."""
+    print("=== Running migrations ===")
+    cmd_migrate(conn)
+
+    print("\n=== Deploying functions ===")
     f_count = cmd_deploy_objects(conn, "functions")
 
     print("\n=== Deploying views ===")
     v_count = cmd_deploy_objects(conn, "views")
-
-    print("\n=== Running migrations ===")
-    cmd_migrate(conn)
 
     print("\n=== Deploying seeds ===")
     s_count = cmd_deploy_objects(conn, "seeds")

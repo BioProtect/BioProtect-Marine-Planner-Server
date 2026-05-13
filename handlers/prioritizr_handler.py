@@ -145,6 +145,32 @@ class PrioritizrHandler(BaseHandler):
                        AVG(represented_amount) AS avg_represented
                 FROM   per_run
                 GROUP  BY feature_unique_id
+            ),
+            per_run_pct AS (
+                -- Per-run represented percent (for tri-state mixed detection)
+                SELECT pr.feature_unique_id,
+                       pr.run_id,
+                       CASE
+                           WHEN COALESCE(t.total_amount, 0) > 0
+                           THEN ROUND(
+                                    (pr.represented_amount / t.total_amount * 100)::numeric,
+                                    2)
+                           ELSE 0
+                       END AS represented_percent
+                FROM   per_run pr
+                LEFT JOIN totals t ON t.feature_unique_id = pr.feature_unique_id
+            ),
+            per_run_json AS (
+                SELECT feature_unique_id,
+                       json_agg(
+                           json_build_object(
+                               'run_id',              run_id,
+                               'represented_percent', represented_percent
+                           )
+                           ORDER BY run_id
+                       ) AS per_run
+                FROM   per_run_pct
+                GROUP  BY feature_unique_id
             )
             SELECT
                 pf.feature_unique_id,
@@ -158,13 +184,15 @@ class PrioritizrHandler(BaseHandler):
                              (COALESCE(a.avg_represented, 0)
                               / t.total_amount * 100)::numeric, 2)
                     ELSE 0
-                END                                                AS represented_percent
+                END                                                AS represented_percent,
+                COALESCE(prj.per_run, '[]'::json)                  AS per_run
             FROM   bioprotect.project_features pf
             JOIN   run_info ON pf.project_id = run_info.project_id
             JOIN   bioprotect.metadata_interest_features mif
                      ON mif.unique_id = pf.feature_unique_id
             LEFT JOIN totals t ON t.feature_unique_id = pf.feature_unique_id
             LEFT JOIN averaged a ON a.feature_unique_id = pf.feature_unique_id
+            LEFT JOIN per_run_json prj ON prj.feature_unique_id = pf.feature_unique_id
             ORDER  BY mif.alias
         """
 

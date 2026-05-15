@@ -47,7 +47,7 @@ from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
-from handlers.cost_handler import (UpdateCostsHandler, DeleteCostHandler,
+from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
                                    CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
@@ -1723,10 +1723,11 @@ class Application(tornado.web.Application):
             ("/server/engage", BioProtectEngageHandler, dict(pg=pg)),
             ("/server/notifications", NotificationHandler),
 
-            ("/server/updateCosts", UpdateCostsHandler),
             ("/server/deleteCost", DeleteCostHandler, dict(pg=pg)),
-            ("/server/setActiveCostProfile", SetActiveCostProfileHandler, dict(pg=pg)),
-            ("/server/createCostsFromImpact", CreateCostsFromImpactHandler, dict(pg=pg)),
+            ("/server/setActiveCostProfile",
+             SetActiveCostProfileHandler, dict(pg=pg)),
+            ("/server/createCostsFromImpact",
+             CreateCostsFromImpactHandler, dict(pg=pg)),
 
             ("/server/createFeaturePreprocessingFileFromImport",
              createFeaturePreprocessingFileFromImport),

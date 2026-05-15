@@ -29,6 +29,8 @@ class BioProtectEngageHandler(BaseHandler):
             action = self.get_argument('action', None)
             if action == 'list-features':
                 await self.list_features()
+            elif action == 'list-activities':
+                await self.list_activities()
             else:
                 raise ServicesError("Invalid action specified.")
         except ServicesError as e:
@@ -40,6 +42,30 @@ class BioProtectEngageHandler(BaseHandler):
             return_format="Array",
         )
         self.send_response({"features": rows or []})
+
+    async def list_activities(self):
+        """
+        Returns activities suitable for selection on a map. The `activity_name`
+        column is the underlying PostGIS table name, which Martin auto-serves —
+        the frontend uses it the same way it uses a feature's `tilesetid`.
+        """
+        rows = await self.pg.execute(
+            """
+            SELECT
+                id,
+                activity         AS alias,
+                activity_name,
+                description,
+                source,
+                created_by,
+                creation_date
+            FROM bioprotect.metadata_activities
+            WHERE activity_name IS NOT NULL
+            ORDER BY creation_date DESC
+            """,
+            return_format="Array",
+        )
+        self.send_response({"activities": rows or []})
 
     async def post(self):
         try:
@@ -307,10 +333,10 @@ class BioProtectEngageHandler(BaseHandler):
                 """
                 SELECT activity_name, id
                 FROM bioprotect.metadata_activities
-                WHERE activity = %s AND created_by = %s
+                WHERE activity = %s AND source = %s AND created_by = %s
                 LIMIT 1
                 """,
-                [name, user],
+                [name, usergroup, user],
                 return_format="Array",
             )
 

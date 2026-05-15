@@ -34,48 +34,6 @@ def file_to_df(file_name):
             if os.path.exists(file_name) else pd.DataFrame())
 
 
-class UpdateCostsHandler(BaseHandler):
-    """Updates a project's costs in the PUNAME file using a named cost profile.
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        costname (string): The name of the cost profile to use (*.cost file).
-    Returns:
-        {"info": "Costs updated"}
-    """
-
-    async def get(self):
-        try:
-            validate_args(self.request.arguments,
-                          ['user', 'project', 'costname'])
-            costname = self.get_argument("costname")
-            cost_file_path = os.path.join(
-                self.input_folder, f"{costname}.cost")
-            puname_file_path = os.path.join(
-                self.input_folder, self.projectData["files"]["PUNAME"])
-
-            puname_df = file_to_df(puname_file_path)
-
-            if costname == UNIFORM_COST_NAME:
-                puname_df['cost'] = 1
-            else:
-                if not os.path.exists(cost_file_path):
-                    raise ServicesError(
-                        f"The cost file '{costname}' does not exist.")
-                cost_df = pd.read_csv(
-                    cost_file_path, sep=None, engine='python')
-                puname_df = cost_df.join(puname_df[['status']])
-
-            input_dat_path = os.path.join(self.project_folder, "input.dat")
-            update_file_parameters(input_dat_path, {'COSTS': costname})
-
-            await write_csv(self, "PUNAME", puname_df)
-            self.send_response({"info": 'Costs updated'})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 class DeleteCostHandler(BaseHandler):
     """Deletes a cost profile and its associated values from the database.
 

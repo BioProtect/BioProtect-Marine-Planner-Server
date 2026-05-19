@@ -10,12 +10,11 @@ import os
 import uuid
 import subprocess
 
-import rasterio
-from rasterio.warp import calculate_default_transform, reproject, Resampling
 from psycopg2 import sql
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
+from services.raster_service import reproject_to_wgs84
 from services.service_error import ServicesError, raise_error
 
 project_paths = get_folder_path_config()
@@ -153,7 +152,7 @@ class UploadActivityHandler(SocketHandler):
 
         # Reproject to WGS84 if needed, then polygonize via PostGIS
         reprojected_path = os.path.join('data/tmp', f'repro_{filename}')
-        self._reproject_to_wgs84(raster_path, reprojected_path)
+        reproject_to_wgs84(raster_path, reprojected_path)
 
         self.send_response({
             'status': 'Preprocessing',
@@ -221,39 +220,6 @@ class UploadActivityHandler(SocketHandler):
             activity_table, activity, filename, description, 'raster')
 
         return activity_id
-
-    def _reproject_to_wgs84(self, input_path, output_path):
-        """Reproject a raster file to EPSG:4326 if not already."""
-        with rasterio.open(input_path) as src:
-            if src.crs and src.crs.to_epsg() == 4326:
-                # Already WGS84, just copy
-                if input_path != output_path:
-                    import shutil
-                    shutil.copy2(input_path, output_path)
-                return
-
-            transform, width, height = calculate_default_transform(
-                src.crs, 'EPSG:4326', src.width, src.height, *src.bounds)
-
-            kwargs = src.meta.copy()
-            kwargs.update({
-                'crs': 'EPSG:4326',
-                'transform': transform,
-                'width': width,
-                'height': height
-            })
-
-            with rasterio.open(output_path, 'w', **kwargs) as dst:
-                for i in range(1, src.count + 1):
-                    reproject(
-                        source=rasterio.band(src, i),
-                        destination=rasterio.band(dst, i),
-                        src_transform=src.transform,
-                        src_crs=src.crs,
-                        dst_transform=transform,
-                        dst_crs='EPSG:4326',
-                        resampling=Resampling.bilinear
-                    )
 
     async def _finalise_activity_table(self, activity_table):
         """Add spatial index and primary key to the activity geometry table."""

@@ -85,7 +85,7 @@ PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
                      "getProjectsWithGrids", "getAtlasLayers"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
+    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
     "User": ["testRoleAuthorisation", "clearRunLogs", "shutdown"],
     "Admin": []
 }

@@ -51,6 +51,7 @@ from handlers.cost_raster_handler import (UploadRasterCostHandler,
                                           GetRasterBandInfoHandler)
 from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
+                                   GetCostProfileActivitiesHandler,
                                    CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
 from mapbox import Uploader
@@ -1728,6 +1729,8 @@ class Application(tornado.web.Application):
             ("/server/deleteCost", DeleteCostHandler, dict(pg=pg)),
             ("/server/setActiveCostProfile",
              SetActiveCostProfileHandler, dict(pg=pg)),
+            ("/server/getCostProfileActivities",
+             GetCostProfileActivitiesHandler, dict(pg=pg)),
             ("/server/createCostsFromImpact",
              CreateCostsFromImpactHandler, dict(pg=pg)),
 

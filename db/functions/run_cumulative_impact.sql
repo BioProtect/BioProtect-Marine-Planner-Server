@@ -30,6 +30,17 @@ BEGIN
     RETURNING id INTO _cost_profile;
 
     -- ---------------------------------------------------------------
+    -- Record which activities make up this cost profile so the UI can
+    -- list and visualise them later.
+    -- ---------------------------------------------------------------
+    INSERT INTO bioprotect.cost_profile_activities (cost_profile_id, activity_id)
+    SELECT _cost_profile, aid
+      FROM unnest(_activity_ids) AS aid
+     WHERE EXISTS (
+         SELECT 1 FROM bioprotect.metadata_activities ma WHERE ma.id = aid
+     );
+
+    -- ---------------------------------------------------------------
     -- Compute cumulative impact per hex and insert as cost values
     --
     -- Uses hex centroid containment instead of polygon intersection

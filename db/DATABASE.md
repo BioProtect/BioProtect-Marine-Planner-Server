@@ -218,6 +218,15 @@ CREATE TABLE IF NOT EXISTS bioprotect.cost_profile_values (
 CREATE INDEX IF NOT EXISTS idx_cpv_profile ON bioprotect.cost_profile_values (cost_profile_id);
 CREATE INDEX IF NOT EXISTS idx_cpv_pu ON bioprotect.cost_profile_values (project_pu_id);
 
+-- Records which activities were used to build a cost profile (cumulative
+-- impact profiles only — raster profiles will have no rows here).
+CREATE TABLE IF NOT EXISTS bioprotect.cost_profile_activities (
+    cost_profile_id INTEGER NOT NULL REFERENCES bioprotect.cost_profiles(id) ON DELETE CASCADE,
+    activity_id     INTEGER NOT NULL REFERENCES bioprotect.metadata_activities(id) ON DELETE CASCADE,
+    PRIMARY KEY (cost_profile_id, activity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cost_profile_activities_activity ON bioprotect.cost_profile_activities (activity_id);
+
 -- Add FK from projects to cost_profiles
 ALTER TABLE bioprotect.projects
     ADD CONSTRAINT fk_active_cost_profile

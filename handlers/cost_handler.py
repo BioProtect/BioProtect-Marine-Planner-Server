@@ -116,6 +116,51 @@ class SetActiveCostProfileHandler(BaseHandler):
             raise_error(self, e.args[0])
 
 
+class GetCostProfileActivitiesHandler(BaseHandler):
+    """Returns the activities that make up a cost profile.
+
+    Args:
+        cost_profile_id (int): The cost profile ID.
+    Returns:
+        {"info": ..., "data": [{id, activity, activity_name, filename,
+            description, source, created_by, creation_date, extent}]}
+    """
+
+    async def get(self):
+        try:
+            validate_args(self.request.arguments, ['cost_profile_id'])
+            cost_profile_id = int(self.get_argument("cost_profile_id"))
+
+            rows = await self.pg.execute(
+                """
+                SELECT ma.id,
+                       ma.activity,
+                       ma.activity_name,
+                       ma.filename,
+                       ma.description,
+                       ma.source,
+                       ma.created_by,
+                       to_char(ma.creation_date,
+                               'DD/MM/YY HH24:MI:SS')::text AS creation_date,
+                       ma.extent::text AS extent
+                  FROM bioprotect.cost_profile_activities cpa
+                  JOIN bioprotect.metadata_activities ma
+                    ON ma.id = cpa.activity_id
+                 WHERE cpa.cost_profile_id = %s
+                 ORDER BY lower(ma.activity);
+                """,
+                data=[cost_profile_id],
+                return_format="Array"
+            )
+
+            self.send_response({
+                "info": "Cost profile activities returned",
+                "data": rows or []
+            })
+        except ServicesError as e:
+            raise_error(self, e.args[0])
+
+
 class CreateCostsFromImpactHandler(SocketHandler):
     """Creates a cost file from cumulative impact data.
 

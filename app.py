@@ -47,8 +47,11 @@ from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
+from handlers.cost_raster_handler import (UploadRasterCostHandler,
+                                          GetRasterBandInfoHandler)
 from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
+                                   GetCostProfileActivitiesHandler,
                                    CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
 from mapbox import Uploader
@@ -83,7 +86,7 @@ PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
                      "getProjectsWithGrids", "getAtlasLayers"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "getRunLogs", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
+    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
     "User": ["testRoleAuthorisation", "clearRunLogs", "shutdown"],
     "Admin": []
 }
@@ -1726,6 +1729,8 @@ class Application(tornado.web.Application):
             ("/server/deleteCost", DeleteCostHandler, dict(pg=pg)),
             ("/server/setActiveCostProfile",
              SetActiveCostProfileHandler, dict(pg=pg)),
+            ("/server/getCostProfileActivities",
+             GetCostProfileActivitiesHandler, dict(pg=pg)),
             ("/server/createCostsFromImpact",
              CreateCostsFromImpactHandler, dict(pg=pg)),
 
@@ -1758,6 +1763,8 @@ class Application(tornado.web.Application):
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
             ("/server/uploadActivity", UploadActivityHandler, dict(pg=pg)),
             ("/server/runCumulativeImpact", RunCumulativeImpactHandler, dict(pg=pg)),
+            ("/server/uploadRasterCost", UploadRasterCostHandler, dict(pg=pg)),
+            ("/server/getRasterBandInfo", GetRasterBandInfoHandler, dict(pg=pg)),
             ("/server/uploadFile", uploadFile),
 
 

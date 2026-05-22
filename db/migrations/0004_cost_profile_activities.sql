@@ -1,0 +1,174 @@
+-- Migration 0004: cost_profile_activities junction table
+-- Created: 2026-05-21
+--
+-- Records which activities were used to build a given cost profile so the
+-- frontend can display them in the LeftInfoPanel Activities tab and toggle
+-- their geometries on the map.
+--
+-- Updates:
+--   Tables    : cost_profile_activities (new)
+--   Functions : run_cumulative_impact (now populates the junction table)
+-- ============================================================
+
+
+-- ============================================================
+-- 1. cost_profile_activities
+-- ============================================================
+CREATE TABLE IF NOT EXISTS bioprotect.cost_profile_activities (
+    cost_profile_id INTEGER NOT NULL
+        REFERENCES bioprotect.cost_profiles(id) ON DELETE CASCADE,
+    activity_id     INTEGER NOT NULL
+        REFERENCES bioprotect.metadata_activities(id) ON DELETE CASCADE,
+    PRIMARY KEY (cost_profile_id, activity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cost_profile_activities_activity
+    ON bioprotect.cost_profile_activities (activity_id);
+
+
+-- ------------------------------------------------------------
+-- Backfill: existing cost profiles predate this table and have
+-- no precise activity tracking. Link each non-default profile
+-- to every activity currently in metadata_activities so the
+-- LeftInfoPanel Activities tab is not empty for legacy data.
+-- New profiles created via run_cumulative_impact will get the
+-- exact subset they were built from.
+-- ------------------------------------------------------------
+INSERT INTO bioprotect.cost_profile_activities (cost_profile_id, activity_id)
+SELECT cp.id, ma.id
+  FROM bioprotect.cost_profiles cp
+ CROSS JOIN bioprotect.metadata_activities ma
+ WHERE COALESCE(cp.is_default, false) = false
+   AND NOT EXISTS (
+       SELECT 1 FROM bioprotect.cost_profile_activities cpa
+        WHERE cpa.cost_profile_id = cp.id
+   )
+ON CONFLICT DO NOTHING;
+
+
+-- ============================================================
+-- 2. Updated function: run_cumulative_impact
+--    Now records each activity used to build the profile in
+--    cost_profile_activities.
+-- ============================================================
+CREATE OR REPLACE FUNCTION bioprotect.run_cumulative_impact(
+    _project_id    INTEGER,
+    _activity_ids  INTEGER[],
+    _profile_name  TEXT,
+    _description   TEXT DEFAULT '',
+    _user          TEXT DEFAULT 'system'
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    _cost_profile INTEGER;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM bioprotect.project_pus WHERE project_id = _project_id
+    ) THEN
+        RAISE EXCEPTION 'Project % has no planning units', _project_id;
+    END IF;
+
+    INSERT INTO bioprotect.cost_profiles
+        (project_id, name, description, created_by, is_default)
+    VALUES
+        (_project_id, _profile_name, _description, _user, false)
+    RETURNING id INTO _cost_profile;
+
+    -- Record which activities make up this cost profile
+    INSERT INTO bioprotect.cost_profile_activities (cost_profile_id, activity_id)
+    SELECT _cost_profile, aid
+      FROM unnest(_activity_ids) AS aid
+     WHERE EXISTS (
+         SELECT 1 FROM bioprotect.metadata_activities ma WHERE ma.id = aid
+     );
+
+    WITH project_hexes AS (
+        SELECT pp.id   AS project_pu_id,
+               pp.h3_index,
+               ST_Centroid(hc.geometry) AS hex_centroid
+          FROM bioprotect.project_pus pp
+          JOIN bioprotect.h3_cells hc
+            ON hc.h3_index = pp.h3_index
+         WHERE pp.project_id = _project_id
+    ),
+    activity_geoms AS (
+        SELECT DISTINCT ON (activity_id)
+               activity_id,
+               ST_Simplify(geometry, 0.0001) AS geometry
+          FROM bioprotect.pressures
+         WHERE activity_id = ANY(_activity_ids)
+    ),
+    hex_activity_coverage AS (
+        SELECT ph.project_pu_id,
+               ph.h3_index,
+               ag.activity_id,
+               1::numeric AS pressure_coverage
+          FROM project_hexes ph
+          JOIN activity_geoms ag
+            ON ST_Contains(ag.geometry, ph.hex_centroid)
+    ),
+    hex_pressures AS (
+        SELECT hac.project_pu_id,
+               hac.h3_index,
+               p.pressuretitle,
+               p.rppscore,
+               hac.pressure_coverage
+          FROM hex_activity_coverage hac
+          JOIN bioprotect.pressures p
+            ON p.activity_id = hac.activity_id
+    ),
+    hex_features AS (
+        SELECT pfa.h3_index,
+               mif.alias AS feature_name,
+               pfa.amount AS feature_coverage
+          FROM bioprotect.pu_feature_amounts pfa
+          JOIN bioprotect.metadata_interest_features mif
+            ON mif.unique_id = pfa.feature_unique_id
+         WHERE pfa.project_id = _project_id
+           AND pfa.amount > 0
+    ),
+    cumulative AS (
+        SELECT hp.project_pu_id,
+               SUM(
+                   hp.pressure_coverage
+                   * hp.rppscore
+                   * hf.feature_coverage
+                   * COALESCE(sm.sensitivity_score, 0)
+               ) AS impact
+          FROM hex_pressures hp
+          JOIN hex_features hf
+            ON hp.h3_index = hf.h3_index
+          LEFT JOIN bioprotect.sensitivity_matrix sm
+            ON sm.eunis_code  = hf.feature_name
+           AND sm.pressure    = hp.pressuretitle
+         GROUP BY hp.project_pu_id
+    )
+    INSERT INTO bioprotect.cost_profile_values
+        (cost_profile_id, project_pu_id, cost, status)
+    SELECT _cost_profile,
+           c.project_pu_id,
+           CASE
+             WHEN max_impact.val > 0
+             THEN c.impact / max_impact.val
+             ELSE 0
+           END,
+           0
+      FROM cumulative c,
+           (SELECT MAX(impact) AS val FROM cumulative) max_impact;
+
+    INSERT INTO bioprotect.cost_profile_values
+        (cost_profile_id, project_pu_id, cost, status)
+    SELECT _cost_profile, pp.id, 0, 0
+      FROM bioprotect.project_pus pp
+     WHERE pp.project_id = _project_id
+       AND NOT EXISTS (
+           SELECT 1 FROM bioprotect.cost_profile_values cpv
+            WHERE cpv.cost_profile_id = _cost_profile
+              AND cpv.project_pu_id   = pp.id
+       );
+
+    RETURN _cost_profile;
+END;
+$$;

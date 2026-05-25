@@ -102,12 +102,16 @@ class PostGIS:
 
     def build_ogr2ogr_command(self, folder, filename, feature_class_name, s_epsg_code, t_epsg_code, source_feature_class='', where_clause=None):
         where_part = f' -where "{where_clause}"' if where_clause else ''
+        # When s_epsg_code is None, omit -s_srs so ogr2ogr autodetects the source
+        # CRS from the .prj (shapefile) or embedded metadata (GML, GDB, etc.).
+        srs_part = f'-t_srs {t_epsg_code}' if s_epsg_code is None \
+            else f'-s_srs {s_epsg_code} -t_srs {t_epsg_code}'
         return (
             f'"{self.config.OGR2OGR_EXECUTABLE}" -f "PostgreSQL" PG:"host={self.config.DATABASE_HOST} '
             f'user={self.config.DATABASE_USER} dbname={self.config.DATABASE_NAME} password={self.config.DATABASE_PASSWORD}" '
             f'"{os.path.join(folder, filename)}" -nlt GEOMETRY -lco SCHEMA=bioprotect '
             f'-lco GEOMETRY_NAME=geometry {source_feature_class} -nln {feature_class_name} '
-            f'-s_srs {s_epsg_code} -t_srs {t_epsg_code} -lco precision=NO{where_part}'
+            f'{srs_part} -lco precision=NO{where_part}'
         )
 
     async def export_to_shapefile(self, export_folder, feature_class_name, t_epsg_code="EPSG:4326"):
@@ -166,6 +170,18 @@ class PostGIS:
 
     async def import_shapefile(self, folder, shapefile, feature_class_name, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):
         check_zipped_shapefile(folder + shapefile)
+        # When the caller asks us to autodetect the source CRS, we need the
+        # .prj file — shapefiles store no CRS info inside the .shp itself.
+        if s_epsg_code is None:
+            prj_path = os.path.join(folder, shapefile.rsplit('.', 1)[0] + '.prj')
+            if not os.path.exists(prj_path):
+                raise ServicesError(
+                    f"Shapefile '{shapefile}' has no .prj file, so its "
+                    "coordinate reference system cannot be determined. "
+                    "Please re-export the shapefile from your GIS software "
+                    "with a .prj file included (or zip up the existing .prj "
+                    "alongside the .shp/.shx/.dbf) and try again."
+                )
         await self.import_file(folder, shapefile, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
 
     async def import_gml(self, folder, gmlfilename, feature_class_name, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):

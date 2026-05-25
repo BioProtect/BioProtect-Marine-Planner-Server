@@ -109,11 +109,15 @@ class UploadActivityHandler(SocketHandler):
             'info': 'Importing shapefile into database...'
         })
 
-        # Use ogr2ogr via the pg class (same as feature imports)
+        # Use ogr2ogr via the pg class (same as feature imports).
+        # s_epsg_code=None lets ogr2ogr autodetect the source CRS from the .prj
+        # file, so shapefiles in projections other than WGS84 get reprojected
+        # correctly instead of being mis-tagged.
         await self.pg.import_shapefile(
             project_paths.IMPORT_FOLDER,
             filename,
-            activity_table
+            activity_table,
+            s_epsg_code=None,
         )
 
         # Validate and fix geometries

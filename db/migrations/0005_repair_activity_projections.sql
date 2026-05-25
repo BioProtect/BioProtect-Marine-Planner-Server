@@ -23,8 +23,6 @@
 DO $$
 DECLARE
     rec        RECORD;
-    gtype      TEXT;
-    gtype_short TEXT;
     schema_name CONSTANT TEXT := 'bioprotect';
 BEGIN
     -- ------------------------------------------------------------
@@ -40,24 +38,20 @@ BEGIN
             OR ST_YMin(extent) <  -90 OR ST_YMax(extent) >   90
            )
     LOOP
-        -- Detect geometry type so the ALTER COLUMN cast preserves it
-        EXECUTE format(
-            'SELECT ST_GeometryType(geometry) FROM %I.%I LIMIT 1',
-            schema_name, rec.activity_name
-        ) INTO gtype;
-        gtype_short := replace(gtype, 'ST_', '');
-
         -- 1. Re-tag SRID (numbers don't move; just labels the existing coords)
         PERFORM UpdateGeometrySRID(
             schema_name, rec.activity_name, 'geometry', 2157
         );
 
-        -- 2. Reproject to WGS84, preserving the original geometry type
+        -- 2. Reproject to WGS84. Use the permissive `geometry(GEOMETRY, 4326)`
+        --    column type to avoid subtype-mismatch errors when a table holds a
+        --    mix of Polygon/MultiPolygon (ogr2ogr imports with -nlt GEOMETRY
+        --    so this matches the table's natural state).
         EXECUTE format(
             'ALTER TABLE %I.%I '
-            'ALTER COLUMN geometry TYPE geometry(%s, 4326) '
+            'ALTER COLUMN geometry TYPE geometry(GEOMETRY, 4326) '
             'USING ST_Transform(geometry, 4326)',
-            schema_name, rec.activity_name, gtype_short
+            schema_name, rec.activity_name
         );
 
         -- 3. Refresh the cached extent in metadata

@@ -119,15 +119,23 @@ def get_raster_band_info(path: str) -> dict:
 # ----------------------------------------------------------------------------
 # Zonal stats via exactextract
 # ----------------------------------------------------------------------------
-# exactextract names we accept from the frontend. Anything else -> weighted_mean
+# exactextract names we accept from the frontend. Anything else -> mean.
+#
+# Note on weighting: exactextract's `mean` is ALREADY area-weighted by the
+# fractional pixel coverage of each polygon. There is no need (and indeed
+# no way) to use `weighted_mean` here because that operator requires a
+# second "weights" raster (e.g. population density). For our use case
+# of mapping a single cost raster into hex cells, `mean` is the correct
+# area-weighted aggregation.
 SUPPORTED_STATS = {
-    "weighted_mean",   # area-weighted mean (default)
-    "mean",            # simple mean of pixel values that touch the hex
+    "mean",     # area-weighted by pixel coverage (default)
     "sum",
     "min",
     "max",
-    "count",
+    "count",    # sum of pixel coverage fractions in the polygon
     "median",
+    "stdev",
+    "variety",  # count of distinct values
 }
 
 
@@ -160,7 +168,7 @@ async def extract_raster_to_hexes(
     from exactextract import exact_extract  # type: ignore
 
     if stat not in SUPPORTED_STATS:
-        stat = "weighted_mean"
+        stat = "mean"
 
     # Pull hex polygons as GeoJSON features. ST_AsGeoJSON gives a string;
     # we wrap each row into a Feature dict that exactextract accepts.
@@ -194,27 +202,42 @@ async def extract_raster_to_hexes(
             "geometry": json.loads(r["geom_json"]),
         })
 
-    # exactextract accepts a path string for the raster + list of features.
-    # We restrict to the chosen band by passing include_cols + band index
-    # via the dataset-opening hook below.
+    # exactextract.prep_raster only accepts gdal.Dataset, rasterio
+    # DatasetReader, xarray DataArray/Dataset, numpy ndarray, or a path.
+    # rasterio.band() is NOT supported, so for multi-band rasters we
+    # materialise the chosen band into an in-memory single-band dataset
+    # and pass that. Single-band rasters can be passed directly.
+    from rasterio.io import MemoryFile  # type: ignore
+
     with rasterio.open(raster_path) as src:
         if band < 1 or band > src.count:
             raise ValueError(
                 f"Band {band} out of range (raster has {src.count} bands)."
             )
 
-        # exactextract takes a rasterio dataset and a 1-based band index
-        # through the `rast` kwarg. We pass a rasterio.Band to scope to
-        # the requested band.
-        rast_band = rasterio.band(src, band)
-
-        results = exact_extract(
-            rast=rast_band,
-            vec=features,
-            ops=[stat],
-            include_cols=["project_pu_id", "h3_index"],
-            output="pandas",
-        )
+        if src.count == 1:
+            results = exact_extract(
+                rast=src,
+                vec=features,
+                ops=[stat],
+                include_cols=["project_pu_id", "h3_index"],
+                output="pandas",
+            )
+        else:
+            band_data = src.read(band)
+            profile = src.profile.copy()
+            profile.update(count=1, dtype=band_data.dtype)
+            with MemoryFile() as memfile:
+                with memfile.open(**profile) as mem_dst:
+                    mem_dst.write(band_data, 1)
+                with memfile.open() as mem_src:
+                    results = exact_extract(
+                        rast=mem_src,
+                        vec=features,
+                        ops=[stat],
+                        include_cols=["project_pu_id", "h3_index"],
+                        output="pandas",
+                    )
 
     # exactextract pandas output: one row per feature, with columns:
     # project_pu_id, h3_index, <stat>
@@ -257,7 +280,6 @@ def normalise_costs(
     values: Iterable[dict],
     floor: float = 1e-3,
     normalise: bool = True,
-    clamp_negative: bool = True,
     fill_strategy: str = "median",
 ) -> tuple[dict[int, float], dict]:
     """Apply log(X+1) -> rescale-to-[floor, 1] and fill coverage gaps.
@@ -268,12 +290,14 @@ def normalise_costs(
     minimum floor > 0 so no hex ends up with cost = 0 (which would make
     it always-preferred by Prioritizr).
 
+    Negative input values are ALWAYS forced to floor in the output.
+    Negatives are nonsensical for a cost layer (and log(X+1) is undefined
+    for X < -1), so they cannot be passed through. This is not optional.
+
     Args:
         values: Iterable of {project_pu_id, value} dicts.
         floor: Minimum allowed cost (default 1e-3). Must be > 0.
         normalise: If False, skip log+rescale and only enforce floor.
-        clamp_negative: If True, negative values are bumped to 0 before
-            the log transform.
         fill_strategy: How to fill hexes the raster does not cover.
             ``"median"`` (default) -> median of normalised costs;
             ``"floor"``  -> the floor value;
@@ -311,12 +335,21 @@ def normalise_costs(
             },
         )
 
+    # Track which inputs were negative so we can map them directly to
+    # floor in the final output (independent of the rescale curve).
+    # Clamping negatives to floor is mandatory: log(X+1) is undefined
+    # for X < -1, and negative costs are nonsensical for Prioritizr.
     raw_vals = []
+    was_negative = []
     for v in covered:
         x = float(v["value"])
-        if clamp_negative and x < 0:
+        neg = x < 0
+        if neg:
+            # Working value of 0 so log(X+1) stays defined; the final
+            # output is then forced to floor below.
             x = 0.0
         raw_vals.append(x)
+        was_negative.append(neg)
 
     if normalise:
         log_vals = [math.log(x + 1.0) for x in raw_vals]
@@ -339,9 +372,18 @@ def normalise_costs(
                 _scale_into_floor_unit(x / max_raw, floor) for x in raw_vals
             ]
 
+    # Force any clamped-negative input straight to floor, and as a final
+    # safety net ensure every emitted cost is strictly >= floor. No hex
+    # should ever leave this function with cost < floor, because zero or
+    # near-zero costs would always be favoured by Prioritizr.
     out: dict[int, float] = {}
-    for v, cost in zip(covered, normalised):
-        out[v["project_pu_id"]] = cost
+    for v, cost, neg in zip(covered, normalised, was_negative):
+        final = floor if neg else cost
+        if final < floor:
+            final = floor
+        elif final > 1.0:
+            final = 1.0
+        out[v["project_pu_id"]] = final
 
     # Choose a fill value
     fill_value = _choose_fill_value(normalised, fill_strategy, floor)

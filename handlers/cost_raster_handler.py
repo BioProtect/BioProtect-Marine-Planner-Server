@@ -95,12 +95,17 @@ class UploadRasterCostHandler(SocketHandler):
     Optional:
         description       text (default '')
         band              1-based band index (default 1)
-        stat              one of SUPPORTED_STATS (default 'weighted_mean')
+        stat              one of SUPPORTED_STATS (default 'mean'). The
+                          'mean' stat is already area-weighted by
+                          fractional pixel coverage in exactextract;
+                          there is no need for 'weighted_mean' here.
         normalise         'true'|'false' (default 'true')
-        clamp_negative    'true'|'false' (default 'true')
         floor             float in (0, 1) (default 0.001)
         fill_strategy     'median'|'floor'|'max'|<float> (default 'median')
         set_active        'true'|'false' (default 'true')
+
+    Negative pixel values are always clamped to floor in the output
+    (not configurable — negatives are invalid for a cost layer).
     """
 
     def initialize(self, pg):
@@ -124,12 +129,11 @@ class UploadRasterCostHandler(SocketHandler):
             profile_name = self.get_argument("profile_name")
             description = self.get_argument("description", "")
             band = int(self.get_argument("band", "1"))
-            stat = self.get_argument("stat", "weighted_mean")
+            stat = self.get_argument("stat", "mean")
             if stat not in SUPPORTED_STATS:
-                stat = "weighted_mean"
+                stat = "mean"
 
             normalise_flag = _truthy(self.get_argument("normalise", "true"))
-            clamp_negative = _truthy(self.get_argument("clamp_negative", "true"))
             floor = float(self.get_argument("floor", "0.001"))
             fill_strategy = self.get_argument("fill_strategy", "median")
             set_active = _truthy(self.get_argument("set_active", "true"))
@@ -198,7 +202,6 @@ class UploadRasterCostHandler(SocketHandler):
                 values=extracted,
                 floor=floor,
                 normalise=normalise_flag,
-                clamp_negative=clamp_negative,
                 fill_strategy=fill_strategy,
             )
 

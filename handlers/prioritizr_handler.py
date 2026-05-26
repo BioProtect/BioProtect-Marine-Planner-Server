@@ -1,6 +1,11 @@
 # handlers/prioritizr_handler.py
 
+import logging
+import os
+import shutil
+
 from handlers.base_handler import BaseHandler
+from services.run_export_service import ALLOWED_FORMATS, build_export_zip
 from services.service_error import ServicesError
 
 
@@ -30,6 +35,9 @@ class PrioritizrHandler(BaseHandler):
 
         if action == "get-feature-representation":
             return await self.get_feature_representation()
+
+        if action == "export-runs":
+            return await self.export_runs()
 
         self.write({"error": f"Unknown action '{action}'"})
         self.set_status(400)
@@ -226,3 +234,64 @@ class PrioritizrHandler(BaseHandler):
         self.send_response({"info": "Results returned",
                             "run_id": int(run_id),
                             "data": data.to_dict(orient="records")})
+
+    # --------------------------------------------------
+    async def export_runs(self):
+        """Stream a zipped GIS export (shapefile or geopackage) of the
+        project's planning-unit grid with selection results from the
+        supplied Prioritizr runs joined on per-PU."""
+        self.validate_args(self.request.arguments, ["project-id", "run-ids"])
+
+        try:
+            project_id = int(self.get_argument("project-id"))
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "project-id must be an integer"})
+            return
+
+        raw = self.get_argument("run-ids", "")
+        try:
+            run_ids = [int(r.strip()) for r in raw.split(",") if r.strip()]
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "run-ids must be comma-separated integers"})
+            return
+        if not run_ids:
+            self.set_status(400)
+            self.write({"error": "run-ids is required"})
+            return
+
+        fmt = self.get_argument("format", "shp").lower()
+        if fmt not in ALLOWED_FORMATS:
+            self.set_status(400)
+            self.write({"error": f"format must be one of {ALLOWED_FORMATS}"})
+            return
+
+        zip_path, work_folder = await build_export_zip(
+            self.pg, self.proj_paths.EXPORT_FOLDER, project_id, run_ids, fmt,
+        )
+        try:
+            download_name = (
+                f"project_{project_id}_runs_{fmt}.zip"
+            )
+            self.set_header("Content-Type", "application/zip")
+            self.set_header(
+                "Content-Disposition",
+                f'attachment; filename="{download_name}"',
+            )
+
+            # Stream in 1 MB chunks so large grids don't blow up memory.
+            CHUNK = 1024 * 1024
+            with open(zip_path, "rb") as f:
+                while True:
+                    block = f.read(CHUNK)
+                    if not block:
+                        break
+                    self.write(block)
+                    await self.flush()
+        finally:
+            shutil.rmtree(work_folder, ignore_errors=True)
+            try:
+                os.remove(zip_path)
+            except OSError as e:
+                logging.warning("Failed to remove export zip %s: %s", zip_path, e)

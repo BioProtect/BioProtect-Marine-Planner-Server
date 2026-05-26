@@ -3,7 +3,8 @@ CREATE OR REPLACE FUNCTION bioprotect.run_cumulative_impact(
     _activity_ids  INTEGER[],
     _profile_name  TEXT,
     _description   TEXT DEFAULT '',
-    _user          TEXT DEFAULT 'system'
+    _user          TEXT DEFAULT 'system',
+    _floor         NUMERIC DEFAULT 0.001
 )
 RETURNS INTEGER  -- cost_profile_id
 LANGUAGE plpgsql
@@ -11,6 +12,14 @@ AS $$
 DECLARE
     _cost_profile INTEGER;
 BEGIN
+    -- ---------------------------------------------------------------
+    -- Validate floor: cells must never have cost <= 0 because
+    -- Prioritizr would always favour them.
+    -- ---------------------------------------------------------------
+    IF _floor IS NULL OR _floor <= 0 OR _floor >= 1 THEN
+        RAISE EXCEPTION 'floor must be strictly between 0 and 1';
+    END IF;
+
     -- ---------------------------------------------------------------
     -- Validate project has planning units
     -- ---------------------------------------------------------------
@@ -41,7 +50,7 @@ BEGIN
      );
 
     -- ---------------------------------------------------------------
-    -- Compute cumulative impact per hex and insert as cost values
+    -- Compute cumulative impact per hex and insert as cost values.
     --
     -- Uses hex centroid containment instead of polygon intersection
     -- for performance. A hex is "covered" (coverage=1) if its centroid
@@ -49,6 +58,8 @@ BEGIN
     --
     -- All pressures for a given activity share the same geometry, so
     -- we test containment once per (activity, hex) then fan out.
+    --
+    -- Costs are rescaled into [_floor, 1] so no hex ever stores 0.
     -- ---------------------------------------------------------------
     WITH project_hexes AS (
         SELECT pp.id   AS project_pu_id,
@@ -114,24 +125,32 @@ BEGIN
            AND sm.pressure    = hp.pressuretitle
          GROUP BY hp.project_pu_id
     )
-    -- Insert impacted hexes with normalised cost (0-1)
+    -- Insert impacted hexes with normalised cost in [_floor, 1].
+    -- Linear remap from [0, 1] into [_floor, 1] so the lowest impact
+    -- still lands on _floor, never 0.
     INSERT INTO bioprotect.cost_profile_values
         (cost_profile_id, project_pu_id, cost, status)
     SELECT _cost_profile,
            c.project_pu_id,
            CASE
              WHEN max_impact.val > 0
-             THEN c.impact / max_impact.val
-             ELSE 0
+             THEN GREATEST(
+                    _floor,
+                    LEAST(
+                        1.0,
+                        _floor + (1.0 - _floor) * (c.impact / max_impact.val)
+                    )
+                  )
+             ELSE _floor
            END,
            0
       FROM cumulative c,
            (SELECT MAX(impact) AS val FROM cumulative) max_impact;
 
-    -- Fill non-impacted hexes with zero cost
+    -- Fill non-impacted hexes with the floor cost (not zero).
     INSERT INTO bioprotect.cost_profile_values
         (cost_profile_id, project_pu_id, cost, status)
-    SELECT _cost_profile, pp.id, 0, 0
+    SELECT _cost_profile, pp.id, _floor, 0
       FROM bioprotect.project_pus pp
      WHERE pp.project_id = _project_id
        AND NOT EXISTS (

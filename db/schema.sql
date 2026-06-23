@@ -1028,10 +1028,10 @@ $_$;
 
 
 --
--- Name: set_active_profile_pu_statuses(integer, text[], text[]); Type: FUNCTION; Schema: bioprotect; Owner: -
+-- Name: set_active_profile_pu_statuses(integer, text[], text[], text[]); Type: FUNCTION; Schema: bioprotect; Owner: -
 --
 
-CREATE FUNCTION bioprotect.set_active_profile_pu_statuses(p_project_id integer, p_status1_h3 text[] DEFAULT ARRAY[]::text[], p_status2_h3 text[] DEFAULT ARRAY[]::text[]) RETURNS void
+CREATE FUNCTION bioprotect.set_active_profile_pu_statuses(p_project_id integer, p_status1_h3 text[] DEFAULT ARRAY[]::text[], p_status2_h3 text[] DEFAULT ARRAY[]::text[], p_status3_h3 text[] DEFAULT ARRAY[]::text[]) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -1051,6 +1051,7 @@ BEGIN
         CASE
             WHEN pp.h3_index = ANY(p_status1_h3) THEN 1
             WHEN pp.h3_index = ANY(p_status2_h3) THEN 2
+            WHEN pp.h3_index = ANY(p_status3_h3) THEN 3
             ELSE 0
         END
     FROM bioprotect.project_pus pp

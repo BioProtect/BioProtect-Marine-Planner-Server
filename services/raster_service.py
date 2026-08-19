@@ -25,6 +25,7 @@ import statistics
 from typing import Iterable
 
 import rasterio
+from tornado.ioloop import IOLoop
 from rasterio.warp import (
     Resampling,
     calculate_default_transform,
@@ -209,35 +210,41 @@ async def extract_raster_to_hexes(
     # and pass that. Single-band rasters can be passed directly.
     from rasterio.io import MemoryFile  # type: ignore
 
-    with rasterio.open(raster_path) as src:
-        if band < 1 or band > src.count:
-            raise ValueError(
-                f"Band {band} out of range (raster has {src.count} bands)."
-            )
+    # ponytail: exact_extract is a blocking C call — run it off the IOLoop
+    # so the websocket ping keeps firing on big grids.
+    def _extract():
+        with rasterio.open(raster_path) as src:
+            if band < 1 or band > src.count:
+                raise ValueError(
+                    f"Band {band} out of range (raster has {src.count} bands)."
+                )
 
-        if src.count == 1:
-            results = exact_extract(
-                rast=src,
-                vec=features,
-                ops=[stat],
-                include_cols=["project_pu_id", "h3_index"],
-                output="pandas",
-            )
-        else:
-            band_data = src.read(band)
-            profile = src.profile.copy()
-            profile.update(count=1, dtype=band_data.dtype)
-            with MemoryFile() as memfile:
-                with memfile.open(**profile) as mem_dst:
-                    mem_dst.write(band_data, 1)
-                with memfile.open() as mem_src:
-                    results = exact_extract(
-                        rast=mem_src,
-                        vec=features,
-                        ops=[stat],
-                        include_cols=["project_pu_id", "h3_index"],
-                        output="pandas",
-                    )
+            if src.count == 1:
+                results = exact_extract(
+                    rast=src,
+                    vec=features,
+                    ops=[stat],
+                    include_cols=["project_pu_id", "h3_index"],
+                    output="pandas",
+                )
+            else:
+                band_data = src.read(band)
+                profile = src.profile.copy()
+                profile.update(count=1, dtype=band_data.dtype)
+                with MemoryFile() as memfile:
+                    with memfile.open(**profile) as mem_dst:
+                        mem_dst.write(band_data, 1)
+                    with memfile.open() as mem_src:
+                        results = exact_extract(
+                            rast=mem_src,
+                            vec=features,
+                            ops=[stat],
+                            include_cols=["project_pu_id", "h3_index"],
+                            output="pandas",
+                        )
+        return results
+
+    results = await IOLoop.current().run_in_executor(None, _extract)
 
     # exactextract pandas output: one row per feature, with columns:
     # project_pu_id, h3_index, <stat>

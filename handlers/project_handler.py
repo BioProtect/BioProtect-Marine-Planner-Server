@@ -24,16 +24,6 @@ class ProjectHandler(BaseHandler):
     # Utility
     # ----------------------------
 
-    async def _get_authenticated_user_id(self):
-        uid = self.get_secure_cookie("user_id")
-        if not uid:
-            raise ServicesError("Not authenticated")
-
-        try:
-            return int(uid.decode() if isinstance(uid, (bytes, bytearray)) else uid)
-        except Exception:
-            raise ServicesError("Invalid session user")
-
     async def _resolve_planning_unit_id(self, planning_grid_name):
         """
         planning_grid_name coming from frontend is tilesetid

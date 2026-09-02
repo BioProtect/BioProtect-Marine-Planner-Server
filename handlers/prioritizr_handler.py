@@ -9,10 +9,30 @@ from services.run_export_service import ALLOWED_FORMATS, build_export_zip
 from services.service_error import ServicesError
 
 
+# Who may delete a run: the user who started it, an owner of its project, or
+# a global Admin. Defined once — list_runs reports it, delete_run enforces it.
+# Takes the current user id three times, positionally.
+_MAY_DELETE_SQL = """
+        COALESCE(r.created_by = %s, FALSE)
+        OR EXISTS (SELECT 1 FROM bioprotect.user_projects up
+                   WHERE up.project_id = r.project_id
+                     AND up.user_id = %s AND up.role = 'owner')
+        OR EXISTS (SELECT 1 FROM bioprotect.users au
+                   WHERE au.id = %s AND au.role = 'Admin')
+"""
+
+
 class PrioritizrHandler(BaseHandler):
 
     def initialize(self, pg):
         super().initialize(pg=pg)
+
+    async def _session_user_id(self):
+        """The signed-in user id, or None when the request is anonymous."""
+        try:
+            return await self._get_authenticated_user_id()
+        except ServicesError:
+            return None
 
     def validate_args(self, args, required_keys):
         """Checks that all of the arguments in argumentList are in the arguments dictionary."""
@@ -42,30 +62,88 @@ class PrioritizrHandler(BaseHandler):
         self.write({"error": f"Unknown action '{action}'"})
         self.set_status(400)
 
+    async def post(self):
+        action = self.get_argument("action", None)
+
+        if action == "delete-run":
+            return await self.delete_run()
+
+        self.set_status(400)
+        self.write({"error": f"Unknown action '{action}'"})
+
+    # --------------------------------------------------
+    # POST /prioritizr?action=delete-run&run-id=<id>
+    async def delete_run(self):
+        """Deletes a run. Only the user who started it may do so."""
+        try:
+            run_id = int(self.get_argument("run-id", ""))
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "run-id must be an integer"})
+            return
+
+        try:
+            user_id = await self._get_authenticated_user_id()
+        except ServicesError as e:
+            self.set_status(401)
+            self.write({"error": e.args[0]})
+            return
+
+        # Permission is enforced in the WHERE clause, so there is no gap
+        # between the check and the delete. Logs and results rows go with it
+        # via ON DELETE CASCADE, and the run's input table via the
+        # trg_drop_prioritizr_input_table trigger.
+        rows = await self.pg.execute(
+            f"""
+            DELETE FROM bioprotect.prioritizr_runs AS r
+            WHERE r.id = %s AND ({_MAY_DELETE_SQL})
+            RETURNING r.id
+            """,
+            data=[run_id, user_id, user_id, user_id],
+            return_format="Dict",
+        )
+
+        if not rows:
+            self.set_status(403)
+            self.write({
+                "error": "Only the user who started this run, a project "
+                         "owner, or an admin can delete it"
+            })
+            return
+
+        self.send_response({"info": f"Run {run_id} deleted", "id": run_id})
+
     # --------------------------------------------------
     async def list_runs(self):
         self.validate_args(self.request.arguments, ["project-id"])
         project_id = self.get_argument("project-id")
 
-        query = ("""
+        user_id = await self._session_user_id()
+
+        query = (f"""
                 SELECT
-                    id,
-                    project_id,
-                    created_by,
-                    created_at,
-                    status,
-                    params,
-                    input_table,
-                    feature_cols,
-                    feature_map,
-                    label,
-                    description
-                FROM bioprotect.prioritizr_runs
-                WHERE project_id = %s
-                ORDER BY created_at DESC
+                    ({_MAY_DELETE_SQL}) AS can_delete,
+                    r.id,
+                    r.project_id,
+                    r.created_by,
+                    u.username AS created_by_name,
+                    r.created_at,
+                    r.status,
+                    r.params,
+                    r.input_table,
+                    r.feature_cols,
+                    r.feature_map,
+                    r.label,
+                    r.description
+                FROM bioprotect.prioritizr_runs r
+                LEFT JOIN bioprotect.users u ON u.id = r.created_by
+                WHERE r.project_id = %s
+                ORDER BY r.created_at DESC
                 """)
 
-        data = await self.pg.execute(query, data=[project_id], return_format="DataFrame")
+        data = await self.pg.execute(
+            query, data=[user_id, user_id, user_id, project_id],
+            return_format="DataFrame")
         self.send_response({"data": data.to_dict(orient="records")})
 
     # --------------------------------------------------

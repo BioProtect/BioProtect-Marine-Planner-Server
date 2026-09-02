@@ -27,6 +27,7 @@ import psycopg2
 import rasterio
 import requests
 from handlers.bioprotect_engage_handler import BioProtectEngageHandler
+import tornado.httpserver
 import tornado.options
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
@@ -38,6 +39,7 @@ from functions.utils import (create_cost_from_impact, cumul_impact,
                              reproject_raster_to_all_habs)
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
+from handlers.feature_websocket_handler import ImportFeaturesWSHandler
 from handlers.planning_unit_handler import PlanningUnitHandler
 from handlers.planning_unit_websocket_handler import PlanningGridWSHandler
 from handlers.preprocess_feature_websocket_handler import PreprocessFeature
@@ -1185,228 +1187,6 @@ class RestartMartin(BaseHandler):
 ####################################################################################################################################################################################################################################################################
 
 
-class importFeatures(SocketHandler):
-    """REST WebSocket Handler. Imports a set of features from an unzipped shapefile. This can either be a single feature class or multiple. Sends an error if the feature(s) already exist(s). The required arguments in the request.arguments parameter are:
-
-    Args:
-        shapefile (string): The name of shapefile to import (minus the *.shp extension).
-        name (string): Optional. If specified then this is the name of the single feature class that will be imported. If omitted then the import is for multiple features.
-        description (string): Optional. A description for the imported feature class.
-        splitfield (string): Optional. The name of the field to use to split the features in the shapefile into separate feature classes. The separate feature classes will have a name derived from the values in this field.
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Contains detailed progress statements on the import process,
-            "elapsedtime": The elapsed time in seconds of the run,
-            "status": One of Preprocessing, pid, FeatureCreated or Finished,
-            "id": The oid of the feature created,
-            "feature_class_name": The name of the feature class created,
-            "uploadId": The Mapbox tileset upload id (for a single feature),
-            "uploadIds": string[]: The Mapbox tileset upload ids (for multiple feature)
-        }
-    """
-
-    async def open(self):
-        try:
-            await super().open({'info': "Importing features.."})
-
-        except ServicesError:  # authentication/authorisation error
-            pass
-        else:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['shapefile'])
-            # get the name of the shapefile that has already been unzipped on the server
-            shapefile = self.get_argument('shapefile')
-            # if a name is passed then this is a single feature class
-            if "name" in list(self.request.arguments.keys()):
-                name = self.get_argument('name')
-            else:
-                name = None
-            try:
-                # get a scratch name for the import
-                scratch_name = get_unique_feature_name("scratch_")
-                # first, import the shapefile into a PostGIS feature class in EPSG:4326
-                await pg.import_shapefile(project_paths.IMPORT_FOLDER, shapefile, scratch_name)
-                # check the geometry
-                self.send_response({
-                    'status': 'Preprocessing',
-                    'info': "Checking the geometry.."
-                })
-                await pg.is_valid(scratch_name)
-
-                # get the feature names
-                if name:  # single feature name
-                    feature_names = [name]
-                else:  # get the feature names from a field in the shapefile
-                    splitfield = self.get_argument('splitfield')
-                    query = sql.SQL(
-                        "SELECT {splitfield} FROM bioprotect.{scratchTable}"
-                    ).format(
-                        splitfield=sql.Identifier(splitfield),
-                        scratchTable=sql.Identifier(scratch_name)
-                    )
-                    features = await pg.execute(query, return_format="DataFrame")
-
-                    feature_names = list(set(features[splitfield].tolist()))
-                    # if they are not unique then return an error
-                    # if (len(feature_names) != len(set(feature_names))):
-                    #     raise ServicesError("Feature names are not unique for the field '" + splitfield + "'")
-                # split the imported feature class into separate feature classes
-                for feature_name in feature_names:
-                    # create the new feature class
-                    is_single = bool(name)
-                    prefix = "f_" if is_single else "fs_"
-                    feature_class_name = get_unique_feature_name(prefix)
-                    params = [feature_name]
-
-                    # single feature vs shapefile with multiple features
-                    if is_single:
-                        # No WHERE clause for single import
-                        query = sql.SQL("""
-                            CREATE TABLE bioprotect.{feature_class_name} AS
-                            SELECT * FROM bioprotect.{scratch_table};
-                        """).format(
-                            feature_class_name=sql.Identifier(
-                                feature_class_name),
-                            scratch_table=sql.Identifier(scratch_name)
-                        )
-                        description = self.get_argument("description")
-                    else:
-                        # Filter by field value for multi-import
-                        query = sql.SQL("""
-                            CREATE TABLE bioprotect.{feature_class_name} AS
-                            SELECT * FROM bioprotect.{scratch_table}
-                            WHERE {split_field} = %s;
-                        """).format(
-                            feature_class_name=sql.Identifier(
-                                feature_class_name),
-                            scratch_table=sql.Identifier(scratch_name),
-                            split_field=sql.Identifier(splitfield)
-                        )
-                        description = f"Imported from '{shapefile}' and split by '{splitfield}' field"
-
-                    await pg.execute(query, params)
-
-                    # add an index and a record in the metadata_interest_features table and start the upload to mapbox
-                    geometryType = await pg.get_geometry_type(feature_class_name)
-                    source = "Imported shapefile" if (
-                        geometryType != 'ST_Point') else "Imported shapefile (points)"
-
-                    id = await finish_feature_import(feature_class_name,
-                                                     feature_name,
-                                                     description,
-                                                     source,
-                                                     self.get_current_user())
-                    self.send_response({
-                        'id': id,
-                        'feature_class_name': feature_class_name,
-                        'info': f"Feature '{feature_name}' imported",
-                        'status': 'FeatureCreated'
-                    })
-                # complete
-                self.close({'info': "Features imported"})
-
-            except ServicesError as e:
-                self.send_response({
-                    'status': 'Finished',
-                    'error': str(e),
-                    'info': 'Failed to import features'
-                })
-                self.close(clean=False)
-            finally:
-                # delete the scratch feature class
-                if scratch_name:
-                    query = f'DROP TABLE IF EXISTS bioprotect."{scratch_name}"'
-                    await pg.execute(query)
-
-
-class createFeaturesFromWFS(SocketHandler):
-    """REST WebSocket Handler. Creates a new feature (or set of features) from a WFS endpoint. Sends an error if the feature already exist. The required arguments in the request.arguments parameter are:
-
-    Args:
-        srs (string): The spatial reference system of the WFS service, e.g. 'EPSG:4326'.
-        endpoint (string): The url endpoint to the WFS service.
-        name (string): The name of the feature to be created.
-        description (string): A description for the feature.
-        featuretype (string): The layer name within the WFS service representing the feature class to import.
-    Returns:
-        WebSocket dict messages with one or more of the following keys (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Contains detailed progress statements on the import process,
-            "elapsedtime": The elapsed time in seconds of the run,
-            "status": One of Preprocessing, pid, FeatureCreated or Finished,
-            "id": The oid of the feature created,
-            "feature_class_name": The name of the feature class created,
-            "uploadId": The Mapbox tileset upload id
-        }
-    """
-
-    @staticmethod
-    def get_gml(endpoint, featuretype):
-        """Gets the gml data using the WFS endpoint and feature type
-
-        Args:
-            endpoint (string): The url of the WFS endpoint to get the GML data from.
-            featuretype (string): The name of the feature class in the WFS service to get the GML data from.
-        Returns:
-            string: The gml as a text string.
-        """
-        response = requests.get(
-            f"{endpoint}&request=getfeature&typeNames={featuretype}")
-        return response.text
-
-    async def open(self):
-        try:
-            await super().open({'info': "Importing features.."})
-        except ServicesError:  # authentication/authorisation error
-            pass
-        else:
-            # validate the input arguments
-            validate_args(self.request.arguments, [
-                'srs', 'endpoint', 'name', 'description', 'featuretype'])
-            try:
-                # get a unique feature class name for the import
-                feature_class_name = get_unique_feature_name("f_")
-                # get the WFS data as GML
-                gml = await IOLoop.current().run_in_executor(None, self.get_gml, self.get_argument('endpoint'), self.get_argument('featuretype'))
-                # write it to file
-                write_to_file(
-                    project_paths.IMPORT_FOLDER + feature_class_name + ".gml", gml)
-                # import the GML into a PostGIS feature class in EPSG:4326
-                await pg.import_gml(project_paths.IMPORT_FOLDER, feature_class_name + ".gml", feature_class_name, sEpsgCode=self.get_argument('srs'))
-                # check the geometry
-                self.send_response(
-                    {'status': 'Preprocessing', 'info': "Checking the geometry.."})
-                await pg.is_valid(feature_class_name)
-                # add an index and a record in the metadata_interest_features table and start the upload to mapbox
-                id = await finish_feature_import(feature_class_name, self.get_argument('name'), self.get_argument('description'), "imported from web service", self.get_current_user())
-                # start the upload to mapbox
-                uploadId = await upload_tileset_to_mapbox(feature_class_name, feature_class_name)
-
-                self.send_response({'id': id, 'feature_class_name': feature_class_name, 'uploadId': uploadId,
-                                    'info': "Feature '" + self.get_argument('name') + "' imported", 'status': 'FeatureCreated'})
-                # complete
-                self.close({'info': "Features imported", 'uploadId': uploadId})
-            except (ServicesError) as e:
-                if "already exists" in e.args[0]:
-                    self.close({'error': "The feature '" + self.get_argument('name') +
-                                "' already exists", 'info': 'Failed to import features'})
-                else:
-                    self.close(
-                        {'error': e.args[0], 'info': 'Failed to import features'})
-            finally:
-                # delete the gml file
-                if os.path.exists(project_paths.IMPORT_FOLDER + feature_class_name + ".gml"):
-                    os.remove(project_paths.IMPORT_FOLDER +
-                              feature_class_name + ".gml")
-                # delete the gfs file
-                if os.path.exists(project_paths.IMPORT_FOLDER + feature_class_name + ".gfs"):
-                    os.remove(project_paths.IMPORT_FOLDER +
-                              feature_class_name + ".gfs")
-
-
 ####################################################################################################################################################################################################################################################################
 # baseclass for handling long-running PostGIS queries using WebSockets
 ####################################################################################################################################################################################################################################################################
@@ -1736,8 +1516,10 @@ class Application(tornado.web.Application):
 
             ("/server/createFeaturePreprocessingFileFromImport",
              createFeaturePreprocessingFileFromImport),
-            ("/server/importFeatures", importFeatures),
-            ("/server/createFeaturesFromWFS", createFeaturesFromWFS),
+            ("/server/importFeatures", ImportFeaturesWSHandler,
+             dict(pg=pg,
+                  finish_feature_import=finish_feature_import,
+                  get_unique_feature_name=get_unique_feature_name)),
             ("/server/deleteShapefile", deleteShapefile),
 
             ("/server/createPlanningUnitGrid",
@@ -1809,14 +1591,26 @@ async def initialiseApp():
         root_logger.addHandler(file_log_handler)
 
     app = Application()
+    # nginx allows uploads up to client_max_body_size 500M, but Tornado's own
+    # default is 100MB - without these limits anything in between passes nginx
+    # and is then rejected here. Keep MAX_UPLOAD_BYTES in step with nginx.conf.
+    MAX_UPLOAD_BYTES = 500 * 1024 * 1024
     # if there is an https certificate then use the certificate information from the server.dat file to return data securely
     if project_paths.CERTFILE is None:
-        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0")
+        http_server = tornado.httpserver.HTTPServer(
+            app,
+            max_body_size=MAX_UPLOAD_BYTES,
+            max_buffer_size=MAX_UPLOAD_BYTES)
     else:
-        app.listen(int(db_config.SERVER_PORT), address="0.0.0.0", ssl_options={
-            "certfile": project_paths.CERTFILE,
-            "keyfile": project_paths.KEYFILE
-        })
+        http_server = tornado.httpserver.HTTPServer(
+            app,
+            max_body_size=MAX_UPLOAD_BYTES,
+            max_buffer_size=MAX_UPLOAD_BYTES,
+            ssl_options={
+                "certfile": project_paths.CERTFILE,
+                "keyfile": project_paths.KEYFILE
+            })
+    http_server.listen(int(db_config.SERVER_PORT), address="0.0.0.0")
 
     protocol = "https://" if project_paths.CERTFILE != None else "http://"
 

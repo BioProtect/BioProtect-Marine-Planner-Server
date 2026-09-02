@@ -76,6 +76,17 @@ class BaseHandler(RequestHandler):
         if self.get_secure_cookie("user"):
             return self.get_secure_cookie("user").decode("utf-8")
 
+    async def _get_authenticated_user_id(self):
+        """The numeric user id from the session cookie set at login."""
+        uid = self.get_secure_cookie("user_id")
+        if not uid:
+            raise ServicesError("Not authenticated")
+
+        try:
+            return int(uid.decode() if isinstance(uid, (bytes, bytearray)) else uid)
+        except Exception:
+            raise ServicesError("Invalid session user")
+
     def validate_args(self, arguments, required_keys):
         """Validates that all required arguments are present."""
         missing = [key for key in required_keys if key not in arguments]

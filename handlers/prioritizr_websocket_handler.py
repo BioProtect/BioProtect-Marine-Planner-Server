@@ -111,15 +111,24 @@ class PrioritizrWSHandler(SocketHandler):
         label = (params.get("name") or "").strip() or None
         description = (params.get("description") or "").strip() or None
 
+        # Owner of the run. The session cookie is authoritative; the `user`
+        # argument already on the WS URL is the fallback.
+        uid = self.get_secure_cookie("user_id")
+        try:
+            created_by = int(uid.decode() if uid else self.get_argument("user"))
+        except (AttributeError, TypeError, ValueError):
+            created_by = None
+
         # === create run ===
         row = await self.pg.execute(
             """
             INSERT INTO bioprotect.prioritizr_runs
-                (project_id, status, params, label, description)
-            VALUES (%s, 'queued', %s::jsonb, %s, %s)
+                (project_id, created_by, status, params, label, description)
+            VALUES (%s, %s, 'queued', %s::jsonb, %s, %s)
             RETURNING id
             """,
-            data=[project_id, json.dumps(params or {}), label, description],
+            data=[project_id, created_by, json.dumps(params or {}),
+                  label, description],
             return_format="Dict",
         )
 

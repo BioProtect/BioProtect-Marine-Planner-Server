@@ -5234,7 +5234,11 @@
 10005,0
 10006,0
 10007,0
+<<<<<<< HEAD
 10008,0
+=======
+10008,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 10009,0
 10010,0
 10011,0
@@ -5768,11 +5772,19 @@
 10553,0
 10554,0
 10555,0
+<<<<<<< HEAD
 10556,0
 10557,0
 10558,0
 10559,0
 10560,1
+=======
+10556,1
+10557,0
+10558,0
+10559,0
+10560,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 10561,0
 10562,0
 10563,0
@@ -5948,8 +5960,13 @@
 10738,0
 10739,0
 10740,0
+<<<<<<< HEAD
 10741,0
 10742,0
+=======
+10741,1
+10742,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 10743,0
 10744,0
 10745,0
@@ -5971,10 +5988,17 @@
 10761,0
 10762,0
 10763,0
+<<<<<<< HEAD
 10764,0
 10765,0
 10766,1
 10767,1
+=======
+10764,1
+10765,0
+10766,1
+10767,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 10768,0
 10769,0
 10770,0
@@ -6151,9 +6175,15 @@
 10946,0
 10947,0
 10948,0
+<<<<<<< HEAD
 10949,1
 10950,1
 10951,1
+=======
+10949,0
+10950,1
+10951,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 10952,0
 10953,0
 10954,0
@@ -6329,9 +6359,15 @@
 11130,0
 11131,0
 11132,0
+<<<<<<< HEAD
 11133,0
 11134,0
 11135,0
+=======
+11133,1
+11134,0
+11135,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 11136,0
 11137,0
 11138,0
@@ -6481,7 +6517,11 @@
 11287,0
 11288,0
 11289,0
+<<<<<<< HEAD
 11290,1
+=======
+11290,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 11291,0
 11292,0
 11293,0
@@ -6857,7 +6897,11 @@
 11672,0
 11673,0
 11674,0
+<<<<<<< HEAD
 11675,0
+=======
+11675,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 11676,0
 11677,0
 11678,0
@@ -7032,11 +7076,19 @@
 11853,0
 11854,0
 11855,0
+<<<<<<< HEAD
 11856,1
 11857,1
 11858,0
 11859,0
 11860,0
+=======
+11856,0
+11857,0
+11858,0
+11859,0
+11860,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 11861,0
 11862,0
 11863,0
@@ -7211,10 +7263,17 @@
 12037,0
 12038,0
 12039,0
+<<<<<<< HEAD
 12040,1
 12041,1
 12042,1
 12043,0
+=======
+12040,0
+12041,0
+12042,1
+12043,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12044,0
 12045,0
 12046,0
@@ -7390,16 +7449,26 @@
 12222,0
 12223,0
 12224,0
+<<<<<<< HEAD
 12225,1
 12226,1
 12227,1
+=======
+12225,0
+12226,0
+12227,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12228,0
 12229,0
 12230,0
 12231,0
 12232,0
 12233,0
+<<<<<<< HEAD
 12234,0
+=======
+12234,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12235,1
 12236,0
 12237,0
@@ -7578,7 +7647,11 @@
 12415,0
 12416,0
 12417,0
+<<<<<<< HEAD
 12418,1
+=======
+12418,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12419,0
 12420,0
 12421,0
@@ -7754,9 +7827,15 @@
 12598,0
 12599,0
 12600,0
+<<<<<<< HEAD
 12601,1
 12602,1
 12603,1
+=======
+12601,0
+12602,0
+12603,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12604,0
 12605,0
 12606,0
@@ -7935,7 +8014,11 @@
 12787,0
 12788,0
 12789,1
+<<<<<<< HEAD
 12790,0
+=======
+12790,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12791,0
 12792,0
 12793,0
@@ -8106,11 +8189,19 @@
 12968,0
 12969,0
 12970,0
+<<<<<<< HEAD
 12971,1
 12972,0
 12973,0
 12974,0
 12975,0
+=======
+12971,0
+12972,0
+12973,1
+12974,1
+12975,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 12976,0
 12977,0
 12978,0
@@ -8809,10 +8900,17 @@
 13722,0
 13723,0
 13724,0
+<<<<<<< HEAD
 13725,0
 13726,0
 13727,1
 13728,0
+=======
+13725,1
+13726,0
+13727,0
+13728,1
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 13729,0
 13730,0
 13731,0
@@ -8980,7 +9078,11 @@
 13907,0
 13908,0
 13909,0
+<<<<<<< HEAD
 13910,1
+=======
+13910,0
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 13911,1
 13912,0
 13913,0

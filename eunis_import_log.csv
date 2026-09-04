@@ -1,0 +1,70 @@
+timestamp,eunis_code,feature_class_name,area_m2,status,message
+2025-10-10T15:48:14,Lower bathyal,f_9a0f6390cba8435996154af5aafeb8,27506.87,success,imported successfully
+2025-10-10T15:48:36,MB12: Atlantic infralittoral rock,f_f1071e8b499340ca91c3c47f53befc,12438065155.82,success,imported successfully
+2025-10-10T15:51:16,MB15: Mediterranean infralittoral rock,f_06fb6eb2ab0e4d2c83fa644d9bd3bb,1856401425.48,success,imported successfully
+2025-10-10T15:52:09,MB2222: [Ostrea edulis] beds on Atlantic infralittoral muddy mixed sediment,f_12ce99e677ca48b689559d25fd1b6b,14558582.81,success,imported successfully
+2025-10-10T15:52:32,MB2223: Mussel beds on Atlantic infralittoral sediment,f_a8753b9d53ab4db38da3e9eef8cff5,28710040.89,success,imported successfully
+2025-10-10T15:52:55,"MB2523: Facies of dead ""mattes"" of [Posidonia oceanica] without much epiflora",f_399900746a284be2b5c0941f9dc7ce,0,failed,"Query stopped: box2d parser - couldn't parse.  It should look like: BOX(xmin ymin,xmax ymax)
+LINE 6:                          NOW(), 0.0, 'None', 'EUSeaMap 2023'...
+                                             ^
+"
+2025-10-10T15:53:17,MB252: Biocenosis of [Posidonia oceanica],f_a3e91319671d4bb1b2929e933d8595,12863318636.67,success,imported successfully
+2025-10-10T15:54:34,MB32: Atlantic infralittoral coarse sediment,f_02986faeb04b4274876370115b9949,7390732324.84,success,imported successfully
+2025-10-10T15:55:12,MB35: Mediterranean infralittoral coarse sediment,f_740f2b5eed384edeab04f3642ace45,3054790694.48,success,imported successfully
+2025-10-10T15:55:59,MB42: Atlantic infralittoral mixed sediment,f_ce7a9b26c386483191865382b2305d,3359242361.34,success,imported successfully
+2025-10-10T15:56:30,MB52: Atlantic infralittoral sand,f_c0a813b74578479282c0b00e8599ad,23953998563.6,success,imported successfully
+2025-10-10T15:57:20,MB55: Mediterranean infralittoral sand,f_ef40641a873f4f95b9cede998017b2,58137628089.48,success,imported successfully
+2025-10-10T15:59:38,MB62: Atlantic infralittoral mud,f_27c7642353734c5a84fd184d7488e0,5704336689.7,success,imported successfully
+2025-10-10T16:00:15,MB65: Mediterranean infralittoral mud,f_6a1f8378934c435cbf7b1785ecb19c,16815008884.69,success,imported successfully
+2025-10-10T16:00:54,MC12: Atlantic circalittoral rock,f_e7eaf6b537b7449487946155f75098,26041437070.65,success,imported successfully
+2025-10-10T16:04:07,MC151: Coralligenous biocenosis,f_1a935208e2e746679f5831d027486e,2953916895.82,success,imported successfully
+2025-10-10T16:04:43,MC221: Worm reefs in the Atlantic circalittoral zone,f_21ff6fd62af642d183c5633ddbd240,146595148.5,success,imported successfully
+2025-10-10T16:05:08,MC251: Coralligenous platforms,f_d17a01e3fd0a4995a417f56b10da5d,2112832.26,success,imported successfully
+2025-10-10T16:05:31,MC32: Atlantic circalittoral coarse sediment,f_cb93a5738d6743ab8c76969416d9d0,67438416197.56,success,imported successfully
+2025-10-10T16:07:01,MC35: Mediterranean circalittoral coarse sediment,f_f7c7504574b94cf99dc8c49161082e,135622672901.26,success,imported successfully
+2025-10-10T16:07:49,MC42: Atlantic circalittoral mixed sediment,f_418703161ff146af8628505e5d3b51,8087719932.47,success,imported successfully
+2025-10-10T16:08:16,MC451: Biocenosis of Mediterranean muddy detritic bottoms,f_e52fcf85494b4c558261665b9ba9d3,61873647833.68,success,imported successfully
+2025-10-10T16:08:41,MC45: Mediterranean circalittoral mixed sediment,f_2615c101254342af9f72d78f92970b,6432190407.91,success,imported successfully
+2025-10-10T16:09:05,MC52: Atlantic circalittoral sand,f_228bdcf9f1224d8cb4ae837dbaeb0e,108290670398.0,success,imported successfully
+2025-10-10T16:10:28,MC62: Atlantic circalittoral mud,f_84424c3f69b54d7bb86bef82a4a4e6,17942319322.45,success,imported successfully
+2025-10-10T16:11:00,MC651: Biocenosis of Mediterranean circalittoral coastal terrigenous muds,f_87b9ee854ec04bd1b41198841cee52,43545894197.51,success,imported successfully
+2025-10-10T16:11:26,MD12: Atlantic offshore circalittoral rock,f_a8d5bb0734324f2e813719c69ea4f2,50056385825.63,success,imported successfully
+2025-10-10T16:19:05,MD151: Biocenosis of Mediterranean shelf-edge rock,f_9657db19a7bf4633aba39c510625c7,1318456678.41,success,imported successfully
+2025-10-10T16:19:28,MD22: Atlantic offshore circalittoral biogenic habitat,f_1b54bb998d02499189304a432c968c,709983987.52,success,imported successfully
+2025-10-10T16:19:51,MD32: Atlantic offshore circalittoral coarse sediment,f_29a747fe9bd74138aa1aed9a2a17a8,269555852471.72,success,imported successfully
+2025-10-10T16:34:36,MD42: Atlantic offshore circalittoral mixed sediment,f_2ece3681b6d54a96a1982165ac46ab,25351734705.56,success,imported successfully
+2025-10-10T16:35:03,MD451: Biocenosis of Mediterranean open-sea detritic bottoms on shelf-edge,f_b4c42aa1db304453849c2bcf89b485,112297305275.73,success,imported successfully
+2025-10-10T16:35:31,MD52: Atlantic offshore circalittoral sand,f_1754cd4f1ac74889a6a199a711cc78,487455242246.94,success,imported successfully
+2025-10-10T16:48:45,MD62: Atlantic offshore circalittoral mud,f_33a7e244e28a462e892b9b2e938fa8,284995788713.05,success,imported successfully
+2025-10-10T16:49:44,MD651: Biocenosis of Mediterranean offshore circalittoral coastal terrigenous muds,f_a27886d1ee554060b20aad376ddc70,33273082114.21,success,imported successfully
+2025-10-10T16:50:10,ME12: Atlantic upper bathyal rock,f_0e3ece08b34547b9b4d260234634d6,43223161420.96,success,imported successfully
+2025-10-10T16:51:11,ME15: Mediterranean upper bathyal rock,f_7a1c6b40a1b445638ed68da36577aa,2096284580.96,success,imported successfully
+2025-10-10T16:51:33,ME221: Atlantic upper bathyal cold water coral reef,f_3e4d3cf0f6554d67b3a7bbec5721ff,497787787.99,success,imported successfully
+2025-10-10T16:51:56,ME25: Mediterranean Upper bathyal biogenic habitat,f_4727b3c2c7b34858ba9a491f307d2f,107295.99,success,imported successfully
+2025-10-10T16:52:19,ME32: Atlantic upper bathyal coarse sediment,f_d078aaff52ec4fb9b3090cb9ee637f,110370758303.98,success,imported successfully
+2025-10-10T16:52:52,ME35: Mediterranean upper bathyal coarse sediment,f_9f8490bc86344bd1838abe982b2e9c,303577469.93,success,imported successfully
+2025-10-10T16:53:17,ME42: Atlantic upper bathyal mixed sediment,f_91beb126f9924f0089324f39d8c8ae,51280898613.82,success,imported successfully
+2025-10-10T16:53:41,ME45: Mediterranean upper bathyal mixed sediment,f_c65f295786824c9a81b30db04ab95b,3840502067.19,success,imported successfully
+2025-10-10T16:54:04,ME52: Atlantic upper bathyal sand,f_b4abd360b4ba427a86cec19c17d919,79518087523.34,success,imported successfully
+2025-10-10T16:54:33,ME55: Mediterranean upper bathyal sand,f_181a3eaf222f4f8d8d01cd73941120,26840022653.77,success,imported successfully
+2025-10-10T16:54:56,ME62: Atlantic upper bathyal mud,f_8486a66bc1b54ce5ae96bf3969c268,909040067009.06,success,imported successfully
+2025-10-10T16:56:01,ME65: Mediterranean upper bathyal mud,f_c019f440e1dd4fc097965a3b00fe9b,206839835213.96,success,imported successfully
+2025-10-10T16:56:28,MF12: Atlantic lower bathyal rock,f_7805f7a0fd15495a83e2763f70a380,14368331935.67,success,imported successfully
+2025-10-10T16:56:51,MF15: Mediterranean lower bathyal rock,f_2660b7ec2eca4b53bae71729c736e6,4891970864.51,success,imported successfully
+2025-10-10T16:57:13,MF221: Atlantic lower bathyal cold water coral reef,f_6ea23f94aa9e4ae49fe9c414fb0657,20933254.12,success,imported successfully
+2025-10-10T16:57:36,MF32: Atlantic lower bathyal coarse sediment,f_4bbd07914d114fc6bd0448b0f6133a,14740911504.73,success,imported successfully
+2025-10-10T16:57:59,MF35: Mediterranean lower bathyal coarse sediment,f_c0cc023c73574d139ea9cbc415e75d,869240794.98,success,imported successfully
+2025-10-10T16:58:21,MF42: Atlantic lower bathyal mixed sediment,f_252b665b8926420b863773712787ac,26040513046.4,success,imported successfully
+2025-10-10T16:58:45,MF45: Mediterranean lower bathyal mixed sediment,f_06a008c76d704fefa671a0ebb0a1e6,581648442.08,success,imported successfully
+2025-10-10T16:59:07,MF52: Atlantic lower bathyal sand,f_b9f56a073c64477e8fa08fd7f3cf84,23087957337.21,success,imported successfully
+2025-10-10T16:59:33,MF55: Mediterranean lower bathyal sand,f_1fdda4d38b174f0f9970ff8bd54ec5,13222287625.62,success,imported successfully
+2025-10-10T16:59:59,MF62: Atlantic lower bathyal mud,f_19cf876f000044a0978aee34cb71ad,574062506402.82,success,imported successfully
+2025-10-10T17:00:38,MF65: Mediterranean lower bathyal mud,f_d6eb1c8922ea489891bc8cbe417a60,1382815236967.85,success,imported successfully
+2025-10-10T17:01:05,MG12: Atlantic abyssal rock,f_0c71e12378414c529953ff4cad7473,24145683172.36,success,imported successfully
+2025-10-10T17:01:27,MG32: Atlantic abyssal coarse sediment,f_df43fb3057714393946e522ef11589,1163252429.59,success,imported successfully
+2025-10-10T17:01:50,MG42: Atlantic abyssal mixed sediment,f_62835f17186e4855a58fe9ee3e117c,7505426733.36,success,imported successfully
+2025-10-10T17:02:13,MG52: Atlantic abyssal sand,f_7e9fa684175f4e95814ed0fc116b4b,44107383947.21,success,imported successfully
+2025-10-10T17:02:36,MG55: Mediterranean abyssal sand,f_8fc848bd790d4cbba17131997d037f,3774913815.08,success,imported successfully
+2025-10-10T17:02:59,MG62: Atlantic abyssal mud,f_93b10dd4fbca41a5be0fe9e03787c8,1749773243006.56,success,imported successfully
+2025-10-10T17:03:41,MG65: Mediterranean abyssal mud,f_4dd1ec21ba654af39869d6a7941d96,317019428689.6,success,imported successfully
+2025-10-10T17:04:04,Na,f_33175aa1545f4adc9f81a3e3996d57,7053713382517.34,success,imported successfully

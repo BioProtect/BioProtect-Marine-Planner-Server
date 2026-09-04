@@ -49,7 +49,11 @@ CLUMPTYPE 0
 VERBOSITY 3
 
 SAVESOLUTIONSMATRIX 3
+<<<<<<< HEAD
 DESCRIPTION Whatever
+=======
+DESCRIPTION Start project to demonstrate Marxan Web.
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 CREATEDATE 11/09/19 09:27:41
 PLANNING_UNIT_NAME pu_ton_marine_hexagon_50
 IUCN_CATEGORY None

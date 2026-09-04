@@ -7,3 +7,4 @@ architecture-server.png
 test.sql
 test*.py
 unix*.sh
+/.venv

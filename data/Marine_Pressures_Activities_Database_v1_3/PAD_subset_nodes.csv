@@ -1,0 +1,983 @@
+﻿Source,Target
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Abrasion/disturbance of the substrate on the surface of the seabed
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Changes in suspended solids (water clarity)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)","Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)","Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Introduction of light
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Introduction or spread of invasive non-indigenous species (INIS)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)","Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Physical change (to another seabed type)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Physical change (to another sediment type)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Smothering and siltation rate changes (Heavy)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Smothering and siltation rate changes (Light)
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)","Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Underwater noise changes
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Visual disturbance
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)","Water flow (tidal current) changes, including sediment transport considerations"
+"Cultural and heritage sites (e.g. wrecks, sculptures, foundations etc.)",Wave exposure changes
+Deep sea mining,Above water noise
+Deep sea mining,Abrasion/disturbance of the substrate on the surface of the seabed
+Deep sea mining,Changes in suspended solids (water clarity)
+Deep sea mining,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Deep sea mining,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Deep sea mining,Habitat structure changes - removal of substratum (extraction)
+Deep sea mining,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Deep sea mining,Introduction of light
+Deep sea mining,"Introduction of other substances (solid, liquid or gas)"
+Deep sea mining,Introduction or spread of invasive non-indigenous species (INIS)
+Deep sea mining,Litter
+Deep sea mining,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Deep sea mining,Physical change (to another seabed type)
+Deep sea mining,Physical change (to another sediment type)
+Deep sea mining,Smothering and siltation rate changes (Heavy)
+Deep sea mining,Smothering and siltation rate changes (Light)
+Deep sea mining,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Deep sea mining,Temperature decrease
+Deep sea mining,Temperature increase
+Deep sea mining,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Deep sea mining,Underwater noise changes
+Deep sea mining,Visual disturbance
+Exploratory drilling,Above water noise
+Exploratory drilling,Abrasion/disturbance of the substrate on the surface of the seabed
+Exploratory drilling,Changes in suspended solids (water clarity)
+Exploratory drilling,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Exploratory drilling,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Exploratory drilling,Habitat structure changes - removal of substratum (extraction)
+Exploratory drilling,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Exploratory drilling,Introduction of light
+Exploratory drilling,"Introduction of other substances (solid, liquid or gas)"
+Exploratory drilling,Introduction or spread of invasive non-indigenous species (INIS)
+Exploratory drilling,Litter
+Exploratory drilling,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Exploratory drilling,Physical change (to another seabed type)
+Exploratory drilling,Physical change (to another sediment type)
+Exploratory drilling,Radionuclide contamination
+Exploratory drilling,Smothering and siltation rate changes (Light)
+Exploratory drilling,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Exploratory drilling,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Exploratory drilling,Underwater noise changes
+Exploratory drilling,Vibration
+Exploratory drilling,Visual disturbance
+Gas storage operations (carbon capture and natural gas storage),Above water noise
+Gas storage operations (carbon capture and natural gas storage),Abrasion/disturbance of the substrate on the surface of the seabed
+Gas storage operations (carbon capture and natural gas storage),Barrier to species movement
+Gas storage operations (carbon capture and natural gas storage),Changes in suspended solids (water clarity)
+Gas storage operations (carbon capture and natural gas storage),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Gas storage operations (carbon capture and natural gas storage),Habitat structure changes - removal of substratum (extraction)
+Gas storage operations (carbon capture and natural gas storage),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Gas storage operations (carbon capture and natural gas storage),Introduction of light
+Gas storage operations (carbon capture and natural gas storage),"Introduction of other substances (solid, liquid or gas)"
+Gas storage operations (carbon capture and natural gas storage),Introduction or spread of invasive non-indigenous species (INIS)
+Gas storage operations (carbon capture and natural gas storage),Litter
+Gas storage operations (carbon capture and natural gas storage),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Gas storage operations (carbon capture and natural gas storage),Physical change (to another seabed type)
+Gas storage operations (carbon capture and natural gas storage),Physical change (to another sediment type)
+Gas storage operations (carbon capture and natural gas storage),Radionuclide contamination
+Gas storage operations (carbon capture and natural gas storage),Salinity increase
+Gas storage operations (carbon capture and natural gas storage),Smothering and siltation rate changes (Heavy)
+Gas storage operations (carbon capture and natural gas storage),Smothering and siltation rate changes (Light)
+Gas storage operations (carbon capture and natural gas storage),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Gas storage operations (carbon capture and natural gas storage),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Gas storage operations (carbon capture and natural gas storage),Underwater noise changes
+Gas storage operations (carbon capture and natural gas storage),Vibration
+Gas storage operations (carbon capture and natural gas storage),Visual disturbance
+Line fishing,Above water noise
+Line fishing,Abrasion/disturbance of the substrate on the surface of the seabed
+Line fishing,Barrier to species movement
+Line fishing,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Line fishing,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Line fishing,Deoxygenation
+Line fishing,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Line fishing,Introduction of light
+Line fishing,Introduction or spread of invasive non-indigenous species (INIS)
+Line fishing,Litter
+Line fishing,Organic enrichment
+Line fishing,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Line fishing,Removal of non-target species
+Line fishing,Removal of target species
+Line fishing,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Line fishing,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Line fishing,Underwater noise changes
+Line fishing,Visual disturbance
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Above water noise
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Abrasion/disturbance of the substrate on the surface of the seabed
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Changes in suspended solids (water clarity)
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Habitat structure changes - removal of substratum (extraction)
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Introduction of light
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Introduction or spread of invasive non-indigenous species (INIS)
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Litter
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Smothering and siltation rate changes (Light)
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Underwater noise changes
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Visual disturbance
+Physical Sampling (see also fishing and Extraction of genetic resources e.g. bioprospecting),Wave exposure changes
+Set (fixed) net fishing,Above water noise
+Set (fixed) net fishing,Abrasion/disturbance of the substrate on the surface of the seabed
+Set (fixed) net fishing,Barrier to species movement
+Set (fixed) net fishing,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Set (fixed) net fishing,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Set (fixed) net fishing,Deoxygenation
+Set (fixed) net fishing,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Set (fixed) net fishing,Introduction of light
+Set (fixed) net fishing,Introduction or spread of invasive non-indigenous species (INIS)
+Set (fixed) net fishing,Litter
+Set (fixed) net fishing,Organic enrichment
+Set (fixed) net fishing,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Set (fixed) net fishing,Removal of non-target species
+Set (fixed) net fishing,Removal of target species
+Set (fixed) net fishing,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Set (fixed) net fishing,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Set (fixed) net fishing,Underwater noise changes
+Set (fixed) net fishing,Visual disturbance
+Sonar,Barrier to species movement
+Sonar,Underwater noise changes
+Dredge and spoil disposal,Above water noise
+Dredge and spoil disposal,Abrasion/disturbance of the substrate on the surface of the seabed
+Dredge and spoil disposal,Barrier to species movement
+Dredge and spoil disposal,Changes in suspended solids (water clarity)
+Dredge and spoil disposal,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Dredge and spoil disposal,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Dredge and spoil disposal,Deoxygenation
+Dredge and spoil disposal,Genetic modification & translocation of indigenous species
+Dredge and spoil disposal,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Dredge and spoil disposal,Introduction of light
+Dredge and spoil disposal,"Introduction of other substances (solid, liquid or gas)"
+Dredge and spoil disposal,Introduction or spread of invasive non-indigenous species (INIS)
+Dredge and spoil disposal,Nutrient enrichment
+Dredge and spoil disposal,Physical change (to another seabed type)
+Dredge and spoil disposal,Physical change (to another sediment type)
+Dredge and spoil disposal,Radionuclide contamination
+Dredge and spoil disposal,Smothering and siltation rate changes (Heavy)
+Dredge and spoil disposal,Smothering and siltation rate changes (Light)
+Dredge and spoil disposal,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Dredge and spoil disposal,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Dredge and spoil disposal,Underwater noise changes
+Dredge and spoil disposal,Visual disturbance
+Oil and gas infrastructure: Construction (see also piling and pipelines),Above water noise
+Oil and gas infrastructure: Construction (see also piling and pipelines),Abrasion/disturbance of the substrate on the surface of the seabed
+Oil and gas infrastructure: Construction (see also piling and pipelines),Barrier to species movement
+Oil and gas infrastructure: Construction (see also piling and pipelines),Changes in suspended solids (water clarity)
+Oil and gas infrastructure: Construction (see also piling and pipelines),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil and gas infrastructure: Construction (see also piling and pipelines),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil and gas infrastructure: Construction (see also piling and pipelines),Electromagnetic changes
+Oil and gas infrastructure: Construction (see also piling and pipelines),Habitat structure changes - removal of substratum (extraction)
+Oil and gas infrastructure: Construction (see also piling and pipelines),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil and gas infrastructure: Construction (see also piling and pipelines),Introduction of light
+Oil and gas infrastructure: Construction (see also piling and pipelines),"Introduction of other substances (solid, liquid or gas)"
+Oil and gas infrastructure: Construction (see also piling and pipelines),Introduction or spread of invasive non-indigenous species (INIS)
+Oil and gas infrastructure: Construction (see also piling and pipelines),Litter
+Oil and gas infrastructure: Construction (see also piling and pipelines),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Oil and gas infrastructure: Construction (see also piling and pipelines),Physical change (to another seabed type)
+Oil and gas infrastructure: Construction (see also piling and pipelines),Physical change (to another sediment type)
+Oil and gas infrastructure: Construction (see also piling and pipelines),Radionuclide contamination
+Oil and gas infrastructure: Construction (see also piling and pipelines),Smothering and siltation rate changes (Light)
+Oil and gas infrastructure: Construction (see also piling and pipelines),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil and gas infrastructure: Construction (see also piling and pipelines),Underwater noise changes
+Oil and gas infrastructure: Construction (see also piling and pipelines),Vibration
+Oil and gas infrastructure: Construction (see also piling and pipelines),Visual disturbance
+Oil and gas infrastructure: Operation and maintenance,Above water noise
+Oil and gas infrastructure: Operation and maintenance,Abrasion/disturbance of the substrate on the surface of the seabed
+Oil and gas infrastructure: Operation and maintenance,Barrier to species movement
+Oil and gas infrastructure: Operation and maintenance,Changes in suspended solids (water clarity)
+Oil and gas infrastructure: Operation and maintenance,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil and gas infrastructure: Operation and maintenance,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil and gas infrastructure: Operation and maintenance,Electromagnetic changes
+Oil and gas infrastructure: Operation and maintenance,Habitat structure changes - removal of substratum (extraction)
+Oil and gas infrastructure: Operation and maintenance,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil and gas infrastructure: Operation and maintenance,Introduction of light
+Oil and gas infrastructure: Operation and maintenance,"Introduction of other substances (solid, liquid or gas)"
+Oil and gas infrastructure: Operation and maintenance,Introduction or spread of invasive non-indigenous species (INIS)
+Oil and gas infrastructure: Operation and maintenance,Litter
+Oil and gas infrastructure: Operation and maintenance,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Oil and gas infrastructure: Operation and maintenance,Physical change (to another seabed type)
+Oil and gas infrastructure: Operation and maintenance,Physical change (to another sediment type)
+Oil and gas infrastructure: Operation and maintenance,Radionuclide contamination
+Oil and gas infrastructure: Operation and maintenance,Smothering and siltation rate changes (Light)
+Oil and gas infrastructure: Operation and maintenance,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil and gas infrastructure: Operation and maintenance,Underwater noise changes
+Oil and gas infrastructure: Operation and maintenance,Vibration
+Oil and gas infrastructure: Operation and maintenance,Visual disturbance
+Oil spills including oil spill response,Above water noise
+Oil spills including oil spill response,Abrasion/disturbance of the substrate on the surface of the seabed
+Oil spills including oil spill response,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil spills including oil spill response,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil spills including oil spill response,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil spills including oil spill response,Introduction of light
+Oil spills including oil spill response,"Introduction of other substances (solid, liquid or gas)"
+Oil spills including oil spill response,Introduction or spread of invasive non-indigenous species (INIS)
+Oil spills including oil spill response,Litter
+Oil spills including oil spill response,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Oil spills including oil spill response,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil spills including oil spill response,Underwater noise changes
+Oil spills including oil spill response,Vibration
+Oil spills including oil spill response,Visual disturbance
+Purse Seining,Above water noise
+Purse Seining,Barrier to species movement
+Purse Seining,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Purse Seining,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Purse Seining,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Purse Seining,Introduction of light
+Purse Seining,Introduction or spread of invasive non-indigenous species (INIS)
+Purse Seining,Litter
+Purse Seining,Removal of non-target species
+Purse Seining,Removal of target species
+Purse Seining,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Purse Seining,Underwater noise changes
+Purse Seining,Visual disturbance
+Aquaculture predator control,Barrier to species movement
+Aquaculture predator control,Removal of non-target species
+Aquaculture predator control,Underwater noise changes
+Aquaculture predator control,Visual disturbance
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Abrasion/disturbance of the substrate on the surface of the seabed
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Introduction of light
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Introduction or spread of invasive non-indigenous species (INIS)
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Removal of target species
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Underwater noise changes
+Extraction of genetic resources e.g. bioprospecting (also see other related activities in fishing and dredging),Visual disturbance
+Marine archaeological research,Above water noise
+Marine archaeological research,Abrasion/disturbance of the substrate on the surface of the seabed
+Marine archaeological research,Changes in suspended solids (water clarity)
+Marine archaeological research,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Marine archaeological research,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Marine archaeological research,Deoxygenation
+Marine archaeological research,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Marine archaeological research,Introduction of light
+Marine archaeological research,Introduction or spread of invasive non-indigenous species (INIS)
+Marine archaeological research,Litter
+Marine archaeological research,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Marine archaeological research,Smothering and siltation rate changes (Light)
+Marine archaeological research,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Marine archaeological research,Underwater noise changes
+Marine archaeological research,Visual disturbance
+Remote sensing,Above water noise
+Remote sensing,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Remote sensing,Visual disturbance
+Seismic Surveys,Above water noise
+Seismic Surveys,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Seismic Surveys,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Seismic Surveys,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Seismic Surveys,Introduction of light
+Seismic Surveys,"Introduction of other substances (solid, liquid or gas)"
+Seismic Surveys,Introduction or spread of invasive non-indigenous species (INIS)
+Seismic Surveys,Litter
+Seismic Surveys,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Seismic Surveys,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Seismic Surveys,Underwater noise changes
+Seismic Surveys,Visual disturbance
+Exploratory drilling,Above water noise
+Exploratory drilling,Abrasion/disturbance of the substrate on the surface of the seabed
+Exploratory drilling,Changes in suspended solids (water clarity)
+Exploratory drilling,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Exploratory drilling,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Exploratory drilling,Habitat structure changes - removal of substratum (extraction)
+Exploratory drilling,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Exploratory drilling,Introduction of light
+Exploratory drilling,"Introduction of other substances (solid, liquid or gas)"
+Exploratory drilling,Introduction or spread of invasive non-indigenous species (INIS)
+Exploratory drilling,Litter
+Exploratory drilling,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Exploratory drilling,Physical change (to another seabed type)
+Exploratory drilling,Physical change (to another sediment type)
+Exploratory drilling,Radionuclide contamination
+Exploratory drilling,Smothering and siltation rate changes (Light)
+Exploratory drilling,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Exploratory drilling,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Exploratory drilling,Underwater noise changes
+Exploratory drilling,Vibration
+Exploratory drilling,Visual disturbance
+Seismic Surveys,Above water noise
+Seismic Surveys,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Seismic Surveys,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Seismic Surveys,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Seismic Surveys,Introduction of light
+Seismic Surveys,"Introduction of other substances (solid, liquid or gas)"
+Seismic Surveys,Introduction or spread of invasive non-indigenous species (INIS)
+Seismic Surveys,Litter
+Seismic Surveys,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Seismic Surveys,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Seismic Surveys,Underwater noise changes
+Seismic Surveys,Visual disturbance
+Aggregate dredging,Visual disturbance
+Aggregate dredging,Introduction or spread of invasive non-indigenous species (INIS)
+Aggregate dredging,Removal of non-target species
+Aggregate dredging,Habitat structure changes - removal of substratum (extraction)
+Aggregate dredging,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Aggregate dredging,Changes in suspended solids (water clarity)
+Aggregate dredging,Smothering and siltation rate changes (Heavy)
+Aggregate dredging,Smothering and siltation rate changes (Light)
+Aggregate dredging,Abrasion/disturbance of the substrate on the surface of the seabed
+Aggregate dredging,"Water flow (tidal current) changes, including sediment transport considerations"
+Aggregate dredging,"Emergence regime changes, including tidal level change considerations"
+Aggregate dredging,Wave exposure changes
+Aggregate dredging,Physical change (to another seabed type)
+Aggregate dredging,Physical change (to another sediment type)
+Aggregate dredging,Litter
+Aggregate dredging,Underwater noise changes
+Aggregate dredging,Introduction of light
+Aggregate dredging,Barrier to species movement
+Aggregate dredging,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Aggregate dredging,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Aggregate dredging,Above water noise
+Aggregate dredging,Vibration
+Aggregate dredging,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Aggregate dredging,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Aggregate dredging,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Demersal trawling,Removal of target species
+Traps,Litter
+Pelagic fishing (or fishing activities that do not interact with sea bed),Removal of target species
+Traps,Visual disturbance
+Traps,Introduction or spread of invasive non-indigenous species (INIS)
+Traps,Removal of target species
+Traps,Removal of non-target species
+Traps,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Traps,Abrasion/disturbance of the substrate on the surface of the seabed
+Traps,Underwater noise changes
+Traps,Introduction of light
+Traps,Barrier to species movement
+Traps,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Traps,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Traps,Above water noise
+Traps,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Traps,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Traps,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Traps,Organic enrichment
+Traps,Deoxygenation
+Pelagic fishing (or fishing activities that do not interact with sea bed),Visual disturbance
+Pelagic fishing (or fishing activities that do not interact with sea bed),Introduction or spread of invasive non-indigenous species (INIS)
+Pelagic fishing (or fishing activities that do not interact with sea bed),Removal of non-target species
+Pelagic fishing (or fishing activities that do not interact with sea bed),Litter
+Pelagic fishing (or fishing activities that do not interact with sea bed),Underwater noise changes
+Pelagic fishing (or fishing activities that do not interact with sea bed),Introduction of light
+Pelagic fishing (or fishing activities that do not interact with sea bed),Barrier to species movement
+Demersal trawling,Removal of non-target species
+Pelagic fishing (or fishing activities that do not interact with sea bed),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Pelagic fishing (or fishing activities that do not interact with sea bed),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Pelagic fishing (or fishing activities that do not interact with sea bed),Above water noise
+Pelagic fishing (or fishing activities that do not interact with sea bed),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Pelagic fishing (or fishing activities that do not interact with sea bed),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Demersal seine netting,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Pelagic fishing (or fishing activities that do not interact with sea bed),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Pelagic fishing (or fishing activities that do not interact with sea bed),Organic enrichment
+Pelagic fishing (or fishing activities that do not interact with sea bed),Deoxygenation
+Hydraulic dredging,Visual disturbance
+Hydraulic dredging,Introduction or spread of invasive non-indigenous species (INIS)
+Hydraulic dredging,Introduction of microbial pathogens
+Hydraulic dredging,Removal of target species
+Hydraulic dredging,Removal of non-target species
+Hydraulic dredging,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Hydraulic dredging,Changes in suspended solids (water clarity)
+Hydraulic dredging,Smothering and siltation rate changes (Light)
+Hydraulic dredging,Abrasion/disturbance of the substrate on the surface of the seabed
+Hydraulic dredging,Physical change (to another seabed type)
+Hydraulic dredging,Physical change (to another sediment type)
+Hydraulic dredging,Litter
+Hydraulic dredging,Underwater noise changes
+Hydraulic dredging,Introduction of light
+Hydraulic dredging,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Dredging (shellfish),Changes in suspended solids (water clarity)
+Hydraulic dredging,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Hydraulic dredging,Above water noise
+Hydraulic dredging,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Hydraulic dredging,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Hydraulic dredging,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Hydraulic dredging,Nutrient enrichment
+Hydraulic dredging,Organic enrichment
+Hydraulic dredging,Deoxygenation
+Dredging (shellfish),Visual disturbance
+Dredging (shellfish),Introduction or spread of invasive non-indigenous species (INIS)
+Dredging (shellfish),Introduction of microbial pathogens
+Dredging (shellfish),Removal of target species
+Dredging (shellfish),Removal of non-target species
+Dredging (shellfish),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Dredging (shellfish),Smothering and siltation rate changes (Light)
+Dredging (shellfish),Abrasion/disturbance of the substrate on the surface of the seabed
+Dredging (shellfish),Physical change (to another seabed type)
+Dredging (shellfish),Physical change (to another sediment type)
+Dredging (shellfish),Litter
+Dredging (shellfish),Underwater noise changes
+Dredging (shellfish),Introduction of light
+Dredging (shellfish),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Dredging (shellfish),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Dredging (shellfish),Above water noise
+Dredging (shellfish),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Demersal trawling,Introduction or spread of invasive non-indigenous species (INIS)
+Dredging (shellfish),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Dredging (shellfish),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Dredging (shellfish),Nutrient enrichment
+Dredging (shellfish),Organic enrichment
+Dredging (shellfish),Deoxygenation
+Demersal trawling,Visual disturbance
+Demersal trawling,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Demersal trawling,Changes in suspended solids (water clarity)
+Demersal trawling,Smothering and siltation rate changes (Light)
+Demersal trawling,Abrasion/disturbance of the substrate on the surface of the seabed
+Demersal trawling,Physical change (to another seabed type)
+Demersal trawling,Physical change (to another sediment type)
+Demersal trawling,Litter
+Demersal trawling,Underwater noise changes
+Demersal trawling,Introduction of light
+Demersal trawling,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Demersal trawling,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Demersal trawling,Above water noise
+Demersal trawling,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Demersal trawling,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Demersal trawling,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Demersal trawling,Nutrient enrichment
+Demersal trawling,Organic enrichment
+Demersal trawling,Deoxygenation
+Demersal seine netting,Visual disturbance
+Demersal seine netting,Introduction or spread of invasive non-indigenous species (INIS)
+Demersal seine netting,Removal of target species
+Demersal seine netting,Removal of non-target species
+Demersal seine netting,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Demersal seine netting,Changes in suspended solids (water clarity)
+Demersal seine netting,Smothering and siltation rate changes (Light)
+Demersal seine netting,Abrasion/disturbance of the substrate on the surface of the seabed
+Demersal seine netting,Physical change (to another seabed type)
+Demersal seine netting,Physical change (to another sediment type)
+Demersal seine netting,Litter
+Demersal seine netting,Underwater noise changes
+Demersal seine netting,Introduction of light
+Demersal seine netting,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Demersal seine netting,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Demersal seine netting,Above water noise
+Demersal seine netting,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Demersal seine netting,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Demersal seine netting,Nutrient enrichment
+Demersal seine netting,Organic enrichment
+Demersal seine netting,Deoxygenation
+Anchorage and moorings: Construction,Changes in suspended solids (water clarity)
+Anchorage and moorings: Construction,Visual disturbance
+Anchorage and moorings: Construction,Introduction or spread of invasive non-indigenous species (INIS)
+Anchorage and moorings: Construction,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Anchorage and moorings: Construction,Smothering and siltation rate changes (Light)
+Anchorage and moorings: Construction,Abrasion/disturbance of the substrate on the surface of the seabed
+Anchorage and moorings: Construction,"Water flow (tidal current) changes, including sediment transport considerations"
+Anchorage and moorings: Construction,Physical loss (to land or freshwater habitat)
+Anchorage and moorings: Construction,Physical change (to another seabed type)
+Outfalls/Intake pipes (maintenance/construction/usage),Introduction of microbial pathogens
+Anchorage and moorings: Construction,Physical change (to another sediment type)
+Anchorage and moorings: Construction,Underwater noise changes
+Anchorage and moorings: Construction,Introduction of light
+Anchorage and moorings: Construction,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Vessel discharges/emissions,Introduction of light
+Anchorage and moorings: Construction,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Anchorage and moorings: Construction,Above water noise
+Anchorage and moorings: Construction,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel anchorages,"Introduction of other substances (solid, liquid or gas)"
+Vessel discharges/emissions,Visual disturbance
+Vessel discharges/emissions,Introduction or spread of invasive non-indigenous species (INIS)
+Vessel discharges/emissions,Litter
+Vessel discharges/emissions,Above water noise
+Vessel discharges/emissions,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel discharges/emissions,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel discharges/emissions,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Vessel discharges/emissions,"Introduction of other substances (solid, liquid or gas)"
+Vessel discharges/emissions,Nutrient enrichment
+Vessel discharges/emissions,Organic enrichment
+Vessel discharges/emissions,Deoxygenation
+Vessel moorings,Visual disturbance
+Vessel moorings,Introduction or spread of invasive non-indigenous species (INIS)
+Vessel moorings,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Vessel moorings,Abrasion/disturbance of the substrate on the surface of the seabed
+Vessel moorings,Physical loss (to land or freshwater habitat)
+Vessel moorings,Physical change (to another seabed type)
+Outfalls/Intake pipes (maintenance/construction/usage),Habitat structure changes - removal of substratum (extraction)
+Outfalls/Intake pipes (maintenance/construction/usage),Physical change (to another seabed type)
+Outfalls/Intake pipes (maintenance/construction/usage),Physical change (to another sediment type)
+Outfalls/Intake pipes (maintenance/construction/usage),Visual disturbance
+Outfalls/Intake pipes (maintenance/construction/usage),Genetic modification & translocation of indigenous species
+Outfalls/Intake pipes (maintenance/construction/usage),Introduction or spread of invasive non-indigenous species (INIS)
+Outfalls/Intake pipes (maintenance/construction/usage),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Outfalls/Intake pipes (maintenance/construction/usage),Changes in suspended solids (water clarity)
+Outfalls/Intake pipes (maintenance/construction/usage),Smothering and siltation rate changes (Heavy)
+Outfalls/Intake pipes (maintenance/construction/usage),Smothering and siltation rate changes (Light)
+Outfalls/Intake pipes (maintenance/construction/usage),Abrasion/disturbance of the substrate on the surface of the seabed
+Outfalls/Intake pipes (maintenance/construction/usage),Temperature decrease
+Outfalls/Intake pipes (maintenance/construction/usage),Temperature increase
+Outfalls/Intake pipes (maintenance/construction/usage),Salinity decrease
+Outfalls/Intake pipes (maintenance/construction/usage),Salinity increase
+Outfalls/Intake pipes (maintenance/construction/usage),"Water flow (tidal current) changes, including sediment transport considerations"
+Outfalls/Intake pipes (maintenance/construction/usage),Wave exposure changes
+Outfalls/Intake pipes (maintenance/construction/usage),Physical loss (to land or freshwater habitat)
+Outfalls/Intake pipes (maintenance/construction/usage),Litter
+Outfalls/Intake pipes (maintenance/construction/usage),Underwater noise changes
+Outfalls/Intake pipes (maintenance/construction/usage),Introduction of light
+Outfalls/Intake pipes (maintenance/construction/usage),Barrier to species movement
+Outfalls/Intake pipes (maintenance/construction/usage),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Outfalls/Intake pipes (maintenance/construction/usage),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Outfalls/Intake pipes (maintenance/construction/usage),Above water noise
+Outfalls/Intake pipes (maintenance/construction/usage),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Outfalls/Intake pipes (maintenance/construction/usage),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Outfalls/Intake pipes (maintenance/construction/usage),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Outfalls/Intake pipes (maintenance/construction/usage),"Introduction of other substances (solid, liquid or gas)"
+Outfalls/Intake pipes (maintenance/construction/usage),Radionuclide contamination
+Outfalls/Intake pipes (maintenance/construction/usage),Nutrient enrichment
+Outfalls/Intake pipes (maintenance/construction/usage),Organic enrichment
+Outfalls/Intake pipes (maintenance/construction/usage),Deoxygenation
+Oil and gas infrastructure: Decommissioning,Visual disturbance
+Oil and gas infrastructure: Decommissioning,Introduction or spread of invasive non-indigenous species (INIS)
+Oil and gas infrastructure: Decommissioning,Habitat structure changes - removal of substratum (extraction)
+Oil and gas infrastructure: Decommissioning,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Oil and gas infrastructure: Decommissioning,Changes in suspended solids (water clarity)
+Oil and gas infrastructure: Decommissioning,Smothering and siltation rate changes (Light)
+Oil and gas infrastructure: Decommissioning,Abrasion/disturbance of the substrate on the surface of the seabed
+Oil and gas infrastructure: Decommissioning,"Water flow (tidal current) changes, including sediment transport considerations"
+Oil and gas infrastructure: Decommissioning,Physical change (to another seabed type)
+Oil and gas infrastructure: Decommissioning,Physical change (to another sediment type)
+Oil and gas infrastructure: Decommissioning,Litter
+Oil and gas infrastructure: Decommissioning,Underwater noise changes
+Oil and gas infrastructure: Decommissioning,Introduction of light
+Oil and gas infrastructure: Decommissioning,Barrier to species movement
+Oil and gas infrastructure: Decommissioning,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Oil and gas infrastructure: Decommissioning,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Pipelines,Physical change (to another seabed type)
+Oil and gas infrastructure: Decommissioning,Above water noise
+Oil and gas infrastructure: Decommissioning,Vibration
+Oil and gas infrastructure: Decommissioning,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Oil and gas infrastructure: Decommissioning,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Pipelines,Physical change (to another sediment type)
+Pipelines,Litter
+Oil and gas infrastructure: Decommissioning,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Oil and gas infrastructure: Decommissioning,"Introduction of other substances (solid, liquid or gas)"
+Pipelines,Visual disturbance
+Pipelines,Introduction or spread of invasive non-indigenous species (INIS)
+Pipelines,Habitat structure changes - removal of substratum (extraction)
+Pipelines,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Pipelines,Smothering and siltation rate changes (Light)
+Pipelines,Abrasion/disturbance of the substrate on the surface of the seabed
+Pipelines,"Water flow (tidal current) changes, including sediment transport considerations"
+Pipelines,Physical loss (to land or freshwater habitat)
+Pipelines,Underwater noise changes
+Pipelines,Introduction of light
+Pipelines,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Pipelines,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Pipelines,Above water noise
+Pipelines,Vibration
+Pipelines,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Pipelines,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Pipelines,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Pipelines,"Introduction of other substances (solid, liquid or gas)"
+Pipelines,Nutrient enrichment
+Pipelines,Deoxygenation
+"Power cable: Laying, burial and protection",Visual disturbance
+"Power cable: Laying, burial and protection",Introduction or spread of invasive non-indigenous species (INIS)
+"Power cable: Laying, burial and protection",Above water noise
+"Power cable: Laying, burial and protection",Habitat structure changes - removal of substratum (extraction)
+"Power cable: Laying, burial and protection","Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+"Power cable: Laying, burial and protection",Changes in suspended solids (water clarity)
+"Power cable: Laying, burial and protection",Smothering and siltation rate changes (Heavy)
+"Power cable: Laying, burial and protection",Smothering and siltation rate changes (Light)
+"Power cable: Laying, burial and protection",Abrasion/disturbance of the substrate on the surface of the seabed
+"Power cable: Laying, burial and protection","Water flow (tidal current) changes, including sediment transport considerations"
+"Power cable: Laying, burial and protection",Physical loss (to land or freshwater habitat)
+"Power cable: Laying, burial and protection",Physical change (to another seabed type)
+"Power cable: Laying, burial and protection",Physical change (to another sediment type)
+"Power cable: Laying, burial and protection",Litter
+"Power cable: Laying, burial and protection",Underwater noise changes
+"Power cable: Laying, burial and protection",Introduction of light
+"Power cable: Laying, burial and protection","Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Power cable: Laying, burial and protection","Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Power cable: Laying, burial and protection",Vibration
+"Power cable: Laying, burial and protection",Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Power cable: Laying, burial and protection",Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Power cable: Laying, burial and protection","Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+"Power cable: Laying, burial and protection",Nutrient enrichment
+"Power cable: Laying, burial and protection",Deoxygenation
+Power cable: Operation and maintenance,Visual disturbance
+Power cable: Operation and maintenance,Introduction or spread of invasive non-indigenous species (INIS)
+Power cable: Operation and maintenance,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Power cable: Operation and maintenance,Changes in suspended solids (water clarity)
+Power cable: Operation and maintenance,Smothering and siltation rate changes (Light)
+Power cable: Operation and maintenance,Abrasion/disturbance of the substrate on the surface of the seabed
+Power cable: Operation and maintenance,Temperature decrease
+Power cable: Operation and maintenance,Temperature increase
+Power cable: Operation and maintenance,"Water flow (tidal current) changes, including sediment transport considerations"
+Power cable: Operation and maintenance,Physical loss (to land or freshwater habitat)
+Power cable: Operation and maintenance,Physical change (to another seabed type)
+Power cable: Operation and maintenance,Physical change (to another sediment type)
+Power cable: Operation and maintenance,Litter
+Power cable: Operation and maintenance,Electromagnetic changes
+Power cable: Operation and maintenance,Underwater noise changes
+Power cable: Operation and maintenance,Introduction of light
+Power cable: Operation and maintenance,Barrier to species movement
+Power cable: Operation and maintenance,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Power cable: Operation and maintenance,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Power cable: Operation and maintenance,Above water noise
+Power cable: Operation and maintenance,Vibration
+Power cable: Operation and maintenance,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Power cable: Operation and maintenance,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Power cable: Operation and maintenance,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Power cable: Operation and maintenance,Nutrient enrichment
+Power cable: Operation and maintenance,Deoxygenation
+Power cable: Decommissioning,Visual disturbance
+Power cable: Decommissioning,Introduction or spread of invasive non-indigenous species (INIS)
+Power cable: Decommissioning,Habitat structure changes - removal of substratum (extraction)
+Power cable: Decommissioning,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Power cable: Decommissioning,Underwater noise changes
+Power cable: Decommissioning,Changes in suspended solids (water clarity)
+Power cable: Decommissioning,Smothering and siltation rate changes (Light)
+Power cable: Decommissioning,Abrasion/disturbance of the substrate on the surface of the seabed
+Power cable: Decommissioning,"Water flow (tidal current) changes, including sediment transport considerations"
+Power cable: Decommissioning,Physical change (to another seabed type)
+Power cable: Decommissioning,Physical change (to another sediment type)
+Power cable: Decommissioning,Litter
+Power cable: Decommissioning,Introduction of light
+Power cable: Decommissioning,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Power cable: Decommissioning,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Power cable: Decommissioning,Above water noise
+Power cable: Decommissioning,Vibration
+Power cable: Decommissioning,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Power cable: Decommissioning,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Power cable: Decommissioning,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Power cable: Decommissioning,Nutrient enrichment
+Power cable: Decommissioning,Deoxygenation
+"Telecommunication cable: Laying, burial and protection",Visual disturbance
+"Telecommunication cable: Laying, burial and protection",Introduction or spread of invasive non-indigenous species (INIS)
+"Telecommunication cable: Laying, burial and protection","Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+"Telecommunication cable: Laying, burial and protection",Changes in suspended solids (water clarity)
+"Telecommunication cable: Laying, burial and protection",Smothering and siltation rate changes (Light)
+"Telecommunication cable: Laying, burial and protection",Abrasion/disturbance of the substrate on the surface of the seabed
+"Telecommunication cable: Laying, burial and protection","Water flow (tidal current) changes, including sediment transport considerations"
+"Telecommunication cable: Laying, burial and protection",Physical loss (to land or freshwater habitat)
+"Telecommunication cable: Laying, burial and protection",Physical change (to another seabed type)
+"Telecommunication cable: Laying, burial and protection",Physical change (to another sediment type)
+Capital dredging,Habitat structure changes - removal of substratum (extraction)
+"Telecommunication cable: Laying, burial and protection",Litter
+"Telecommunication cable: Laying, burial and protection",Underwater noise changes
+"Telecommunication cable: Laying, burial and protection",Introduction of light
+"Telecommunication cable: Laying, burial and protection","Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Telecommunication cable: Laying, burial and protection","Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+"Telecommunication cable: Laying, burial and protection",Above water noise
+"Telecommunication cable: Laying, burial and protection",Vibration
+"Telecommunication cable: Laying, burial and protection",Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Telecommunication cable: Laying, burial and protection",Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+"Telecommunication cable: Laying, burial and protection","Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+"Telecommunication cable: Laying, burial and protection",Nutrient enrichment
+"Telecommunication cable: Laying, burial and protection",Deoxygenation
+Telecommunication cable: Operation and maintenance,Visual disturbance
+Telecommunication cable: Operation and maintenance,Introduction or spread of invasive non-indigenous species (INIS)
+Telecommunication cable: Operation and maintenance,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Telecommunication cable: Operation and maintenance,Changes in suspended solids (water clarity)
+Telecommunication cable: Operation and maintenance,Smothering and siltation rate changes (Light)
+Telecommunication cable: Operation and maintenance,Abrasion/disturbance of the substrate on the surface of the seabed
+Telecommunication cable: Operation and maintenance,"Water flow (tidal current) changes, including sediment transport considerations"
+Telecommunication cable: Operation and maintenance,Physical loss (to land or freshwater habitat)
+Telecommunication cable: Operation and maintenance,Physical change (to another seabed type)
+Telecommunication cable: Operation and maintenance,Physical change (to another sediment type)
+Telecommunication cable: Operation and maintenance,Litter
+Telecommunication cable: Operation and maintenance,Underwater noise changes
+Telecommunication cable: Operation and maintenance,Introduction of light
+Telecommunication cable: Operation and maintenance,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Telecommunication cable: Operation and maintenance,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Telecommunication cable: Operation and maintenance,Above water noise
+Telecommunication cable: Operation and maintenance,Vibration
+Telecommunication cable: Operation and maintenance,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Telecommunication cable: Operation and maintenance,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Telecommunication cable: Operation and maintenance,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Telecommunication cable: Decommissioning,Visual disturbance
+Telecommunication cable: Decommissioning,Introduction or spread of invasive non-indigenous species (INIS)
+Telecommunication cable: Decommissioning,Habitat structure changes - removal of substratum (extraction)
+Telecommunication cable: Decommissioning,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Telecommunication cable: Decommissioning,Changes in suspended solids (water clarity)
+Telecommunication cable: Decommissioning,Smothering and siltation rate changes (Light)
+Telecommunication cable: Decommissioning,Abrasion/disturbance of the substrate on the surface of the seabed
+Telecommunication cable: Decommissioning,"Water flow (tidal current) changes, including sediment transport considerations"
+Telecommunication cable: Decommissioning,Physical change (to another seabed type)
+Telecommunication cable: Decommissioning,Physical change (to another sediment type)
+Telecommunication cable: Decommissioning,Litter
+Maintenance dredging,Habitat structure changes - removal of substratum (extraction)
+Telecommunication cable: Decommissioning,Underwater noise changes
+Telecommunication cable: Decommissioning,Introduction of light
+Telecommunication cable: Decommissioning,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Telecommunication cable: Decommissioning,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Telecommunication cable: Decommissioning,Above water noise
+Telecommunication cable: Decommissioning,Vibration
+Telecommunication cable: Decommissioning,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Telecommunication cable: Decommissioning,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Telecommunication cable: Decommissioning,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Telecommunication cable: Decommissioning,Nutrient enrichment
+Telecommunication cable: Decommissioning,Deoxygenation
+Capital dredging,Visual disturbance
+Capital dredging,Introduction or spread of invasive non-indigenous species (INIS)
+Capital dredging,Removal of non-target species
+Capital dredging,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Capital dredging,Changes in suspended solids (water clarity)
+Capital dredging,Smothering and siltation rate changes (Heavy)
+Capital dredging,Smothering and siltation rate changes (Light)
+Capital dredging,Abrasion/disturbance of the substrate on the surface of the seabed
+Capital dredging,"Water flow (tidal current) changes, including sediment transport considerations"
+Capital dredging,"Emergence regime changes, including tidal level change considerations"
+Capital dredging,Wave exposure changes
+Capital dredging,Physical change (to another seabed type)
+Capital dredging,Physical change (to another sediment type)
+Capital dredging,Underwater noise changes
+Capital dredging,Introduction of light
+Capital dredging,Barrier to species movement
+Capital dredging,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Capital dredging,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Capital dredging,Above water noise
+Capital dredging,Vibration
+Capital dredging,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Capital dredging,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Capital dredging,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Capital dredging,"Introduction of other substances (solid, liquid or gas)"
+Capital dredging,Radionuclide contamination
+Capital dredging,Nutrient enrichment
+Capital dredging,Deoxygenation
+Maintenance dredging,Visual disturbance
+Maintenance dredging,Introduction or spread of invasive non-indigenous species (INIS)
+Maintenance dredging,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Maintenance dredging,Changes in suspended solids (water clarity)
+Maintenance dredging,Smothering and siltation rate changes (Heavy)
+Maintenance dredging,Smothering and siltation rate changes (Light)
+Maintenance dredging,Abrasion/disturbance of the substrate on the surface of the seabed
+Maintenance dredging,"Water flow (tidal current) changes, including sediment transport considerations"
+Maintenance dredging,"Emergence regime changes, including tidal level change considerations"
+Maintenance dredging,Underwater noise changes
+Maintenance dredging,Introduction of light
+Maintenance dredging,Barrier to species movement
+Maintenance dredging,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Maintenance dredging,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Maintenance dredging,Above water noise
+Maintenance dredging,Vibration
+Maintenance dredging,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Maintenance dredging,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Maintenance dredging,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Maintenance dredging,"Introduction of other substances (solid, liquid or gas)"
+Maintenance dredging,Radionuclide contamination
+Maintenance dredging,Nutrient enrichment
+Maintenance dredging,Deoxygenation
+Vessel anchorages,Physical loss (to land or freshwater habitat)
+Vessel anchorages,Physical change (to another seabed type)
+Anchorage and moorings: Construction,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Anchorage and moorings: Construction,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Anchorage and moorings: Construction,"Introduction of other substances (solid, liquid or gas)"
+Anchorage and moorings: Construction,Nutrient enrichment
+Anchorage and moorings: Construction,Deoxygenation
+Habitat creation,Visual disturbance
+Habitat creation,Introduction or spread of invasive non-indigenous species (INIS)
+Habitat creation,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Habitat creation,Changes in suspended solids (water clarity)
+Habitat creation,Smothering and siltation rate changes (Heavy)
+Habitat creation,Smothering and siltation rate changes (Light)
+Habitat creation,Abrasion/disturbance of the substrate on the surface of the seabed
+Habitat creation,"Water flow (tidal current) changes, including sediment transport considerations"
+Habitat creation,Wave exposure changes
+Habitat creation,Physical change (to another seabed type)
+Habitat creation,Physical change (to another sediment type)
+Habitat creation,Underwater noise changes
+Habitat creation,Introduction of light
+Habitat creation,Barrier to species movement
+Habitat creation,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Habitat creation,Above water noise
+Habitat creation,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Construction,Vibration
+Habitat creation,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Construction,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Wave: Construction,Changes in suspended solids (water clarity)
+Wave: Construction,Smothering and siltation rate changes (Light)
+Wave: Construction,Abrasion/disturbance of the substrate on the surface of the seabed
+Wave: Construction,Physical loss (to land or freshwater habitat)
+Wave: Construction,Physical change (to another seabed type)
+Wave: Construction,Physical change (to another sediment type)
+Wave: Construction,Litter
+Wave: Construction,Underwater noise changes
+Wave: Construction,Introduction of light
+Wave: Construction,Barrier to species movement
+Wave: Construction,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Construction,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Construction,Above water noise
+Vessel anchorages,Physical change (to another sediment type)
+Wave: Construction,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Construction,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Habitat creation,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Habitat creation,"Introduction of other substances (solid, liquid or gas)"
+Habitat creation,Nutrient enrichment
+Habitat creation,Organic enrichment
+Habitat creation,Deoxygenation
+Vessel anchorages,Smothering and siltation rate changes (Light)
+Vessel anchorages,Abrasion/disturbance of the substrate on the surface of the seabed
+Vessel anchorages,Visual disturbance
+Vessel anchorages,Introduction or spread of invasive non-indigenous species (INIS)
+Vessel anchorages,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Vessel anchorages,Changes in suspended solids (water clarity)
+Vessel anchorages,Litter
+Vessel anchorages,Underwater noise changes
+Vessel anchorages,Introduction of light
+Vessel anchorages,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Vessel anchorages,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Vessel anchorages,Above water noise
+Vessel anchorages,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel anchorages,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel anchorages,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Vessel moorings,Physical change (to another sediment type)
+Vessel moorings,Litter
+Vessel moorings,Underwater noise changes
+Vessel moorings,Introduction of light
+Vessel moorings,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Vessel moorings,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Vessel moorings,Above water noise
+Vessel moorings,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel moorings,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Vessel moorings,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Vessel moorings,"Introduction of other substances (solid, liquid or gas)"
+Wave: Operation and maintenance,Litter
+Wave: Construction,Visual disturbance
+Wave: Construction,Introduction or spread of invasive non-indigenous species (INIS)
+Wave: Construction,Habitat structure changes - removal of substratum (extraction)
+Wave: Construction,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Wave: Construction,"Introduction of other substances (solid, liquid or gas)"
+Wave: Operation and maintenance,Visual disturbance
+Wave: Operation and maintenance,Introduction or spread of invasive non-indigenous species (INIS)
+Wave: Operation and maintenance,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Wave: Operation and maintenance,Smothering and siltation rate changes (Light)
+Wave: Operation and maintenance,Abrasion/disturbance of the substrate on the surface of the seabed
+Wave: Operation and maintenance,"Water flow (tidal current) changes, including sediment transport considerations"
+Wave: Operation and maintenance,"Emergence regime changes, including tidal level change considerations"
+Wave: Operation and maintenance,Wave exposure changes
+Offshore wind: Construction (if relevant see also Cables),Physical change (to another sediment type)
+Wave: Operation and maintenance,Underwater noise changes
+Wave: Operation and maintenance,Introduction of light
+Wave: Operation and maintenance,Barrier to species movement
+Wave: Operation and maintenance,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Operation and maintenance,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Operation and maintenance,Above water noise
+Wave: Operation and maintenance,Vibration
+Wave: Decommissioning,Underwater noise changes
+Wave: Operation and maintenance,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Operation and maintenance,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Operation and maintenance,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Wave: Operation and maintenance,"Introduction of other substances (solid, liquid or gas)"
+Wave: Decommissioning,Visual disturbance
+Wave: Decommissioning,Introduction or spread of invasive non-indigenous species (INIS)
+Wave: Decommissioning,Habitat structure changes - removal of substratum (extraction)
+Wave: Decommissioning,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Wave: Decommissioning,Changes in suspended solids (water clarity)
+Wave: Decommissioning,Smothering and siltation rate changes (Heavy)
+Wave: Decommissioning,Smothering and siltation rate changes (Light)
+Wave: Decommissioning,Abrasion/disturbance of the substrate on the surface of the seabed
+Wave: Decommissioning,"Water flow (tidal current) changes, including sediment transport considerations"
+Wave: Decommissioning,Physical loss (to land or freshwater habitat)
+Wave: Decommissioning,Physical change (to another seabed type)
+Wave: Decommissioning,Physical change (to another sediment type)
+Wave: Decommissioning,Litter
+Wave: Decommissioning,Introduction of light
+Wave: Decommissioning,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Decommissioning,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Wave: Decommissioning,Above water noise
+Wave: Decommissioning,Vibration
+Wave: Decommissioning,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Introduction of other substances (solid, liquid or gas)"
+Wave: Decommissioning,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Wave: Decommissioning,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Wave: Decommissioning,"Introduction of other substances (solid, liquid or gas)"
+Offshore wind: Construction (if relevant see also Cables),Visual disturbance
+Offshore wind: Construction (if relevant see also Cables),Introduction or spread of invasive non-indigenous species (INIS)
+Offshore wind: Construction (if relevant see also Cables),Habitat structure changes - removal of substratum (extraction)
+Offshore wind: Construction (if relevant see also Cables),Physical change (to another seabed type)
+Offshore wind: Construction (if relevant see also Cables),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Offshore wind: Construction (if relevant see also Cables),Changes in suspended solids (water clarity)
+Offshore wind: Construction (if relevant see also Cables),Smothering and siltation rate changes (Heavy)
+Offshore wind: Construction (if relevant see also Cables),Smothering and siltation rate changes (Light)
+Offshore wind: Construction (if relevant see also Cables),Abrasion/disturbance of the substrate on the surface of the seabed
+Offshore wind: Construction (if relevant see also Cables),"Water flow (tidal current) changes, including sediment transport considerations"
+Offshore wind: Construction (if relevant see also Cables),Physical loss (to land or freshwater habitat)
+Offshore wind: Construction (if relevant see also Cables),Litter
+Offshore wind: Construction (if relevant see also Cables),Underwater noise changes
+Offshore wind: Construction (if relevant see also Cables),Introduction of light
+Offshore wind: Construction (if relevant see also Cables),Barrier to species movement
+Offshore wind: Construction (if relevant see also Cables),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Decommissioning (if relevant see also Cables),Visual disturbance
+Offshore wind: Construction (if relevant see also Cables),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Construction (if relevant see also Cables),Above water noise
+Offshore wind: Construction (if relevant see also Cables),Vibration
+Offshore wind: Construction (if relevant see also Cables),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Construction (if relevant see also Cables),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Decommissioning (if relevant see also Cables),Physical change (to another sediment type)
+Offshore wind: Construction (if relevant see also Cables),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Offshore wind: Construction (if relevant see also Cables),"Introduction of other substances (solid, liquid or gas)"
+Offshore wind: Operation and maintenance (if relevant see also Cables),Visual disturbance
+Offshore wind: Operation and maintenance (if relevant see also Cables),Introduction or spread of invasive non-indigenous species (INIS)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Habitat structure changes - removal of substratum (extraction)
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Offshore wind: Operation and maintenance (if relevant see also Cables),Changes in suspended solids (water clarity)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Smothering and siltation rate changes (Heavy)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Smothering and siltation rate changes (Light)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Abrasion/disturbance of the substrate on the surface of the seabed
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Water flow (tidal current) changes, including sediment transport considerations"
+Offshore wind: Operation and maintenance (if relevant see also Cables),Wave exposure changes
+Offshore wind: Operation and maintenance (if relevant see also Cables),Physical loss (to land or freshwater habitat)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Physical change (to another seabed type)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Physical change (to another sediment type)
+Offshore wind: Operation and maintenance (if relevant see also Cables),Litter
+Offshore wind: Operation and maintenance (if relevant see also Cables),Underwater noise changes
+Offshore wind: Operation and maintenance (if relevant see also Cables),Introduction of light
+Offshore wind: Operation and maintenance (if relevant see also Cables),Barrier to species movement
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Decommissioning (if relevant see also Cables),Litter
+Offshore wind: Operation and maintenance (if relevant see also Cables),Above water noise
+Offshore wind: Operation and maintenance (if relevant see also Cables),Vibration
+Offshore wind: Operation and maintenance (if relevant see also Cables),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Operation and maintenance (if relevant see also Cables),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Operation and maintenance (if relevant see also Cables),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Offshore wind: Decommissioning (if relevant see also Cables),Introduction or spread of invasive non-indigenous species (INIS)
+Offshore wind: Decommissioning (if relevant see also Cables),Habitat structure changes - removal of substratum (extraction)
+Offshore wind: Decommissioning (if relevant see also Cables),"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Offshore wind: Decommissioning (if relevant see also Cables),Changes in suspended solids (water clarity)
+Offshore wind: Decommissioning (if relevant see also Cables),Smothering and siltation rate changes (Light)
+Offshore wind: Decommissioning (if relevant see also Cables),Abrasion/disturbance of the substrate on the surface of the seabed
+Offshore wind: Decommissioning (if relevant see also Cables),"Water flow (tidal current) changes, including sediment transport considerations"
+Offshore wind: Decommissioning (if relevant see also Cables),Physical change (to another seabed type)
+Offshore wind: Decommissioning (if relevant see also Cables),Underwater noise changes
+Offshore wind: Decommissioning (if relevant see also Cables),Introduction of light
+Offshore wind: Decommissioning (if relevant see also Cables),Barrier to species movement
+Offshore wind: Decommissioning (if relevant see also Cables),"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Decommissioning (if relevant see also Cables),"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Offshore wind: Decommissioning (if relevant see also Cables),Above water noise
+Offshore wind: Decommissioning (if relevant see also Cables),Vibration
+Offshore wind: Decommissioning (if relevant see also Cables),Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Decommissioning (if relevant see also Cables),Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Offshore wind: Decommissioning (if relevant see also Cables),"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Offshore wind: Decommissioning (if relevant see also Cables),"Introduction of other substances (solid, liquid or gas)"
+Finfish aquaculture,Changes in suspended solids (water clarity)
+Finfish aquaculture,Smothering and siltation rate changes (Heavy)
+Finfish aquaculture,Smothering and siltation rate changes (Light)
+Finfish aquaculture,Visual disturbance
+Finfish aquaculture,Genetic modification & translocation of indigenous species
+Finfish aquaculture,Introduction or spread of invasive non-indigenous species (INIS)
+Finfish aquaculture,Introduction of microbial pathogens
+Finfish aquaculture,Removal of target species
+Finfish aquaculture,Removal of non-target species
+Finfish aquaculture,"Penetration and/or disturbance of the substrate below the surface of the seabed, including abrasion"
+Finfish aquaculture,Abrasion/disturbance of the substrate on the surface of the seabed
+Finfish aquaculture,"Water flow (tidal current) changes, including sediment transport considerations"
+Finfish aquaculture,Wave exposure changes
+Finfish aquaculture,Physical loss (to land or freshwater habitat)
+Finfish aquaculture,Physical change (to another seabed type)
+Finfish aquaculture,Physical change (to another sediment type)
+Finfish aquaculture,Litter
+Finfish aquaculture,Underwater noise changes
+Finfish aquaculture,Introduction of light
+Finfish aquaculture,Barrier to species movement
+Finfish aquaculture,"Collision ABOVE water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Finfish aquaculture,"Collision BELOW water with static or moving objects not naturally found in the marine environment (e.g., boats, machinery, and structures)"
+Finfish aquaculture,Above water noise
+Finfish aquaculture,Transition elements & organo-metal (e.g. TBT) contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Finfish aquaculture,Hydrocarbon & PAH contamination.  Includes those priority substances listed in Annex II of Directive 2008/105/EC.
+Finfish aquaculture,"Synthetic compound contamination (incl. pesticides, antifoulants, pharmaceuticals).  Includes those priority substances listed in Annex II of Directive 2008/105/EC."
+Finfish aquaculture,Nutrient enrichment
+Finfish aquaculture,Organic enrichment
+Finfish aquaculture,Deoxygenation

@@ -1,7 +1,11 @@
 Marxan v 2.43 begin execution
 
 LoadOptions
+<<<<<<< HEAD
 RandSeed iseed -1 RandSeed1 -1565794068
+=======
+RandSeed iseed -1 RandSeed1 -1629730361
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before LoadPUData
 after LoadPUData
 prob field not present
@@ -21,18 +25,29 @@ after CalcTotalAreas
 before ApplySpecProp
 ApplySpecProp spname 63767166 target 114392895.816709
 ApplySpecProp spname 63408475 target 185879435.694190
+<<<<<<< HEAD
 ApplySpecProp spname 63408405 target 11231176.263656
+=======
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 ApplySpecProp spname 63407942 target 739071036.042919
 after ApplySpecProp
 before OutputScenario
 after OutputScenario
 before CalcPenalties
+<<<<<<< HEAD
 CalcPenalties spname 63767166 penalty 10.8964 target 1.14393e+08
 CalcPenalties spname 63408475 penalty 14.5286 target 1.85879e+08
 CalcPenalties spname 63408405 penalty 3.63215 target 1.12312e+07
 CalcPenalties spname 63407942 penalty 54.4822 target 7.39071e+08
 after CalcPenalties
 start run loop run 967348759
+=======
+CalcPenalties spname 63767166 penalty 3 target 1.14393e+08
+CalcPenalties spname 63408475 penalty 4 target 1.85879e+08
+CalcPenalties spname 63407942 penalty 15 target 7.39071e+08
+after CalcPenalties
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 1
 ConnollyInit start
 ConnollyInit end
@@ -52,7 +67,11 @@ after IterativeImprovementOptimise run 1
 before file output run 1
 after file output run 1
 end run 1
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 2
 ConnollyInit start
 ConnollyInit end
@@ -72,7 +91,11 @@ after IterativeImprovementOptimise run 2
 before file output run 2
 after file output run 2
 end run 2
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 3
 ConnollyInit start
 ConnollyInit end
@@ -92,7 +115,11 @@ after IterativeImprovementOptimise run 3
 before file output run 3
 after file output run 3
 end run 3
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 4
 ConnollyInit start
 ConnollyInit end
@@ -112,7 +139,11 @@ after IterativeImprovementOptimise run 4
 before file output run 4
 after file output run 4
 end run 4
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 5
 ConnollyInit start
 ConnollyInit end
@@ -132,7 +163,11 @@ after IterativeImprovementOptimise run 5
 before file output run 5
 after file output run 5
 end run 5
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 6
 ConnollyInit start
 ConnollyInit end
@@ -152,7 +187,11 @@ after IterativeImprovementOptimise run 6
 before file output run 6
 after file output run 6
 end run 6
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 7
 ConnollyInit start
 ConnollyInit end
@@ -172,7 +211,11 @@ after IterativeImprovementOptimise run 7
 before file output run 7
 after file output run 7
 end run 7
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 8
 ConnollyInit start
 ConnollyInit end
@@ -192,7 +235,11 @@ after IterativeImprovementOptimise run 8
 before file output run 8
 after file output run 8
 end run 8
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 9
 ConnollyInit start
 ConnollyInit end
@@ -212,7 +259,11 @@ after IterativeImprovementOptimise run 9
 before file output run 9
 after file output run 9
 end run 9
+<<<<<<< HEAD
 start run loop run 967348759
+=======
+start run loop run 2
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 before ConnollyInit run 10
 ConnollyInit start
 ConnollyInit end
@@ -233,7 +284,11 @@ before file output run 10
 after file output run 10
 end run 10
 before final file output
+<<<<<<< HEAD
 Best solution is run 5
+=======
+Best solution is run 10
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 end final file output
 
 Marxan end execution

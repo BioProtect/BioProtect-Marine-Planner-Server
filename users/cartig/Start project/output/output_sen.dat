@@ -1,7 +1,13 @@
 Number of Planning Units 13663
+<<<<<<< HEAD
 Number of Conservation Values 4
 Starting proportion 0.50
 Connection modifier 0.10
+=======
+Number of Conservation Values 3
+Starting proportion 0.50
+Connection modifier 0.00
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)
 
 Clumping - default step function
 Algorithm Used :Annealing and Iterative Improvement

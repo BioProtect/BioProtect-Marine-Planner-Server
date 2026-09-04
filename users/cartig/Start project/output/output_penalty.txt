@@ -1,5 +1,11 @@
 spid,penalty
+<<<<<<< HEAD
 63767166,10.8964
 63408475,14.5286
 63408405,3.63215
 63407942,54.4822
+=======
+63767166,3
+63408475,4
+63407942,15
+>>>>>>> 393fccd (trying to get file size down by removing git folder and reiniting)

@@ -8,9 +8,12 @@ Usage:
     python db/migrate.py new "desc"   # Create a new migration file
     python db/migrate.py deploy       # Deploy functions + views + migrations
 
-Environment variables (with defaults):
-    PGHOST=localhost  PGPORT=5432  PGDATABASE=bioprotect
-    PGUSER=postgres   PGPASSWORD=postgres
+Connection settings are read from server/.env.local (the same source of truth
+the Tornado app uses: db_host/db_name/db_user/db_pass), so `migrate` always
+targets the database the server actually runs against. PG* environment
+variables override .env.local when set; the old postgres/postgres defaults are
+gone, because silently connecting to the wrong database made migrations look
+like they had been applied when they had not.
 """
 
 import os
@@ -34,13 +37,52 @@ SCHEMA = "bioprotect"
 TRACKING_TABLE = f"{SCHEMA}.schema_migrations"
 
 
+def _load_env_local():
+    """Read server/.env.local, the same file classes/db_config.py uses."""
+    env_path = os.path.join(os.path.dirname(DB_DIR), ".env.local")
+    values = {}
+    if not os.path.isfile(env_path):
+        return values
+    with open(env_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            values[key.strip()] = val.strip().strip('"').strip("'")
+    return values
+
+
 def get_connection():
+    env = _load_env_local()
+
+    host = os.getenv("PGHOST") or env.get("db_host")
+    port = os.getenv("PGPORT") or env.get("db_port") or "5432"
+    dbname = os.getenv("PGDATABASE") or env.get("db_name")
+    user = os.getenv("PGUSER") or env.get("db_user")
+    password = os.getenv("PGPASSWORD") or env.get("db_pass")
+
+    missing = [
+        label
+        for label, value in (
+            ("db_host", host),
+            ("db_name", dbname),
+            ("db_user", user),
+            ("db_pass", password),
+        )
+        if not value
+    ]
+    if missing:
+        sys.exit(
+            "Missing database configuration: "
+            + ", ".join(missing)
+            + f"\nSet them in {os.path.join(os.path.dirname(DB_DIR), '.env.local')} "
+            "or export PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD."
+        )
+
+    print(f"Connecting to {dbname} on {host}:{port} as {user}")
     return psycopg2.connect(
-        host=os.getenv("PGHOST", "localhost"),
-        port=int(os.getenv("PGPORT", "5432")),
-        dbname=os.getenv("PGDATABASE", "bioprotect"),
-        user=os.getenv("PGUSER", "postgres"),
-        password=os.getenv("PGPASSWORD", "postgres"),
+        host=host, port=int(port), dbname=dbname, user=user, password=password
     )
 
 

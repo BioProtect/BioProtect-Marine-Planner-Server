@@ -33,6 +33,15 @@ _marxan_web_resources/
 
 *.dump
 *.sql
+# ...but the db/ tree IS the source of record for schema objects and must be
+# tracked. Without these negations every migration/function silently falls out
+# of git and never reaches the deploy checkout (files here were previously
+# kept alive only by ad-hoc `git add -f`).
+!db/migrations/*.sql
+!db/functions/*.sql
+!db/views/*.sql
+!db/seeds/*.sql
+!db/diagnostics/*.sql
 __pycache__
 __pycache__/*
 /__pycache__/

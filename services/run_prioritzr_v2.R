@@ -250,6 +250,21 @@ if (length(valid_features) == 0) {
     stop("All features have zero coverage in this project")
 }
 
+# Features with no coverage cannot be targeted and are excluded from the
+# problem. This used to happen silently, which looks identical to "the
+# optimizer ignored my feature" -- log it loudly so the run log says which
+# features were dropped and why.
+dropped_features <- setdiff(feature_cols, valid_features)
+if (length(dropped_features) > 0) {
+    logline(
+        "WARNING: dropping", length(dropped_features),
+        "feature(s) with zero coverage in this project's planning units:",
+        paste(dropped_features, collapse = ", "),
+        "- check that the feature was preprocessed against THIS project's",
+        "planning grid and that it overlaps the project extent."
+    )
+}
+
 feature_cols <- valid_features
 logline("Using features:", paste(feature_cols, collapse = ", "))
 
@@ -269,9 +284,17 @@ if ("feature_targets_json" %in% names(config)) {
         )
 
         if (length(parsed_targets) > 0) {
-            parsed_targets <- as.numeric(parsed_targets)
+            # NB: as.numeric() strips names. Rebuild the named vector via
+            # storage.mode() so the f_<id> -> target mapping survives;
+            # otherwise the filter below always matched nothing and every
+            # feature silently fell back to the default target.
+            target_names <- names(parsed_targets)
+            parsed_targets <- setNames(
+                suppressWarnings(as.numeric(parsed_targets)),
+                target_names
+            )
             parsed_targets <- parsed_targets[
-                names(parsed_targets) %in% feature_cols
+                !is.na(parsed_targets) & names(parsed_targets) %in% feature_cols
             ]
 
             if (length(parsed_targets) > 0) {

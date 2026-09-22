@@ -31,7 +31,7 @@ class ProjectHandler(BaseHandler):
         """
         row = await self.pg.execute(
             """
-            SELECT unique_id
+            SELECT unique_id, resolution
             FROM bioprotect.metadata_planning_units
             WHERE alias = %s OR tilesetid = %s
             """,
@@ -42,7 +42,7 @@ class ProjectHandler(BaseHandler):
         if not row:
             raise ServicesError("Planning grid not found")
 
-        return row[0]["unique_id"]
+        return row[0]["unique_id"], row[0]["resolution"]
 
     async def _check_project_access(self, user_id, project_id, min_role=None):
         """
@@ -284,7 +284,10 @@ class ProjectHandler(BaseHandler):
             raise ServicesError(
                 "Missing required fields: project, planning_grid_name")
 
-        planning_unit_id = await self._resolve_planning_unit_id(planning_grid_name)
+        planning_unit_id, grid_resolution = await self._resolve_planning_unit_id(planning_grid_name)
+        # the grid is the source of truth for resolution - the client only sets
+        # it when uploading a new shapefile
+        resolution = grid_resolution if grid_resolution is not None else resolution
 
         # Create project in DB
         row = await self.pg.execute(
@@ -321,8 +324,9 @@ class ProjectHandler(BaseHandler):
             JOIN bioprotect.metadata_planning_units mpu
                 ON LOWER(TRIM(hc.project_area)) = LOWER(TRIM(split_part(mpu.alias, ' (', 1)))
             WHERE mpu.unique_id = %s
+              AND hc.resolution = %s
             """,
-            [project_id, planning_unit_id]
+            [project_id, planning_unit_id, resolution]
         )
 
         # Precompute boundary edges if not already done for this grid

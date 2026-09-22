@@ -250,9 +250,12 @@ class PlanningUnitHandler(BaseHandler):
         # Fetch the PU record by H3 index
         pu_rows = await self.pg.execute(
             """
-            SELECT h3_index, cost, status
-            FROM bioprotect.get_planning_units_for_project(%s)
-            WHERE h3_index = %s
+            SELECT pu.h3_index, pu.cost, pu.status,
+                   COALESCE(hc.area_km2, ST_Area(hc.geometry::geography) / 1e6) AS area_km2
+            FROM bioprotect.get_planning_units_for_project(%s) pu
+            LEFT JOIN bioprotect.h3_cells hc ON hc.h3_index = pu.h3_index
+            WHERE pu.h3_index = %s
+            LIMIT 1
             """,
             [project_id, h3_index],
             return_format="Dict"
@@ -265,6 +268,11 @@ class PlanningUnitHandler(BaseHandler):
         pu_data["cost"] = (
             float(pu_data["cost"])
             if pu_data["cost"] is not None
+            else None
+        )
+        pu_data["area_km2"] = (
+            float(pu_data["area_km2"])
+            if pu_data.get("area_km2") is not None
             else None
         )
 

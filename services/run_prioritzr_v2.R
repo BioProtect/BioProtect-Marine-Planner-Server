@@ -250,6 +250,12 @@ if (length(valid_features) == 0) {
     stop("All features have zero coverage in this project")
 }
 
+dropped <- setdiff(feature_cols, valid_features)
+if (length(dropped) > 0) {
+    logline("WARNING: zero coverage, excluded from problem:",
+            paste(dropped, collapse = ", "))
+}
+
 feature_cols <- valid_features
 logline("Using features:", paste(feature_cols, collapse = ", "))
 
@@ -269,9 +275,14 @@ if ("feature_targets_json" %in% names(config)) {
         )
 
         if (length(parsed_targets) > 0) {
-            parsed_targets <- as.numeric(parsed_targets)
+            # as.numeric() drops names -> the filter below matched nothing and
+            # every feature silently fell back to TARGET_PROP.
+            parsed_targets <- setNames(
+                suppressWarnings(as.numeric(parsed_targets)),
+                names(parsed_targets)
+            )
             parsed_targets <- parsed_targets[
-                names(parsed_targets) %in% feature_cols
+                !is.na(parsed_targets) & names(parsed_targets) %in% feature_cols
             ]
 
             if (length(parsed_targets) > 0) {
@@ -280,6 +291,9 @@ if ("feature_targets_json" %in% names(config)) {
         }
     }
 }
+
+logline("Targets:", paste(sprintf("%s=%.3f", names(feature_targets),
+                                  feature_targets), collapse = " "))
 
 # ---- 5) Boundary matrix from precomputed edges (or runtime fallback) ----------
 # Note: adjacency returns undirected unique pairs (pu_id, nbr_id).

@@ -4,6 +4,7 @@ CREATE OR REPLACE FUNCTION bioprotect.insert_feature_pu_amounts(p_project_id int
 AS $function$
 DECLARE
     v_grid_table TEXT;
+    v_repaired   INTEGER := 0;
 BEGIN
     -- Resolve grid table name from metadata_planning_units
     SELECT feature_class_name
@@ -30,6 +31,23 @@ BEGIN
         $f$, p_project_id, p_feature_id, v_grid_table, p_feature_class);  -- ✅ correct order
 
     ELSE
+        -- Repair invalid geometries before any overlay op. GEOS aborts the
+        -- whole run with "TopologyException: Input geom 1 is invalid: Ring
+        -- Self-intersection" the moment ST_Intersection touches a bad ring,
+        -- and shapefiles routinely carry them. ST_MakeValid can return a
+        -- GeometryCollection (polygon plus dangling lines), so
+        -- ST_CollectionExtract keeps just the polygonal parts.
+        EXECUTE format($f$
+            UPDATE bioprotect.%I
+               SET geometry = ST_CollectionExtract(ST_MakeValid(geometry), 3)
+             WHERE NOT ST_IsValid(geometry)
+        $f$, p_feature_class);
+        GET DIAGNOSTICS v_repaired = ROW_COUNT;
+        IF v_repaired > 0 THEN
+            RAISE NOTICE 'Repaired % invalid geometr(y|ies) in %',
+                v_repaired, p_feature_class;
+        END IF;
+
         -- Polygon features: store coverage in km² (ST_Area gives m² in
         -- EPSG:3410, divide by 1e6). km² is the app-wide canonical unit
         -- for feature amounts — keeps numbers readable and avoids
@@ -40,7 +58,11 @@ BEGIN
                 %s, %s, grid.h3_index,
                 ST_Area(
                     ST_Transform(
-                        ST_Union(ST_Intersection(grid.geometry, feat.geometry)),
+                        ST_CollectionExtract(
+                            ST_Union(
+                                ST_Intersection(grid.geometry, feat.geometry)),
+                            3
+                        ),
                         3410
                     )
                 ) / 1000000.0 AS amount

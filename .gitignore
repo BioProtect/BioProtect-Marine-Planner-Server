@@ -33,6 +33,11 @@ _marxan_web_resources/
 
 *.dump
 *.sql
+!db/migrations/*.sql
+!db/functions/*.sql
+!db/views/*.sql
+!db/seeds/*.sql
+!db/diagnostics/*.sql
 __pycache__
 __pycache__/*
 /__pycache__/

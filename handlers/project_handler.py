@@ -31,7 +31,10 @@ class ProjectHandler(BaseHandler):
         """
         row = await self.pg.execute(
             """
-            SELECT unique_id, resolution
+            -- ponytail: no resolution column on metadata_planning_units, but
+            -- every h3 grid is named v_h3_<area>_res<N>
+            SELECT unique_id,
+                   substring(feature_class_name from '_res([0-9]+)$')::int AS resolution
             FROM bioprotect.metadata_planning_units
             WHERE alias = %s OR tilesetid = %s
             """,
@@ -232,6 +235,7 @@ class ProjectHandler(BaseHandler):
                 'user_id': user_id,
                 'description': project.get("description", "No description"),
                 'createdate': project.get("date_created", "Unknown"),
+                'resolution': project.get("default_resolution"),
                 'oldVersion': project.get("old_version", False),
                 'private': project.get("is_private", False),
                 'costs': project.get("costs"),

@@ -251,7 +251,7 @@ class PlanningUnitHandler(BaseHandler):
         pu_rows = await self.pg.execute(
             """
             SELECT pu.h3_index, pu.cost, pu.status,
-                   COALESCE(hc.area_km2, ST_Area(hc.geometry::geography) / 1e6) AS area_km2
+                   ST_Area(hc.geometry::geography) / 1e6 AS area_km2
             FROM bioprotect.get_planning_units_for_project(%s) pu
             LEFT JOIN bioprotect.h3_cells hc ON hc.h3_index = pu.h3_index
             WHERE pu.h3_index = %s

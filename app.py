@@ -50,7 +50,8 @@ from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
 from handlers.cost_raster_handler import (UploadRasterCostHandler,
-                                          GetRasterBandInfoHandler)
+                                          GetRasterBandInfoHandler,
+                                          CostRasterLibraryHandler)
 from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
                                    GetCostProfileActivitiesHandler,
@@ -1547,6 +1548,7 @@ class Application(tornado.web.Application):
             ("/server/runCumulativeImpact", RunCumulativeImpactHandler, dict(pg=pg)),
             ("/server/uploadRasterCost", UploadRasterCostHandler, dict(pg=pg)),
             ("/server/getRasterBandInfo", GetRasterBandInfoHandler, dict(pg=pg)),
+            ("/server/costRasters", CostRasterLibraryHandler, dict(pg=pg)),
             ("/server/uploadFile", uploadFile),
 
 

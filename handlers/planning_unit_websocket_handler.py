@@ -214,7 +214,10 @@ class PlanningGridWSHandler(SocketHandler):
             planning_unit_id = result[0]["unique_id"] if result else None
 
             self.send_response({'info': "🔄 Reloading Martin..."})
-            restart_martin()
+            martin = restart_martin()
+            if not martin.get("ok"):
+                self.send_response(
+                    {'info': f"⚠️ Martin did not restart: {martin.get('stderr') or martin.get('stdout')}"})
 
             self.send_response({
                 "success": True,

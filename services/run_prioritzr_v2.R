@@ -34,7 +34,11 @@ logline <- function(...) {
 }
 
 # Use HiGHS if available, otherwise fall back to CBC
-add_solver <- if (requireNamespace("highs", quietly = TRUE)) add_highs_solver else add_cbc_solver
+add_solver <- if (requireNamespace("highs", quietly = TRUE)) {
+    add_highs_solver
+} else {
+    add_cbc_solver
+}
 
 
 # ---- 1) Read run_id ----------
@@ -250,10 +254,20 @@ if (length(valid_features) == 0) {
     stop("All features have zero coverage in this project")
 }
 
-dropped <- setdiff(feature_cols, valid_features)
-if (length(dropped) > 0) {
-    logline("WARNING: zero coverage, excluded from problem:",
-            paste(dropped, collapse = ", "))
+# Features with no coverage cannot be targeted and are excluded from the
+# problem. This used to happen silently, which looks identical to "the
+# optimizer ignored my feature" -- log it loudly so the run log says which
+# features were dropped and why.
+dropped_features <- setdiff(feature_cols, valid_features)
+if (length(dropped_features) > 0) {
+    logline(
+        "WARNING: dropping",
+        length(dropped_features),
+        "feature(s) with zero coverage in this project's planning units:",
+        paste(dropped_features, collapse = ", "),
+        "- check that the feature was preprocessed against THIS project's",
+        "planning grid and that it overlaps the project extent."
+    )
 }
 
 feature_cols <- valid_features
@@ -275,11 +289,14 @@ if ("feature_targets_json" %in% names(config)) {
         )
 
         if (length(parsed_targets) > 0) {
-            # as.numeric() drops names -> the filter below matched nothing and
-            # every feature silently fell back to TARGET_PROP.
+            # NB: as.numeric() strips names. Rebuild the named vector via
+            # storage.mode() so the f_<id> -> target mapping survives;
+            # otherwise the filter below always matched nothing and every
+            # feature silently fell back to the default target.
+            target_names <- names(parsed_targets)
             parsed_targets <- setNames(
                 suppressWarnings(as.numeric(parsed_targets)),
-                names(parsed_targets)
+                target_names
             )
             parsed_targets <- parsed_targets[
                 !is.na(parsed_targets) & names(parsed_targets) %in% feature_cols
@@ -292,8 +309,13 @@ if ("feature_targets_json" %in% names(config)) {
     }
 }
 
-logline("Targets:", paste(sprintf("%s=%.3f", names(feature_targets),
-                                  feature_targets), collapse = " "))
+logline(
+    "Targets:",
+    paste(
+        sprintf("%s=%.3f", names(feature_targets), feature_targets),
+        collapse = " "
+    )
+)
 
 # ---- 5) Boundary matrix from precomputed edges (or runtime fallback) ----------
 # Note: adjacency returns undirected unique pairs (pu_id, nbr_id).

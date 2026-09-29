@@ -14,6 +14,7 @@ from psycopg2 import sql
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
+from services.martin_service import restart_martin
 from services.raster_service import reproject_to_wgs84
 from services.service_error import ServicesError, raise_error
 
@@ -80,6 +81,9 @@ class UploadActivityHandler(SocketHandler):
             })
 
             pressure_count = await self._create_pressures(activity_id)
+
+            # Martin only discovers new tables on startup
+            restart_martin()
 
             self.close(close_message={
                 'info': f"Activity uploaded. {pressure_count} pressures created.",

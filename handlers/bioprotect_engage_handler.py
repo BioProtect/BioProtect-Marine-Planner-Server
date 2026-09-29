@@ -431,6 +431,9 @@ class BioProtectEngageHandler(BaseHandler):
                     [activity_id],
                 )
 
+            # Martin only discovers new tables on startup
+            restart_martin()
+
             broadcast("activity-created", {
                 "activityName": activity_table,
                 "activityId": activity_id,

@@ -546,6 +546,16 @@ class ProjectHandler(BaseHandler):
         metadata["iucn_category"] = project["iucn_category"]
         metadata["costs"] = project["costs"]
 
+        pu_stats = await self.pg.execute(
+            """
+            SELECT count(*) AS pu_count,
+                   sum(h3_cell_area(h3_index::h3index, 'km^2')) AS area_km2
+            FROM bioprotect.project_pus WHERE project_id = %s
+            """,
+            data=[project_id], return_format="Dict")
+        metadata["pu_count"] = pu_stats[0]["pu_count"]
+        metadata["area_km2"] = float(pu_stats[0]["area_km2"] or 0)
+
         df = await self.pg.execute(
             "SELECT * FROM bioprotect.get_planning_units_metadata(%s)",
             data=[int(project["planning_unit_id"])], return_format="DataFrame")

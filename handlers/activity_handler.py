@@ -5,8 +5,10 @@ Supports uploading activities as shapefiles or rasters, creating pressures
 from the PAD table, and running the cumulative impact function in PostGIS.
 """
 
+import asyncio
 import logging
 import os
+import time
 import uuid
 import subprocess
 
@@ -367,7 +369,11 @@ class RunCumulativeImpactHandler(SocketHandler):
             })
 
             total_pressures = 0
-            for aid in activity_ids:
+            for i, aid in enumerate(activity_ids, 1):
+                self.send_response({
+                    'status': 'Preprocessing',
+                    'info': f'Creating pressures for activity {i} of {len(activity_ids)}...'
+                })
                 result = await self.pg.execute(
                     "SELECT bioprotect.create_pressures_from_activity(%s);",
                     data=[aid],
@@ -376,13 +382,24 @@ class RunCumulativeImpactHandler(SocketHandler):
                 count = result[0]['create_pressures_from_activity']
                 total_pressures += count
 
+            pu_count = (await self.pg.execute(
+                "SELECT COUNT(*) AS n FROM bioprotect.project_pus WHERE project_id = %s;",
+                data=[project_id],
+                return_format="Array"
+            ))[0]['n']
+
             self.send_response({
                 'status': 'Preprocessing',
-                'info': f'{total_pressures} pressures created. Running cumulative impact...'
+                'info': f'{total_pressures} pressures created. Calculating cumulative '
+                        f'impact across {pu_count:,} planning units '
+                        f'(overlaying pressures, features and sensitivity scores)...'
             })
 
-            # Step 2: Run cumulative impact
-            result = await self.pg.execute(
+            # Step 2: Run cumulative impact. It is one SQL statement, so there are
+            # no real sub-stages to report - send a heartbeat so the user knows
+            # it's still working.
+            # ponytail: heartbeat only; split run_cumulative_impact into steps if per-stage progress is needed
+            task = asyncio.ensure_future(self.pg.execute(
                 "SELECT bioprotect.run_cumulative_impact(%s, %s, %s, %s, %s);",
                 data=[
                     project_id,
@@ -392,7 +409,22 @@ class RunCumulativeImpactHandler(SocketHandler):
                     self.get_current_user()
                 ],
                 return_format="Array"
-            )
+            ))
+            started = time.monotonic()
+            while not task.done():
+                await asyncio.wait({task}, timeout=10)
+                if not task.done():
+                    self.send_response({
+                        'status': 'Preprocessing',
+                        'info': f'Still calculating cumulative impact '
+                                f'({int(time.monotonic() - started)}s)...'
+                    })
+            result = task.result()
+
+            self.send_response({
+                'status': 'Preprocessing',
+                'info': 'Cumulative impact calculated. Activating cost profile...'
+            })
 
             cost_profile_id = result[0]['run_cumulative_impact']
 

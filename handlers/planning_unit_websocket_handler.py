@@ -1,12 +1,12 @@
-from ast import alias
+import asyncio
 import json
+from functools import partial
 
 import geopandas as gpd
 import h3
 from classes.db_config import DBConfig
 from handlers.websocket_handler import SocketHandler
 from psycopg2 import sql
-from services.martin_service import restart_martin
 from services.service_error import ServicesError
 from shapely.geometry import Polygon
 from sqlalchemy import create_engine, text
@@ -37,6 +37,30 @@ class PlanningGridWSHandler(SocketHandler):
         config = DBConfig()
         db_url = f"postgresql://{config.DATABASE_USER}:{config.DATABASE_PASSWORD}@{config.DATABASE_HOST}/{config.DATABASE_NAME}"
         return create_engine(db_url)
+
+    @staticmethod
+    def shapes_to_cells(geometries, resolution):
+        """H3 cells covering every polygon in the shapefile."""
+        cells = set()
+        for geom in geometries:
+            parts = [geom] if geom.geom_type == "Polygon" else list(
+                geom.geoms)
+            for part in parts:
+                cells |= set(h3.geo_to_cells(
+                    part.__geo_interface__, resolution))
+        return cells
+
+    @staticmethod
+    def cells_to_gdf(cells, resolution, scale_level, project_area_name):
+        """One h3_cells row per cell, with its hexagon geometry."""
+        records = [{
+            "h3_index": h,
+            "resolution": resolution,
+            "scale_level": scale_level,
+            "project_area": project_area_name,
+            "geometry": Polygon([(lon, lat) for lat, lon in h3.cell_to_boundary(h)]),
+        } for h in cells]
+        return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
 
     async def open(self):
         try:
@@ -109,42 +133,28 @@ class PlanningGridWSHandler(SocketHandler):
                 })
                 return
 
+            # The blocking steps run in a thread: a message only reaches the
+            # client once this coroutine yields, and blocking here would
+            # freeze the server for every other user as well.
+            loop = asyncio.get_running_loop()
+
             self.send_response({'info': "📦 Reading shapefile..."})
-            df = gpd.read_file(shapefile_path)
-
-            unique_cells = set()
-            for _, row in df.iterrows():
-                self.send_response(
-                    {'info': "📦 looping through shapefile rows..."})
-                geom = row["geometry"]
-                parts = [geom] if geom.geom_type == "Polygon" else list(
-                    geom.geoms)
-                for part in parts:
-                    self.send_response({'info': "📦 parsing geometries..."})
-                    unique_cells |= set(h3.geo_to_cells(
-                        part.__geo_interface__, resolution))
-
-            records = []
-            self.send_response({'info': "📦 Building records for db..."})
-            for h in unique_cells:
-
-                coords = [(lon, lat)for lat, lon in h3.cell_to_boundary(h)]
-                records.append({
-                    "h3_index": h,
-                    "resolution": resolution,
-                    "scale_level": scale_level,
-                    "project_area": project_area_name,
-                    "geometry": Polygon(coords),
-                })
+            df = await loop.run_in_executor(None, gpd.read_file, shapefile_path)
 
             self.send_response(
-                {'info': f"🧱 Generated {len(records)} H3 records"})
+                {'info': f"🔷 Converting {len(df):,} shapes to H3 cells..."})
+            unique_cells = await loop.run_in_executor(
+                None, self.shapes_to_cells, df.geometry, resolution)
 
-            gdf_out = gpd.GeoDataFrame(
-                records, geometry="geometry", crs="EPSG:4326")
+            self.send_response(
+                {'info': f"🧱 Building {len(unique_cells):,} planning units..."})
+            gdf_out = await loop.run_in_executor(
+                None, self.cells_to_gdf, unique_cells, resolution,
+                scale_level, project_area_name)
             engine = self.create_sql_engine()
 
-            self.send_response({'info': "📤 Writing H3 cells to database..."})
+            self.send_response(
+                {'info': f"📤 Writing {len(gdf_out):,} planning units to the database..."})
             await self.pg.execute(
                 """
                 DELETE FROM bioprotect.h3_cells
@@ -153,8 +163,9 @@ class PlanningGridWSHandler(SocketHandler):
                 [project_area_name, resolution]
             )
 
-            gdf_out.to_postgis(
-                "h3_cells", engine, schema="bioprotect", if_exists="append", index=False)
+            await loop.run_in_executor(None, partial(
+                gdf_out.to_postgis, "h3_cells", engine,
+                schema="bioprotect", if_exists="append", index=False))
 
             self.send_response({'info': "📐 Creating PostGIS view..."})
             existing_links = await self.pg.execute("""
@@ -212,12 +223,6 @@ class PlanningGridWSHandler(SocketHandler):
                 return_format="Array"
             )
             planning_unit_id = result[0]["unique_id"] if result else None
-
-            self.send_response({'info': "🔄 Reloading Martin..."})
-            martin = restart_martin()
-            if not martin.get("ok"):
-                self.send_response(
-                    {'info': f"⚠️ Martin did not restart: {martin.get('stderr') or martin.get('stdout')}"})
 
             self.send_response({
                 "success": True,

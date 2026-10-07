@@ -159,6 +159,10 @@ BEGIN
               AND cpv.project_pu_id   = pp.id
        );
 
+    -- The cost layer is read straight after this; without fresh statistics
+    -- the planner assumes the new profile has ~1 row and picks a quadratic join.
+    ANALYZE bioprotect.cost_profile_values;
+
     RETURN _cost_profile;
 END;
 $$;

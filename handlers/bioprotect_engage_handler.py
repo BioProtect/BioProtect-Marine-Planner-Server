@@ -11,7 +11,6 @@ from psycopg2 import sql
 from handlers.base_handler import BaseHandler
 from services.service_error import ServicesError, raise_error
 from classes.postgis_class import get_pg
-from services.martin_service import restart_martin
 from handlers.notification_handler import broadcast
 
 
@@ -38,7 +37,7 @@ class BioProtectEngageHandler(BaseHandler):
 
     async def list_features(self):
         rows = await self.pg.execute(
-            "SELECT feature_class_name, alias, tilesetid FROM bioprotect.metadata_interest_features ORDER BY creation_date DESC",
+            "SELECT feature_class_name, alias, tilesetid, creation_date FROM bioprotect.metadata_interest_features ORDER BY creation_date DESC",
             return_format="Array",
         )
         self.send_response({"features": rows or []})
@@ -46,8 +45,8 @@ class BioProtectEngageHandler(BaseHandler):
     async def list_activities(self):
         """
         Returns activities suitable for selection on a map. The `activity_name`
-        column is the underlying PostGIS table name, which Martin auto-serves —
-        the frontend uses it the same way it uses a feature's `tilesetid`.
+        column is the underlying PostGIS table name, which the frontend passes
+        to Martin's layer_tiles function source as ?layer=.
         """
         rows = await self.pg.execute(
             """
@@ -158,7 +157,6 @@ class BioProtectEngageHandler(BaseHandler):
                     [existing_table],
                 )
 
-                restart_martin()
                 broadcast("feature-updated", {
                     "featureClassName": existing_table,
                     "metadataId": unique_id,
@@ -274,8 +272,6 @@ class BioProtectEngageHandler(BaseHandler):
             )
 
             unique_id = meta_rows[0]["unique_id"] if meta_rows else None
-
-            restart_martin()
 
             broadcast("feature-created", {
                 "featureClassName": feature_class_name,
@@ -430,9 +426,6 @@ class BioProtectEngageHandler(BaseHandler):
                     "SELECT bioprotect.create_pressures_from_activity(%s);",
                     [activity_id],
                 )
-
-            # Martin only discovers new tables on startup
-            restart_martin()
 
             broadcast("activity-created", {
                 "activityName": activity_table,

@@ -770,6 +770,10 @@ async def build_profile_from_cache(
             for pu_id, cost in cost_map.items()
         ],
     )
+    # The cost layer is read straight after this. Without fresh statistics
+    # the planner assumes the new profile has ~1 row and joins it to
+    # project_pus quadratically, which runs past the 60s query timeout.
+    await pg.execute("ANALYZE bioprotect.cost_profile_values;")
 
     if set_active:
         await pg.execute(

@@ -7,7 +7,7 @@ import pandas as pd
 from classes.db_config import DBConfig
 from handlers.base_handler import BaseHandler
 from psycopg2 import sql
-from services.file_service import (check_zipped_shapefile,
+from services.file_service import (check_zipped_shapefile, create_zipfile,
                                    delete_zipped_shapefile, file_to_df,
                                    get_files_in_folder,
                                    get_key_values_from_file,
@@ -55,22 +55,20 @@ class PlanningUnitHandler(BaseHandler):
         db_url = f"postgresql://{config.DATABASE_USER}:{config.DATABASE_PASSWORD}@{config.DATABASE_HOST}/{config.DATABASE_NAME}"
         return create_engine(db_url)
 
-    def get_projects_for_planning_grid(self, feature_class_name):
-        # ************************************************************
-        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
-        # ***********************************************************
-        projects = []
-        # get_projects_for_feature(
-        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
-        # user_folder = self.proj_paths.USERS_FOLDER
-
-        # projects = [{
-        #     'user': relpath(file_path, user_folder).split(sep)[0],
-        #     'name': relpath(file_path, user_folder).split(sep)[1]
-        # } for file_path in input_dat_files
-        #     if get_key_values_from_file(file_path).get('PLANNING_UNIT_NAME') == feature_class_name]
-
-        return projects
+    async def get_projects_for_planning_grid(self, feature_class_name):
+        """Every project (any user's) built on the given planning grid."""
+        return await self.pg.execute(
+            """
+            SELECT p.id, p.name
+            FROM bioprotect.projects p
+            JOIN bioprotect.metadata_planning_units mpu
+              ON p.planning_unit_id = mpu.unique_id
+            WHERE mpu.feature_class_name = %s
+            ORDER BY p.name;
+            """,
+            data=[feature_class_name],
+            return_format="Array"
+        )
 
     async def get(self):
         """
@@ -86,7 +84,7 @@ class PlanningUnitHandler(BaseHandler):
             elif action == 'list':
                 await self.get_planning_unit_grids()
             elif action == 'projects':
-                self.list_projects_for_planning_grid()
+                await self.list_projects_for_planning_grid()
             elif action == "get-cost-layer":
                 await self.get_pu_costs_layer()
             elif action == 'data':
@@ -121,39 +119,46 @@ class PlanningUnitHandler(BaseHandler):
 
         grid_data = await self.pg.execute(
             """
-            SELECT created_by, source
+            SELECT unique_id, created_by
             FROM bioprotect.metadata_planning_units
             WHERE feature_class_name = %s;
             """,
             data=[planning_grid],
-            return_format="Dict"
+            return_format="Array"
         )
 
         if not grid_data:
-            return
+            raise ServicesError("Planning grid not found.")
+        grid_id = grid_data[0]["unique_id"]
 
-        created_by = grid_data[0].get("created_by")
-        if created_by == "global admin":
+        # Only the user who created a grid may delete it. System-supplied
+        # grids were created by no real user, so nobody can delete those.
+        user = self.get_current_user()
+        if not user or grid_data[0]["created_by"] != user:
             raise ServicesError(
-                "The planning grid cannot be deleted as it is a system-supplied item.")
+                "Only the user who created a planning grid can delete it.")
 
-        projects = self.get_projects_for_planning_grid(planning_grid)
+        projects = await self.get_projects_for_planning_grid(planning_grid)
         if projects:
+            names = ", ".join(p["name"] for p in projects)
             raise ServicesError(
-                "Grid cannot be deleted as it is used in one or more projects.")
+                f"The planning grid cannot be deleted as it is used in: {names}")
 
-        source = grid_data[0].get("source")
-        if source != "planning_grid function":
-            del_tileset(planning_grid)
-
+        # One call, so it is one transaction: the grid's own cells and
+        # boundary edges go with it, then the registration and the view.
         await self.pg.execute(
-            "DELETE FROM bioprotect.metadata_planning_units WHERE feature_class_name = %s;",
-            data=[planning_grid]
-        )
-
-        await self.pg.execute(
-            sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(
-                sql.Identifier(planning_grid))
+            sql.SQL("""
+                DELETE FROM bioprotect.h3_cells hc
+                USING bioprotect.{view} v
+                WHERE hc.h3_index = v.h3_index
+                  AND hc.project_area = v.project_area
+                  AND hc.resolution = v.resolution;
+                DELETE FROM bioprotect.grid_boundary_edges WHERE planning_unit_id = %(id)s;
+                DELETE FROM bioprotect.pu_h3 WHERE pu_id = %(id)s;
+                DELETE FROM bioprotect.metadata_planning_units WHERE unique_id = %(id)s;
+                DROP MATERIALIZED VIEW bioprotect.{view};
+            """).format(view=sql.Identifier(planning_grid)),
+            data={"id": grid_id}
         )
 
         self.send_response({'info': 'Planning grid deleted'})
@@ -161,14 +166,24 @@ class PlanningUnitHandler(BaseHandler):
     async def export_planning_unit_grid(self):
         self.validate_args(self.request.arguments, ['name'])
         feature_class_name = self.get_argument('name')
+
+        # The name ends up in an ogr2ogr command, so only accept a registered grid
+        known = await self.pg.execute(
+            "SELECT 1 FROM bioprotect.metadata_planning_units WHERE feature_class_name = %s",
+            data=[feature_class_name],
+            return_format="Array"
+        )
+        if not known:
+            raise ServicesError("Planning grid not found.")
+
         folder = self.proj_paths.EXPORT_FOLDER
+        await self.pg.export_to_shapefile(folder, feature_class_name)
+        create_zipfile(folder, feature_class_name)
 
-        await self.pg.exportToShapefile(folder, feature_class_name, tEpsgCode="EPSG:4326")
-        zipfilename = create_zipfile(folder, feature_class_name)
-
+        # served from /server/exports/
         self.send_response({
             'info': f"Planning grid '{feature_class_name}' exported",
-            'filename': f"{zipfilename}.zip"
+            'filename': f"{feature_class_name}.zip"
         })
 
     async def get_planning_unit_grids(self):
@@ -181,9 +196,9 @@ class PlanningUnitHandler(BaseHandler):
             'planning_unit_grids': planning_unit_grids
         })
 
-    def list_projects_for_planning_grid(self):
+    async def list_projects_for_planning_grid(self):
         self.validate_args(self.request.arguments, ['feature_class_name'])
-        projects = self.get_projects_for_planning_grid(
+        projects = await self.get_projects_for_planning_grid(
             self.get_argument('feature_class_name'))
         self.send_response({
             'info': "Projects info returned",

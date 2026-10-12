@@ -44,7 +44,7 @@ class FeatureHandler(BaseHandler):
             elif action == 'export':
                 await self.export_feature()
             elif action == 'list-projects':
-                self.list_projects_for_feature()
+                await self.list_projects_for_feature()
             elif action == 'planning-units':
                 await self.get_feature_planning_units()
             elif action == 'get-sensitivities':
@@ -117,20 +117,29 @@ class FeatureHandler(BaseHandler):
         )
 
         if not feature_data:
-            return
+            raise ServicesError("Feature not found.")
 
-        if feature_data[0].get("created_by") == "global admin":
+        created_by = feature_data[0].get("created_by")
+        if created_by == "global admin":
             raise ServicesError(
                 "This is a system feature and cannot be deleted.")
-        # ************************************************************
-        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
-        # ************************************************************
-        projects = []
-        # get_projects_for_feature(
-        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
+
+        # Same rule the features dialog applies: admins, or the user who
+        # created the feature
+        user = self.get_current_user()
+        role = self.get_secure_cookie("role")
+        is_admin = bool(role) and role.decode("utf-8") == "Admin"
+        if not is_admin and (not user or created_by != user):
+            raise ServicesError("You can only delete features you created.")
+
+        # Deleting cascades into project_features and pu_feature_amounts, so
+        # a feature in use would silently vanish from those projects
+        projects = await self._projects_using_feature(
+            feature_data[0]["unique_id"])
         if projects:
+            names = ", ".join(p["name"] for p in projects)
             raise ServicesError(
-                "The feature cannot be deleted as it is used in one or more projects.")
+                f"The feature cannot be deleted as it is used in: {names}")
 
         await self.pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(sql.Identifier(feature_class_name)))
         await self.pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE feature_class_name = %s;", [feature_class_name])
@@ -224,16 +233,29 @@ class FeatureHandler(BaseHandler):
             "projects": sensitivities
         })
 
-    def list_projects_for_feature(self):
+    async def _projects_using_feature(self, feature_unique_id):
+        """Every project (any user's) that includes the feature."""
+        return await self.pg.execute(
+            """
+            SELECT p.id, p.name
+            FROM bioprotect.project_features pf
+            JOIN bioprotect.projects p ON p.id = pf.project_id
+            WHERE pf.feature_unique_id = %s
+            ORDER BY p.name;
+            """,
+            data=[feature_unique_id],
+            return_format="Array"
+        )
+
+    async def list_projects_for_feature(self):
         """Lists all projects containing a specific feature."""
 
         self.validate_args(self.request.arguments, ['feature-id'])
-        # ************************************************************
-        # NEED TO CHANGE THIS TO USE DATABASE AND NOT FILES
-        # ************************************************************
-        projects = []
-        # get_projects_for_feature(
-        #     feature_data[0]["unique_id"], self.proj_paths.USERS_FOLDER)
+        try:
+            feature_id = int(self.get_argument('feature-id'))
+        except ValueError:
+            raise ServicesError("Invalid feature-id")
+        projects = await self._projects_using_feature(feature_id)
 
         self.send_response({
             'info': "Projects info returned",

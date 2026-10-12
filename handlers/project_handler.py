@@ -233,6 +233,7 @@ class ProjectHandler(BaseHandler):
                 'id': project_id,
                 'name': project["name"],
                 'user_id': user_id,
+                'role': project.get("role"),
                 'description': project.get("description", "No description"),
                 'createdate': project.get("date_created", "Unknown"),
                 'resolution': project.get("default_resolution"),
@@ -332,6 +333,9 @@ class ProjectHandler(BaseHandler):
             """,
             [project_id, planning_unit_id, resolution]
         )
+        # A new project's rows are unknown to the planner until analysed,
+        # and it then badly misjudges joins on project_pus
+        await self.pg.execute("ANALYZE bioprotect.project_pus;")
 
         # Precompute boundary edges if not already done for this grid
         existing_edges = await self.pg.execute(
@@ -639,9 +643,20 @@ class ProjectHandler(BaseHandler):
 
         await self._check_project_access(user_id, project_id, min_role="owner")
 
+        # One statement so it is atomic. Runs, legacy metadata and
+        # users.last_project reference projects without ON DELETE CASCADE;
+        # everything else cascades from the projects row.
         await self.pg.execute(
-            "DELETE FROM bioprotect.projects WHERE id = %s",
-            [project_id]
+            """
+            WITH u AS (UPDATE bioprotect.users SET last_project = NULL
+                       WHERE last_project = %(id)s),
+                 r AS (DELETE FROM bioprotect.prioritizr_runs
+                       WHERE project_id = %(id)s),
+                 m AS (DELETE FROM bioprotect.project_metadata
+                       WHERE project_id = %(id)s)
+            DELETE FROM bioprotect.projects WHERE id = %(id)s
+            """,
+            {"id": project_id}
         )
 
         self.send_response({"info": "Project deleted"})

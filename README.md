@@ -22,7 +22,7 @@ sudo apt install -y \
 ```
 
 ```
-install.packages(c("sf","DBI","RPostgres","prioritizr","Matrix","jsonlite","rcbc"),
+install.packages(c("sf","DBI","RPostgres","prioritizr","Matrix","jsonlite","rcbc","highs"),
                  repos="https://cloud.r-project.org")
 ```
 

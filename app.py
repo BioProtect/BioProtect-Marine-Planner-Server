@@ -1487,7 +1487,10 @@ class Application(tornado.web.Application):
         return {
             'cookie_secret': db_config.COOKIE_SECRET,
             'static_path': project_paths.EXPORT_FOLDER,
-            'static_url_prefix': '/resources/'
+            'static_url_prefix': '/resources/',
+            # Ping every WebSocket so nginx (60s idle proxy_read_timeout) does
+            # not drop quiet ones, e.g. /server/notifications.
+            'websocket_ping_interval': 30
         }
 
     def _define_handlers(self):

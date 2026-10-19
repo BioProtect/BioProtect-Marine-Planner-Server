@@ -12,6 +12,9 @@ from shapely.geometry import Polygon
 from sqlalchemy import create_engine, text
 
 
+MAX_DRAWN_CELLS = 1_000_000
+
+
 class PlanningGridWSHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
@@ -75,6 +78,7 @@ class PlanningGridWSHandler(SocketHandler):
         :param self: Description
         :param message: data: {
             "shapefile_path": "/path/to/shapefile.shp",
+            OR "geojson": {FeatureCollection drawn on the map} (land is removed),
             "alias": "Case Study Extents Water Only",
             "description": "Description of the grid",
             "resolution": 7}
@@ -89,6 +93,7 @@ class PlanningGridWSHandler(SocketHandler):
         print('data: ', data)
         created_by = self.current_user
         shapefile_path = data.get('shapefile_path')
+        geojson = data.get('geojson')
         project_area_name = data.get('alias')
         description = data.get('description')
         resolution = int(data.get('resolution', 7))
@@ -96,7 +101,7 @@ class PlanningGridWSHandler(SocketHandler):
             raise ServicesError(
                 "Invalid resolution. Allowed values: 6, 7, 8, 9.")
 
-        if not all([shapefile_path, project_area_name, description]):
+        if not all([shapefile_path or geojson, project_area_name, description]):
             raise ServicesError(
                 "Missing required fields in WebSocket message.")
 
@@ -112,6 +117,13 @@ class PlanningGridWSHandler(SocketHandler):
                 [view_name],
                 return_format="Dict"
             )
+            if existing and geojson:
+                # Send and return rather than raise: the except block below
+                # would delete the existing grid's metadata and view.
+                self.send_response({
+                    "error": f"❌ A planning grid named '{project_area_name}' at resolution {resolution} already exists. Choose another name."
+                })
+                return
             if existing:
                 result = await self.pg.execute(
                     """
@@ -138,8 +150,27 @@ class PlanningGridWSHandler(SocketHandler):
             # freeze the server for every other user as well.
             loop = asyncio.get_running_loop()
 
-            self.send_response({'info': "📦 Reading shapefile..."})
-            df = await loop.run_in_executor(None, gpd.read_file, shapefile_path)
+            if geojson:
+                has_land = await self.pg.execute(
+                    "SELECT EXISTS (SELECT 1 FROM bioprotect.land) AS ok",
+                    return_format="Dict")
+                if not has_land[0]["ok"]:
+                    raise ServicesError(
+                        "Land data is not loaded on this server (run db/load_land.sh), so drawn grids can't have land removed.")
+                df = gpd.GeoDataFrame.from_features(
+                    geojson["features"], crs="EPSG:4326")
+                if df.empty or not df.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+                    raise ServicesError("Draw at least one polygon.")
+                # EPSG:6933 is equal-area, so .area is in m²
+                estimate = df.to_crs(6933).area.sum() / 1e6 / \
+                    h3.average_hexagon_area(resolution, "km^2")
+                if estimate > MAX_DRAWN_CELLS:
+                    raise ServicesError(
+                        f"The drawn area would make about {estimate:,.0f} planning units "
+                        f"(limit {MAX_DRAWN_CELLS:,}). Draw a smaller area or use a coarser resolution.")
+            else:
+                self.send_response({'info': "📦 Reading shapefile..."})
+                df = await loop.run_in_executor(None, gpd.read_file, shapefile_path)
 
             self.send_response(
                 {'info': f"🔷 Converting {len(df):,} shapes to H3 cells..."})
@@ -166,6 +197,25 @@ class PlanningGridWSHandler(SocketHandler):
             await loop.run_in_executor(None, partial(
                 gdf_out.to_postgis, "h3_cells", engine,
                 schema="bioprotect", if_exists="append", index=False))
+
+            if geojson:
+                self.send_response({'info': "🌊 Removing land cells..."})
+                removed = await self.pg.execute("""
+                    WITH d AS (
+                        DELETE FROM bioprotect.h3_cells c
+                        WHERE project_area = %s AND resolution = %s
+                        AND EXISTS (
+                            SELECT 1 FROM bioprotect.land l
+                            WHERE ST_Intersects(l.geom, ST_Centroid(c.geometry)))
+                        RETURNING 1)
+                    SELECT COUNT(*) AS count FROM d
+                """, [project_area_name, resolution], return_format="Dict")
+                kept = len(gdf_out) - removed[0]["count"]
+                if kept == 0:
+                    raise ServicesError(
+                        "The drawn area is entirely on land. Draw over water.")
+                self.send_response(
+                    {'info': f"🌊 Removed {removed[0]['count']:,} land cells, {kept:,} remain."})
 
             self.send_response({'info': "📐 Creating PostGIS view..."})
             existing_links = await self.pg.execute("""

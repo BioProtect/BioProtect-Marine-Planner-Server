@@ -354,6 +354,20 @@ PGPASSWORD=postgres python db/migrate.py status
 # 1 applied, 0 pending.
 ```
 
+### 2.6 Load Land Polygons (for drawn planning grids)
+
+Migration 0011 creates an empty `bioprotect.land`. Planning grids drawn on the
+map drop hexagons whose centre is on land, and refuse to run until it's loaded:
+
+```bash
+PGPASSWORD=postgres bash db/load_land.sh            # downloads ~900 MB
+PGPASSWORD=postgres bash db/load_land.sh ~/Downloads/land-polygons-split-4326.zip   # reuse a download
+```
+
+Expect ~1.36M rows / ~1.4 GB. Needs `ogr2ogr` (GDAL), `psql`, `curl`, `unzip`.
+The data is © OpenStreetMap contributors under the ODbL: keep the map
+attribution and ship the licence notice in any self-hosted bundle.
+
 ---
 
 ## 3. Updating an Existing Database

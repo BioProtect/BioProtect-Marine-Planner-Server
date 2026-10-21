@@ -14,6 +14,16 @@ from sqlalchemy import create_engine, text
 
 MAX_DRAWN_CELLS = 1_000_000
 
+# ponytail: grids crossing 180° are rejected, not supported. A hex built from
+# cell_to_boundary across it spans the globe, and drawn longitudes past 180
+# polyfill to half the cells. The fix is h3_postgis's
+# h3_cell_to_boundary_geometry (splits at 180°), but it needs h3_cells.geometry
+# widened from Polygon, which means dropping and rebuilding every grid view.
+# Do it when a Pacific project needs it.
+ANTIMERIDIAN_ERROR = (
+    "Planning grids that cross the 180° meridian aren't supported yet. "
+    "Keep the area to one side of it.")
+
 
 class PlanningGridWSHandler(SocketHandler):
     def initialize(self, pg):
@@ -56,13 +66,19 @@ class PlanningGridWSHandler(SocketHandler):
     @staticmethod
     def cells_to_gdf(cells, resolution, scale_level, project_area_name):
         """One h3_cells row per cell, with its hexagon geometry."""
-        records = [{
-            "h3_index": h,
-            "resolution": resolution,
-            "scale_level": scale_level,
-            "project_area": project_area_name,
-            "geometry": Polygon([(lon, lat) for lat, lon in h3.cell_to_boundary(h)]),
-        } for h in cells]
+        records = []
+        for h in cells:
+            ring = [(lon, lat) for lat, lon in h3.cell_to_boundary(h)]
+            lons = [lon for lon, _ in ring]
+            if max(lons) - min(lons) > 180:  # straddles 180°, see ANTIMERIDIAN_ERROR
+                raise ServicesError(ANTIMERIDIAN_ERROR)
+            records.append({
+                "h3_index": h,
+                "resolution": resolution,
+                "scale_level": scale_level,
+                "project_area": project_area_name,
+                "geometry": Polygon(ring),
+            })
         return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
 
     async def open(self):
@@ -161,6 +177,10 @@ class PlanningGridWSHandler(SocketHandler):
                     geojson["features"], crs="EPSG:4326")
                 if df.empty or not df.geom_type.isin(["Polygon", "MultiPolygon"]).all():
                     raise ServicesError("Draw at least one polygon.")
+                # the map gives unwrapped longitudes when drawing across 180°
+                minx, _, maxx, _ = df.total_bounds
+                if minx < -180 or maxx > 180:
+                    raise ServicesError(ANTIMERIDIAN_ERROR)
                 # EPSG:6933 is equal-area, so .area is in m²
                 estimate = df.to_crs(6933).area.sum() / 1e6 / \
                     h3.average_hexagon_area(resolution, "km^2")

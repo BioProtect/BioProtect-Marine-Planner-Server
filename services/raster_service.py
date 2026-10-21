@@ -37,6 +37,7 @@ from typing import Iterable
 
 import numpy as np
 import rasterio
+from rasterio.crs import CRS
 from tornado.ioloop import IOLoop
 from rasterio.errors import WindowError
 from rasterio.transform import array_bounds
@@ -55,21 +56,35 @@ log = logging.getLogger(__name__)
 # ----------------------------------------------------------------------------
 # Reprojection
 # ----------------------------------------------------------------------------
-def reproject_to_wgs84(input_path: str, output_path: str) -> None:
+def _source_crs(src, fallback_crs=None):
+    """The raster's own CRS, else `fallback_crs` (the project CRS)."""
+    if src.crs:
+        return src.crs
+    if fallback_crs:
+        return CRS.from_user_input(fallback_crs)
+    raise ValueError(
+        "Raster has no CRS; cannot reproject. Assign one and re-upload."
+    )
+
+
+def reproject_to_wgs84(input_path: str, output_path: str, fallback_crs=None) -> None:
     """Reproject a raster to EPSG:4326. Copies the file if already 4326.
 
     Args:
         input_path: Path to the source raster on disk.
         output_path: Destination path for the reprojected raster.
+        fallback_crs: CRS to assume when the raster has none (the project
+            CRS, e.g. "EPSG:2193"). Without it a CRS-less raster is an error.
     """
     with rasterio.open(input_path) as src:
-        if src.crs and src.crs.to_epsg() == 4326:
+        src_crs = _source_crs(src, fallback_crs)
+        if src_crs.to_epsg() == 4326:
             if input_path != output_path:
                 shutil.copy2(input_path, output_path)
             return
 
         transform, width, height = calculate_default_transform(
-            src.crs, "EPSG:4326",
+            src_crs, "EPSG:4326",
             src.width, src.height, *src.bounds,
         )
 
@@ -87,26 +102,31 @@ def reproject_to_wgs84(input_path: str, output_path: str) -> None:
                     source=rasterio.band(src, i),
                     destination=rasterio.band(dst, i),
                     src_transform=src.transform,
-                    src_crs=src.crs,
+                    src_crs=src_crs,
                     dst_transform=transform,
                     dst_crs="EPSG:4326",
                     resampling=Resampling.bilinear,
                 )
 
 
-def bounds_wgs84(path: str) -> tuple[float, float, float, float]:
-    """The raster's footprint as (left, bottom, right, top) in EPSG:4326."""
+def bounds_wgs84(path: str, fallback_crs=None) -> tuple[float, float, float, float]:
+    """The raster's footprint as (left, bottom, right, top) in EPSG:4326.
+
+    A raster with no CRS is read in `fallback_crs` (the project CRS), or as
+    lat/lon without one.
+    """
     with rasterio.open(path) as src:
-        if src.crs is None:
+        src_crs = src.crs or (CRS.from_user_input(fallback_crs) if fallback_crs else None)
+        if src_crs is None:
             # No CRS to convert from; assume the numbers are already lat/lon.
             b = src.bounds
             return (b.left, b.bottom, b.right, b.top)
         return tuple(
-            transform_bounds(src.crs, "EPSG:4326", *src.bounds, densify_pts=21)
+            transform_bounds(src_crs, "EPSG:4326", *src.bounds, densify_pts=21)
         )
 
 
-def clip_and_reproject(input_path, output_path, bounds_4326=None) -> None:
+def clip_and_reproject(input_path, output_path, bounds_4326=None, fallback_crs=None) -> None:
     """Window-read a raster to a WGS84 footprint, then reproject to 4326.
 
     The clip is to the hexes we are about to extract against, not to any one
@@ -123,20 +143,19 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None) -> None:
         output_path: Destination path for the WGS84 result.
         bounds_4326: (left, bottom, right, top) to clip to, or None for the
             whole raster.
+        fallback_crs: CRS to assume when the raster has none (the project
+            CRS). Without it a CRS-less raster is an error.
 
     Raises:
         ValueError: If the clip box does not overlap the raster.
     """
     with rasterio.open(input_path) as src:
-        if src.crs is None:
-            raise ValueError(
-                "Raster has no CRS; cannot reproject. Assign one and re-upload."
-            )
+        src_crs = _source_crs(src, fallback_crs)
 
         window = None
         if bounds_4326 is not None:
             src_box = transform_bounds(
-                "EPSG:4326", src.crs, *bounds_4326, densify_pts=21
+                "EPSG:4326", src_crs, *bounds_4326, densify_pts=21
             )
             window = window_from_bounds(*src_box, transform=src.transform)
             try:
@@ -161,15 +180,16 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None) -> None:
         height, width = data.shape[1], data.shape[2]
 
         profile = src.profile.copy()
-        profile.update(transform=src_transform, width=width, height=height)
+        profile.update(transform=src_transform, width=width, height=height,
+                       crs=src_crs)
 
-        if src.crs.to_epsg() == 4326:
+        if src_crs.to_epsg() == 4326:
             with rasterio.open(output_path, "w", **profile) as dst:
                 dst.write(data)
             return
 
         dst_transform, dst_w, dst_h = calculate_default_transform(
-            src.crs, "EPSG:4326", width, height,
+            src_crs, "EPSG:4326", width, height,
             *array_bounds(height, width, src_transform),
         )
         profile.update({
@@ -184,7 +204,7 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None) -> None:
                     source=data[i - 1],
                     destination=rasterio.band(dst, i),
                     src_transform=src_transform,
-                    src_crs=src.crs,
+                    src_crs=src_crs,
                     dst_transform=dst_transform,
                     dst_crs="EPSG:4326",
                     resampling=Resampling.bilinear,

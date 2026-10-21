@@ -11,6 +11,7 @@ from psycopg2 import sql
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
+from services.project_service import get_project_crs, off_grid_warning
 from services.service_error import ServicesError
 
 
@@ -82,31 +83,39 @@ class ImportFeaturesWSHandler(SocketHandler):
                 # geometry of any projected input (e.g. an Albers equal-area
                 # file whose coordinates are metres rather than degrees).
                 # A .prj is not required by check_zipped_shapefile, so when one
-                # is absent fall back to the historic EPSG:4326 assumption -
-                # but say so, rather than guessing silently.
+                # is absent fall back to the project's CRS (EPSG:4326 with no
+                # project) - but say so, rather than guessing silently.
                 prj_path = os.path.join(
                     self.proj_paths.IMPORT_FOLDER,
                     shapefile.rsplit('.', 1)[0] + '.prj')
                 has_prj = os.path.exists(prj_path)
+                project_id = self.get_argument('project_id', None)
+                crs_epsg = await get_project_crs(self.pg, project_id)
                 if not has_prj:
                     self.send_response({
                         'status': 'Preprocessing',
                         'info': (
                             f"'{shapefile}' has no .prj file, so its coordinates "
-                            "are assumed to be WGS84 (EPSG:4326). If the features "
+                            f"are assumed to be in EPSG:{crs_epsg}. If the features "
                             "appear in the wrong place on the map, re-export the "
                             "shapefile with a .prj file and import it again."
                         )
                     })
                 await self.pg.import_shapefile(
                     self.proj_paths.IMPORT_FOLDER, shapefile, scratch_name,
-                    s_epsg_code=None if has_prj else "EPSG:4326")
+                    s_epsg_code=None if has_prj else f"EPSG:{crs_epsg}")
                 # check the geometry
                 self.send_response({
                     'status': 'Preprocessing',
                     'info': "Checking the geometry.."
                 })
                 await self.pg.is_valid(scratch_name)
+                if not has_prj:
+                    warning = await off_grid_warning(
+                        self.pg, project_id, crs_epsg, table=scratch_name)
+                    if warning:
+                        self.send_response(
+                            {'status': 'Preprocessing', 'info': warning})
 
                 # get the feature names
                 if name:  # single feature name

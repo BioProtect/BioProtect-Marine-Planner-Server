@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from classes.folder_path_config import get_folder_path_config
 from services.service_error import ServicesError, raise_error
-from tornado.web import RequestHandler
+from tornado.web import HTTPError, RequestHandler
 
 proj_paths = get_folder_path_config()
 
@@ -160,10 +160,16 @@ class BaseHandler(RequestHandler):
             with contextlib.suppress(Exception):
                 _checkCORS(self)
 
-        # Respond with an HTTP 200 status code and the error details
-        self.set_status(200)
-        self.send_response({
-            "error": last_line,
-            "trace": trace
-        })
+        # The trace stays in the server log, never in the response
+        print(trace)
+
+        # Auth failures get their real status. Everything else stays 200
+        # because the client reads errors from the body
+        exc = exc_info[1]
+        if isinstance(exc, HTTPError) and exc.status_code in (401, 403):
+            self.set_status(exc.status_code)
+            self.send_response({"error": exc.log_message or exc.reason})
+        else:
+            self.set_status(200)
+            self.send_response({"error": last_line})
         self.finish()

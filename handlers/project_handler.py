@@ -9,6 +9,7 @@ from psycopg2 import sql
 from services.file_service import (read_file, write_to_file)
 from services.service_error import ServicesError, raise_error
 from decimal import Decimal
+from pyproj import CRS
 
 
 class ProjectHandler(BaseHandler):
@@ -46,6 +47,49 @@ class ProjectHandler(BaseHandler):
             raise ServicesError("Planning grid not found")
 
         return row[0]["unique_id"], row[0]["resolution"]
+
+    async def _validate_crs(self, crs_epsg):
+        """The CRS must be in spatial_ref_sys, or ST_Transform can't use it."""
+        try:
+            crs_epsg = int(crs_epsg)
+        except (TypeError, ValueError):
+            raise ServicesError(f"Invalid CRS '{crs_epsg}': expected an EPSG code")
+        row = await self.pg.execute(
+            "SELECT 1 FROM public.spatial_ref_sys WHERE srid = %s",
+            [crs_epsg], return_format="Array")
+        if not row:
+            raise ServicesError(f"EPSG:{crs_epsg} is not a CRS known to PostGIS")
+        return crs_epsg
+
+    async def _crs_grid_warning(self, crs_epsg, planning_unit_id):
+        """A warning if the grid lies outside the CRS's area of use, else None.
+
+        Areas and exports still work, but are distorted far outside it.
+        """
+        try:
+            aou = CRS.from_epsg(crs_epsg).area_of_use
+        except Exception:
+            aou = None  # pyproj doesn't know it (e.g. ESRI codes): can't check
+        if aou is None:
+            return None
+        w, s, e, n = aou.bounds
+        # an area of use crossing the antimeridian comes back with west > east
+        boxes = [(w, s, e, n)] if w <= e else [(w, s, 180, n), (-180, s, e, n)]
+        row = await self.pg.execute(
+            f"""
+            SELECT bool_or(ST_Intersects(mpu.envelope,
+                                         ST_MakeEnvelope(b.w, b.s, b.e, b.n, 4326))) AS hit
+            FROM bioprotect.metadata_planning_units mpu,
+                 (VALUES {", ".join(["(%s, %s, %s, %s)"] * len(boxes))}) AS b(w, s, e, n)
+            WHERE mpu.unique_id = %s
+            """,
+            [v for box in boxes for v in box] + [planning_unit_id],
+            return_format="Dict")
+        if row and row[0]["hit"] is False:
+            return (f"The planning grid lies outside the area EPSG:{crs_epsg} "
+                    f"({aou.name}) is designed for, so areas and exports will "
+                    "be distorted. The CRS can't be changed later.")
+        return None
 
     async def _check_project_access(self, user_id, project_id, min_role=None):
         """
@@ -288,6 +332,8 @@ class ProjectHandler(BaseHandler):
         if not name or not planning_grid_name:
             raise ServicesError(
                 "Missing required fields: project, planning_grid_name")
+        # set once here, never updated: areas and exports depend on it
+        crs_epsg = await self._validate_crs(data.get("crs_epsg", 4326))
 
         planning_unit_id, grid_resolution = await self._resolve_planning_unit_id(planning_grid_name)
         # the grid is the source of truth for resolution - the client only sets
@@ -298,11 +344,11 @@ class ProjectHandler(BaseHandler):
         row = await self.pg.execute(
             """
             INSERT INTO bioprotect.projects
-                (name, description, planning_unit_id, default_resolution)
-            VALUES (%s, %s, %s, %s)
+                (name, description, planning_unit_id, default_resolution, crs_epsg)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id
             """,
-            [name, description, planning_unit_id, resolution],
+            [name, description, planning_unit_id, resolution, crs_epsg],
             return_format="Array"
         )
 
@@ -376,7 +422,8 @@ class ProjectHandler(BaseHandler):
             'info': f"Project '{name}' created with features",
             'name': name,
             'user': user_id,
-            'project_id': project_id
+            'project_id': project_id,
+            'warning': await self._crs_grid_warning(crs_epsg, planning_unit_id),
         })
 
     # --------------------------------------------------
@@ -549,6 +596,7 @@ class ProjectHandler(BaseHandler):
         metadata["pu_id"] = project["planning_unit_id"]
         metadata["iucn_category"] = project["iucn_category"]
         metadata["costs"] = project["costs"]
+        metadata["crs_epsg"] = project["crs_epsg"]
 
         pu_stats = await self.pg.execute(
             """

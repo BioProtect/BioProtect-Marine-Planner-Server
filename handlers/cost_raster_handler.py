@@ -50,6 +50,7 @@ from services.raster_service import (
     pixel_area_km2,
     sample_raster_at_centroids,
 )
+from services.project_service import get_project_crs, off_grid_warning
 from services.service_error import ServicesError, raise_error
 
 
@@ -203,6 +204,25 @@ class UploadRasterCostHandler(SocketHandler):
                     f"Project {project_id} has no planning units."
                 )
 
+            # A raster with no CRS is read in the project CRS.
+            # ponytail: the cache below is keyed on the file, not the CRS it
+            # was read in, so a CRS-less raster reused by a project with a
+            # different CRS keeps the first reading. Add the CRS to the key if
+            # that ever matters.
+            crs_epsg = await get_project_crs(self.pg, project_id)
+            fallback_crs = f"EPSG:{crs_epsg}"
+            info = get_raster_band_info(raster_path)
+            if info["crs_epsg"] is None and info["crs_wkt"] is None:
+                warning = await off_grid_warning(
+                    self.pg, project_id, crs_epsg,
+                    bbox=bounds_wgs84(raster_path, fallback_crs))
+                self.send_response({
+                    "status": "Preprocessing",
+                    "info": warning or (
+                        f"The raster has no CRS, so it was read as "
+                        f"EPSG:{crs_epsg} (the project CRS)."),
+                })
+
             # Step 2: has this exact file already been extracted?
             # Owner-scoped on purpose: a global checksum match would tell
             # one user that another holds their file.
@@ -241,6 +261,7 @@ class UploadRasterCostHandler(SocketHandler):
                     checksum=checksum,
                     owner_id=owner_id,
                     sampling=sampling,
+                    fallback_crs=fallback_crs,
                 )
 
             # Step 3: build the profile for THIS project from the cache
@@ -320,6 +341,7 @@ class UploadRasterCostHandler(SocketHandler):
         checksum: str,
         owner_id,
         sampling: str = "auto",
+        fallback_crs=None,
     ) -> int:
         """Extract against every hex the raster covers, then bin the file.
 
@@ -341,7 +363,7 @@ class UploadRasterCostHandler(SocketHandler):
             "status": "Preprocessing",
             "info": "Finding planning hexes covered by this raster...",
         })
-        raster_bounds = bounds_wgs84(raster_path)
+        raster_bounds = bounds_wgs84(raster_path, fallback_crs)
 
         resolutions = await self.pg.execute(
             """
@@ -367,7 +389,8 @@ class UploadRasterCostHandler(SocketHandler):
             "status": "Preprocessing",
             "info": "Clipping and reprojecting raster to WGS84...",
         })
-        clip_and_reproject(raster_path, reprojected_path, hex_envelope)
+        clip_and_reproject(raster_path, reprojected_path, hex_envelope,
+                           fallback_crs=fallback_crs)
 
         # Now the raster is in its final form, so a pixel has a real size.
         pix_area = pixel_area_km2(reprojected_path)

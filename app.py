@@ -12,7 +12,6 @@ import sys
 import time
 import uuid
 import webbrowser
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from subprocess import PIPE, Popen
 from threading import Thread
@@ -25,7 +24,6 @@ import pandas as pd
 import psutil
 import psycopg2
 import rasterio
-import requests
 from handlers.bioprotect_engage_handler import BioProtectEngageHandler
 import tornado.httpserver
 import tornado.options
@@ -57,6 +55,7 @@ from handlers.cost_handler import (DeleteCostHandler,
                                    GetCostProfileActivitiesHandler,
                                    CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
+from handlers.reference_layers_handler import ReferenceLayersHandler
 from mapbox import Uploader
 from osgeo import ogr
 from passlib.hash import bcrypt
@@ -86,7 +85,7 @@ import hashlib
 
 # SECURITY SETTINGS
 PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
-                     "getProjectsWithGrids", "getAtlasLayers"]
+                     "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
     "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
@@ -1248,49 +1247,6 @@ def getPressuresActivitiesDatabase(padfile_path):
     return pad
 
 
-class GetAtlasLayersHandler(BaseHandler):
-    """
-    Get the atlas layers from the atlas GMS and allow them to be added to the map
-
-    Args:
-        RequestHandler (RequestHandler): Tornado handler class for handling requests
-    """
-
-    def get(self):
-        user = 'cartig'
-        password = 'x88F#haYZ8E3h&'
-        layers = []
-        # try getting the details from the server and if theres an issue fall back to local file version
-        # local file version is from Friday 28th Feb 2020
-        try:
-            r = requests.get('http://www.atlas-horizon2020.eu/gs/wms?request=getCapabilities',
-                             auth=(user, password))
-            try:
-                root = ET.fromstring(r.text)
-                for layer in root.iter('{http://www.opengis.net/wms}Layer'):
-                    try:
-                        layer_link = layer.find(
-                            # .encode('utf8')
-                            '{http://www.opengis.net/wms}Name').text
-                        title_name = layer.find(
-                            # .encode('utf8')
-                            '{http://www.opengis.net/wms}Title').text
-                        layers.append(json.dumps({
-                            'title': title_name,
-                            'layer': layer_link
-                        }))
-                    except AttributeError:
-                        continue
-            except ET.ParseError:
-                with open('./data/layers.json') as json_file:
-                    layers = json.load(json_file)
-        except ConnectionError as error:
-            with open('./data/layers.json') as json_file:
-                layers = json.load(json_file)
-
-        self.finish(json.dumps(layers))
-
-
 def make_stable_id(name: str, digits=6):
     h = hashlib.sha1(name.encode()).hexdigest()
     return int(h[:digits], 16)
@@ -1530,7 +1486,7 @@ class Application(tornado.web.Application):
              PlanningGridWSHandler, dict(pg=pg)),  # websocket
 
             ("/server/getServerData", getServerData),
-            ("/server/getAtlasLayers", GetAtlasLayersHandler),
+            ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
             ("/server/getActivities", GetActivitiesHandler),
             ("/server/getAllImpacts", GetAllImpactsHandler),
             ("/server/getCountries", getCountries),

@@ -57,10 +57,11 @@ if [ -n "$BBOX" ]; then
   SPAT=(-spat "$W" "$S" "$E" "$N" -spat_srs EPSG:4326)
 fi
 
-echo "Loading $LAYER (marine and coastal only) into bioprotect.wdpa_staging ..."
-ogr2ogr -f PostgreSQL PG:"" "$SRC" "$LAYER" -nln bioprotect.wdpa_staging -overwrite \
-  -where "MARINE IN ('1','2')" \
-  -select WDPAID,NAME,DESIG_ENG,IUCN_CAT,STATUS,STATUS_YR \
+echo "Loading $LAYER (REALM Marine + Coastal) into bioprotect.wdpa_staging ..."
+# The 2026 schema renamed WDPAID -> SITE_ID and MARINE ('1','2') -> REALM ('Coastal','Marine');
+# alias back so the table, tiles and frontend keep using wdpaid.
+ogr2ogr -f PostgreSQL PG:"" "$SRC" -nln bioprotect.wdpa_staging -overwrite \
+  -sql "SELECT SITE_ID AS WDPAID, NAME, DESIG_ENG, IUCN_CAT, STATUS, STATUS_YR FROM \"$LAYER\" WHERE REALM IN ('Marine','Coastal')" \
   -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -lco SPATIAL_INDEX=NONE \
   -t_srs EPSG:4326 "${SPAT[@]}" -progress
 

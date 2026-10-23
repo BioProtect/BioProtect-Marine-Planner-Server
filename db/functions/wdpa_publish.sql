@@ -15,15 +15,22 @@ BEGIN
     DROP TABLE IF EXISTS bioprotect.wdpa_areas_new;
     CREATE TABLE bioprotect.wdpa_areas_new (LIKE bioprotect.wdpa_areas INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
 
-    WITH area AS (
+    -- MATERIALIZED stops the planner inlining these: inlined, MakeValid and the
+    -- area ran once per dumped part on the whole multipolygon (quadratic; the
+    -- Oct2026 load ran for hours on Alaska Maritime's 20k parts).
+    WITH valid AS MATERIALIZED (
         SELECT s.wdpaid::bigint AS wdpaid, s.name, s.desig_eng, s.iucn_cat,
                s.status, s.status_yr::integer AS status_yr,
                ST_CollectionExtract(ST_MakeValid(s.geom), 3) AS geom
         FROM bioprotect.wdpa_staging s
-    ), poly AS (
-        SELECT a.*, ST_Area(a.geom::geography) / 1e6 AS area_km2, d.geom AS poly
+    ), area AS MATERIALIZED (
+        SELECT v.*, ST_Area(v.geom::geography) / 1e6 AS area_km2
+        FROM valid v
+        WHERE NOT ST_IsEmpty(v.geom)
+    ), poly AS MATERIALIZED (
+        SELECT a.wdpaid, a.name, a.desig_eng, a.iucn_cat, a.status, a.status_yr,
+               a.area_km2, d.geom AS poly
         FROM area a, ST_Dump(a.geom) d
-        WHERE NOT ST_IsEmpty(a.geom)
     )
     INSERT INTO bioprotect.wdpa_areas_new
         (wdpaid, name, desig_eng, iucn_cat, status, status_yr, area_km2, part, geom)

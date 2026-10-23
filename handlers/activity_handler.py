@@ -16,7 +16,8 @@ from psycopg2 import sql
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
-from services.raster_service import reproject_to_wgs84
+from services.project_service import get_project_crs, off_grid_warning
+from services.raster_service import bounds_wgs84, get_raster_band_info, reproject_to_wgs84
 from services.service_error import ServicesError, raise_error
 
 project_paths = get_folder_path_config()
@@ -64,6 +65,12 @@ class UploadActivityHandler(SocketHandler):
             filename = self.get_argument('filename')
             description = self.get_argument('description')
             upload_type = self.get_argument('upload_type', 'shapefile')
+            # files with no CRS metadata are read in the project CRS; with
+            # no project open they are rejected, as before
+            self.project_id = self.get_argument('project_id', None)
+            self.crs_epsg = await get_project_crs(self.pg, self.project_id)
+            if not str(self.project_id or "").isdigit():
+                self.project_id = None
 
             if upload_type == 'shapefile':
                 activity_id = await self._import_shapefile(
@@ -114,13 +121,25 @@ class UploadActivityHandler(SocketHandler):
         # Use ogr2ogr via the pg class (same as feature imports).
         # s_epsg_code=None lets ogr2ogr autodetect the source CRS from the .prj
         # file, so shapefiles in projections other than WGS84 get reprojected
-        # correctly instead of being mis-tagged.
+        # correctly instead of being mis-tagged. Without a .prj, use the
+        # project CRS (import_shapefile rejects it when there's no project).
+        has_prj = os.path.exists(os.path.join(
+            project_paths.IMPORT_FOLDER, filename.rsplit('.', 1)[0] + '.prj'))
+        assume_crs = not has_prj and self.project_id
         await self.pg.import_shapefile(
             project_paths.IMPORT_FOLDER,
             filename,
             activity_table,
-            s_epsg_code=None,
+            s_epsg_code=f"EPSG:{self.crs_epsg}" if assume_crs else None,
         )
+        if assume_crs:
+            self.send_response({
+                'status': 'Preprocessing',
+                'info': await off_grid_warning(
+                    self.pg, self.project_id, self.crs_epsg, table=activity_table)
+                or f"'{filename}' has no .prj file, so it was read as "
+                   f"EPSG:{self.crs_epsg} (the project CRS)."
+            })
 
         # Validate and fix geometries
         self.send_response({
@@ -158,7 +177,18 @@ class UploadActivityHandler(SocketHandler):
 
         # Reproject to WGS84 if needed, then polygonize via PostGIS
         reprojected_path = os.path.join('data/tmp', f'repro_{filename}')
-        reproject_to_wgs84(raster_path, reprojected_path)
+        fallback_crs = f"EPSG:{self.crs_epsg}" if self.project_id else None
+        reproject_to_wgs84(raster_path, reprojected_path, fallback_crs=fallback_crs)
+        info = get_raster_band_info(raster_path)
+        if fallback_crs and info["crs_epsg"] is None and info["crs_wkt"] is None:
+            self.send_response({
+                'status': 'Preprocessing',
+                'info': await off_grid_warning(
+                    self.pg, self.project_id, self.crs_epsg,
+                    bbox=bounds_wgs84(raster_path, fallback_crs))
+                or f"The raster has no CRS, so it was read as "
+                   f"EPSG:{self.crs_epsg} (the project CRS)."
+            })
 
         self.send_response({
             'status': 'Preprocessing',

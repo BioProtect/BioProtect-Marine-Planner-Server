@@ -20,6 +20,7 @@ import uuid
 import pandas as pd
 
 from services.file_service import zip_folder
+from services.project_service import get_project_crs
 from services.run_command_service import run_command
 from services.service_error import ServicesError
 
@@ -164,9 +165,10 @@ async def _build_features_csv(pg, project_id, run_ids):
     return df
 
 
-async def _run_ogr2ogr(pg, table_name, out_path, fmt):
+async def _run_ogr2ogr(pg, table_name, out_path, fmt, crs_epsg=4326):
     """Streams the temp table out via ogr2ogr in either ESRI Shapefile or
-    GPKG format. `out_path` is a folder for shapefile, a .gpkg file for gpkg."""
+    GPKG format, reprojected to the project CRS. `out_path` is a folder for
+    shapefile, a .gpkg file for gpkg."""
     cfg = pg.config
     pg_conn = (
         f'PG:"host={cfg.DATABASE_HOST} user={cfg.DATABASE_USER} '
@@ -177,13 +179,13 @@ async def _run_ogr2ogr(pg, table_name, out_path, fmt):
         cmd = (
             f'"{cfg.OGR2OGR_EXECUTABLE}" -f "ESRI Shapefile" "{out_path}" '
             f'{pg_conn} -sql "SELECT * FROM {table_name};" -nln pus '
-            f'-t_srs EPSG:4326'
+            f'-t_srs EPSG:{int(crs_epsg)}'
         )
     else:  # gpkg
         cmd = (
             f'"{cfg.OGR2OGR_EXECUTABLE}" -f "GPKG" "{out_path}" '
             f'{pg_conn} -sql "SELECT * FROM {table_name};" -nln pus '
-            f'-t_srs EPSG:4326'
+            f'-t_srs EPSG:{int(crs_epsg)}'
         )
     rc = await run_command(cmd)
     if rc != 0:
@@ -206,6 +208,7 @@ async def build_export_zip(pg, export_root, project_id, run_ids, fmt):
     _validate_ids(project_id, run_ids)
 
     cost_profile_id = await _resolve_active_cost_profile_id(pg, project_id)
+    crs_epsg = await get_project_crs(pg, project_id)
 
     # Unique names so simultaneous exports don't collide.
     uid = uuid.uuid4().hex[:12]
@@ -220,10 +223,10 @@ async def build_export_zip(pg, export_root, project_id, run_ids, fmt):
 
         # 2. Export it via ogr2ogr
         if fmt == "shp":
-            await _run_ogr2ogr(pg, table_name, work_folder, "shp")
+            await _run_ogr2ogr(pg, table_name, work_folder, "shp", crs_epsg)
         else:
             gpkg_path = os.path.join(work_folder, "pus.gpkg")
-            await _run_ogr2ogr(pg, table_name, gpkg_path, "gpkg")
+            await _run_ogr2ogr(pg, table_name, gpkg_path, "gpkg", crs_epsg)
 
         # 3. Sidecar CSVs
         runs_df = await _build_runs_csv(pg, run_ids)

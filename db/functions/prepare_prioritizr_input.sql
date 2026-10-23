@@ -82,7 +82,7 @@ BEGIN
       pp.h3_index::text AS pu_id,
       hc.geometry,
       cpv.cost::double precision AS cost,
-      (ST_Area(hc.geometry::geography) / 1000000.0)::double precision AS area_km2,
+      bioprotect.area_km2(hc.geometry, %L::integer) AS area_km2,
       CASE WHEN cpv.status = 1 THEN 1 ELSE 0 END AS locked_in,
       CASE WHEN cpv.status = 2 THEN 1 ELSE 0 END AS locked_out,
       %s
@@ -101,6 +101,7 @@ BEGIN
   $fmt$,
     v_input_table,
     v_input_table,
+    bioprotect.project_area_srid(v_project_id),
     v_select_feats,
     v_profile_id,
     v_feature_ids,

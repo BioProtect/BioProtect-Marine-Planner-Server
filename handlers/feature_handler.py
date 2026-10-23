@@ -2,7 +2,6 @@ import os
 import uuid
 
 import pandas as pd
-import requests
 from handlers.base_handler import BaseHandler
 from psycopg2 import sql
 from services.file_service import (create_zipfile, file_to_df,
@@ -143,18 +142,6 @@ class FeatureHandler(BaseHandler):
 
         await self.pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(sql.Identifier(feature_class_name)))
         await self.pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE feature_class_name = %s;", [feature_class_name])
-
-        try:
-            response = requests.delete(
-                f"https://api.mapbox.com/tilesets/v1/{self.proj_paths.MAPBOX_USER}.{feature_class_name}?access_token={self.proj_paths.MBAT}"
-            )
-            if response.status_code != 204:
-                raise ServicesError(
-                    f"Failed to delete tileset: {response.status_code} - {response.text}")
-
-        except Exception as e:
-            print(
-                f"Warning: Unable to delete tileset for feature '{feature_class_name}': {e}")
 
         self.send_response({'info': "Feature deleted"})
 

@@ -24,10 +24,6 @@ class PlanningUnitHandler(BaseHandler):
     retrieving, and updating planning units.
     """
 
-    def initialize(self, pg, upload_tileset):
-        super().initialize(pg=pg)
-        self.upload_tileset = upload_tileset
-
     @staticmethod
     def create_status_dataframe(puid_array, pu_status):
         return pd.DataFrame({
@@ -431,8 +427,6 @@ class PlanningUnitHandler(BaseHandler):
                 [feature_class_name]
             )
 
-            upload_id = self.upload_tileset(shapefile_path, feature_class_name)
-
         except ServicesError as e:
             raise
         finally:
@@ -443,6 +437,5 @@ class PlanningUnitHandler(BaseHandler):
         self.send_response({
             'info': f"Planning grid '{name}' imported",
             'feature_class_name': feature_class_name,
-            'uploadId': upload_id,
             'alias': name
         })

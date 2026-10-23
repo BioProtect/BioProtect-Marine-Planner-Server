@@ -14,15 +14,6 @@ import shutil
 from osgeo import ogr
 
 
-def copy_directory(src, dest):
-    """Recursively copies a directory from src to dest."""
-    try:
-        shutil.copytree(src, dest)
-    except (shutil.Error, OSError) as e:
-        raise ServicesError(
-            f"Failed to copy directory from '{src}' to '{dest}': {e}") from e
-
-
 def get_shapefile_fieldnames(shapefile):
     """
     Retrieves the field names from a shapefile.
@@ -288,122 +279,6 @@ def update_file_parameters(filename, newParams):
     write_to_file(filename, "\n".join(updated_lines))
 
 
-def add_parameter_to_file(file_type, param_key, value, user_folder, app_folder):
-    """Creates a new parameter in the *.dat file, either user (user.dat), project (input.dat) or server (server.dat), by iterating through all the files and adding the key/value if it doesnt already exist.
-
-    Args:
-        _type (string):
-            The type of configuration file to add the parameter to. One of server, user or project.
-        key (string):
-            The key to create/update.
-        value (string):
-            The value to set.
-    Returns:
-        string[]: A list of the files that were updated.
-    """
-    results = []
-
-    # Map configuration types to file search patterns
-    config_file_patterns = {
-        'user': user_folder + "*" + sep + "user.dat",
-        'project': user_folder + "*" + sep + "*" + sep + "input.dat",
-        'server': app_folder + "server.dat"
-    }
-
-    # Get the appropriate file pattern based on the config type
-    file_pattern = config_file_patterns.get(file_type.lower())
-
-    if not file_pattern:
-        raise ValueError(
-            "Invalid configuration type. Must be 'server', 'user', or 'project'.")
-
-    # Fetch all matching files
-    config_files = glob.glob(file_pattern)
-
-    # iterate through the files and add the keys if necessary
-    for file in config_files:
-        content = read_file(file)
-        existing_keys = get_keys(content)
-
-        if param_key not in existing_keys:
-            # Append the new param_key-value pair
-            content += f"{param_key} {value}\n"
-            write_to_file(file, content)
-            logging.warning(f"Key '{param_key}' added to {file}")
-            results.append(f"Key '{param_key}' added to {file}")
-        else:
-            # Update the existing param_key-value pair
-            update_file_parameters(file, {param_key: value})
-            logging.warning(
-                f"Key '{param_key}' updated to '{value}' in {file}")
-            results.append(f"Key '{param_key}' updated to '{value}' in {file}")
-
-    return results
-
-
-def write_df_to_file(file, dataframe):
-    """Writes the dataframe to the file. If the file exists, it appends the new data.
-    If the file does not exist, it creates a new file.
-
-    Args:
-        file (str): The full path to the file that will be written.
-        dataframe (pd.DataFrame): The dataframe to write.
-    Returns:
-        None
-    Raises:
-        ValueError: If the dataframe is empty.
-        Exception: For any other error during file operations.
-    """
-    # Validate input
-    if dataframe.empty:
-        raise ValueError("The dataframe is empty. No data to write.")
-
-    # Determine if the file exists
-    if path.exists(file):
-        # Read the current data, using a flexible separator
-        df_existing = pd.read_csv(file, sep=None, engine='python')
-        # Append new records
-        df_combined = pd.concat([df_existing, dataframe], ignore_index=True)
-    else:
-        # If the file doesn't exist, use the new dataframe
-        df_combined = dataframe.copy()
-
-    # Write the combined dataframe to the file
-    df_combined.to_csv(file, index=False)
-
-
-def delete_all_files(folder):
-    """Deletes all files in the specified folder, excluding files with the .dat extension.
-
-    Args:
-        folder (str): The full path to the folder where files will be deleted.
-
-    Returns:
-        None
-
-    Raises:
-        ValueError: If the specified folder does not exist or is not a directory.
-    """
-    # Validate the folder path
-    if not path.exists(folder):
-        raise ValueError(f"The folder '{folder}' does not exist.")
-    if not path.isdir(folder):
-        raise ValueError(f"The path '{folder}' is not a directory.")
-
-    # Find all files in the specified folder
-    # Use path.join for compatibility
-    files = glob.glob(path.join(folder, "*"))
-
-    # Delete files excluding those with .dat extension
-    for f in files:
-        if not f.endswith('.dat'):  # More explicit check
-            try:
-                remove(f)
-                print(f"Deleted file: {f}")
-            except Exception as e:
-                print(f"Error deleting file '{f}': {e}")
-
-
 def get_output_file(filename):  # sourcery skip: use-named-expression
     """
     Gets the correct filename+extension (normally either csv or txt) of a Marxan file. The extension of the Marxan output files depends on the settings SAVE* in the input.dat file and on the version of marxan.
@@ -567,37 +442,6 @@ def get_files_in_folder(folder, filename):
             found_files.append(path.join(root, filename))
 
     return found_files
-
-
-def unzip_file(folder, filename):
-    """Unzips a zip file.
-
-    Args:
-        folder (str): The full path to the folder with the zip file.
-        filename (str): The name of the zip file that will be unzipped.
-
-    Returns:
-        list[str]: The list of filenames in the zip file that was unzipped.
-
-    Raises:
-        ServicesError: If the zip file does not exist or if extraction fails.
-    """
-    zip_path = path.join(folder, filename)
-
-    # Check if the zip file exists
-    if not path.exists(zip_path):
-        raise ServicesError(f"The zip file '{filename}' does not exist.")
-
-    try:
-        # Create an instance of the zip file and extract all files
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(folder)
-            return zip_ref.namelist()
-    except zipfile.BadZipFile:
-        raise ServicesError(f"The file '{filename}' is not a valid zip file.")
-    except Exception as e:
-        raise ServicesError(
-            f"An error occurred while unzipping '{filename}': {str(e)}")
 
 
 def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_term=None):

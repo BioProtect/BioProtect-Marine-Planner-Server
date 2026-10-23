@@ -61,31 +61,6 @@ def pad_dict(k, val, width=25):
     return f"{k:<{width}}{val}"
 
 
-def get_free_space_gb():
-    """Gets the drive free space in gigabytes.
-
-    Args:
-        None
-    Returns:
-        string: The free space in Gb, e.g. 1.2 Gb
-    """
-    if platform.system() == 'Windows':
-        # Get free space on Windows using ctypes
-        free_bytes = ctypes.c_ulonglong(0)
-        ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-            ctypes.c_wchar_p(folder_path_config.PROJECT_FOLDER),
-            None, None, ctypes.pointer(free_bytes)
-        )
-        space_gb = free_bytes.value / (1024 ** 3)  # Convert bytes to gigabytes
-    else:
-        # Get free space on Unix-like systems
-        st = os.statvfs(folder_path_config.PROJECT_FOLDER)
-        space_gb = st.f_bavail * st.f_frsize / \
-            (1024 ** 3)  # Convert bytes to gigabytes
-
-    return f"{space_gb:.1f} Gb"  # Format and return as a string
-
-
 def get_tif_list(tif_dir, extension="tif"):
     """Get a list of all the tifs in a directory
 
@@ -102,17 +77,6 @@ def get_tif_list(tif_dir, extension="tif"):
     } for file in files]
 
     return sorted(file_list, key=lambda i: i["label"])
-
-
-def setup_sens_matrix():
-    print('Setting up sensitivity matrix....')
-    habitat_list = [item['label'] for item in
-                    get_tif_list('/'+folder_path_config.gis_config['input_coral'], 'asc') +
-                    get_tif_list('/'+folder_path_config.gis_config['input_fish'], 'asc')]
-    sens_mat = folder_path_config.gis_config['sensmat']
-    for habitat_name in habitat_list:
-        sens_mat.loc[habitat_name] = sens_mat.loc['VME']
-    return sens_mat
 
 
 def normalize_nparray(nparray):
@@ -648,20 +612,6 @@ def cumul_impact(ecosys_list, sens_mat, stressors_list, nodata_val=0):
 
     normalised_cumul_impact = normalize_nparray(cumul_impact)
     return [normalised_cumul_impact, meta]
-
-
-def colorise_raster(file_name, outfile_name):
-    with rasterio.Env():
-        with rasterio.open(file_name) as src:
-            shade = src.read(1)
-            meta = src.meta
-
-        colors = create_colormap(shade.min(), shade.max())
-        with rasterio.open(outfile_name, 'w', **meta) as dst:
-            dst.write(shade, indexes=1)
-            dst.write_colormap(1, colors)
-            cmap = dst.colormap(1)
-    return outfile_name
 
 
 wgs84 = CRS.from_proj4(folder_path_config.gis_config.get("wgs84_str"))

@@ -4,7 +4,6 @@ pandas==2.2.2
 colorama==0.4.6
 psutil==6.0.0
 sqlalchemy==2.0.31
-mapbox==0.18.1
 aiopg==1.4.0
 aiohttp==3.9.5
 requests==2.32.2

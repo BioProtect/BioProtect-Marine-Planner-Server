@@ -61,3 +61,6 @@ imports/*
 *copy.py
 # Added by code-review-graph
 .code-review-graph/
+
+server.log
+eunis_import_log.csv

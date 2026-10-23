@@ -5,10 +5,6 @@ Handles updating, deleting, activating cost profiles and creating
 costs from cumulative impact data.
 """
 
-import os
-
-import pandas as pd
-
 from handlers.base_handler import BaseHandler
 from handlers.websocket_handler import SocketHandler
 from services.service_error import ServicesError, raise_error
@@ -26,12 +22,6 @@ def validate_args(arguments, req_arguments):
     if missing:
         raise ServicesError(
             f"Missing required arguments: {', '.join(missing)}")
-
-
-def file_to_df(file_name):
-    """Reads a CSV file and returns the data as a DataFrame."""
-    return (pd.read_csv(file_name, sep=None, engine='python')
-            if os.path.exists(file_name) else pd.DataFrame())
 
 
 class DeleteCostHandler(BaseHandler):

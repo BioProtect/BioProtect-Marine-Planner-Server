@@ -4,7 +4,6 @@ pandas
 colorama
 psutil
 sqlalchemy
-mapbox
 aiopg
 aiohttp
 requests

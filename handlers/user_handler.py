@@ -2,7 +2,7 @@ import json
 import shutil
 from os.path import join
 
-from asyncpg.exceptions import UniqueViolationError
+from psycopg2.errors import UniqueViolation
 from handlers.base_handler import BaseHandler
 from passlib.hash import bcrypt
 from services.file_service import update_file_parameters
@@ -20,26 +20,6 @@ class UserHandler(BaseHandler):
     def initialize(self, pg, project_paths):
         super().initialize(pg=pg)
         self.project_paths = project_paths
-
-    def validate_args(self, arguments, required_arguments):
-        """
-        Validates that all required arguments are present in the provided arguments dictionary.
-
-        Args:
-            arguments (dict): Dictionary of arguments (e.g., from a Tornado HTTP request).
-            required_arguments (list[str]): List of required argument names.
-
-        Returns:
-            None
-
-        Raises:
-            ServicesError: If any required arguments are missing.
-        """
-        missing_arguments = [
-            arg for arg in required_arguments if arg not in arguments]
-        if missing_arguments:
-            raise ServicesError(
-                f"Missing arguments: {', '.join(missing_arguments)}")
 
     async def get(self):
         """
@@ -110,10 +90,12 @@ class UserHandler(BaseHandler):
             self.set_status(201)
             self.write({"message": "User created", "user": new_user})
 
-        except UniqueViolationError:
-            self.set_status(409)
-            self.write({"message": "Username or email already exists"})
         except Exception as e:
+            # pg.execute wraps DB errors in ServicesError; the original is the __cause__
+            if isinstance(e.__cause__, UniqueViolation):
+                self.set_status(409)
+                self.write({"message": "Username or email already exists"})
+                return
             self.set_status(500)
             self.write({"message": "Error creating user", "error": str(e)})
 

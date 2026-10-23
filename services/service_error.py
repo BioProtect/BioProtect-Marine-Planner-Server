@@ -26,7 +26,3 @@ def raise_error(obj, msg):
     logging.warning(msg)
 
 
-class ExtendableObject(object):
-    """Custom class for allowing objects to be extended with new attributes.
-    """
-    pass

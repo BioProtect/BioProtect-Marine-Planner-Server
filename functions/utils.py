@@ -19,7 +19,6 @@ import psutil
 import rasterio
 from classes.db_config import get_db_config
 from classes.folder_path_config import get_folder_path_config
-from mapbox import Uploader
 from osgeo import gdal, gdalconst
 from pyproj import CRS
 from rasterio.enums import Resampling as ResampleEnum

@@ -16,14 +16,6 @@ UNIFORM_COST_NAME = "Equal area"
 """The name of the cost profile that is equal area."""
 
 
-def validate_args(arguments, req_arguments):
-    """Validates that all required arguments are present in the request."""
-    missing = [key for key in req_arguments if key not in arguments]
-    if missing:
-        raise ServicesError(
-            f"Missing required arguments: {', '.join(missing)}")
-
-
 class DeleteCostHandler(BaseHandler):
     """Deletes a cost profile and its associated values from the database.
 
@@ -35,7 +27,7 @@ class DeleteCostHandler(BaseHandler):
 
     async def get(self):
         try:
-            validate_args(self.request.arguments, ['cost_profile_id'])
+            self.validate_args(self.request.arguments, ['cost_profile_id'])
             cost_profile_id = int(self.get_argument("cost_profile_id"))
 
             # Check if this profile is the active profile on any project
@@ -79,7 +71,7 @@ class SetActiveCostProfileHandler(BaseHandler):
 
     async def get(self):
         try:
-            validate_args(self.request.arguments,
+            self.validate_args(self.request.arguments,
                           ['project_id', 'cost_profile_id'])
             project_id = int(self.get_argument("project_id"))
             cost_profile_id = int(self.get_argument("cost_profile_id"))
@@ -118,7 +110,7 @@ class GetCostProfileActivitiesHandler(BaseHandler):
 
     async def get(self):
         try:
-            validate_args(self.request.arguments, ['cost_profile_id'])
+            self.validate_args(self.request.arguments, ['cost_profile_id'])
             cost_profile_id = int(self.get_argument("cost_profile_id"))
 
             rows = await self.pg.execute(
@@ -174,7 +166,7 @@ class CreateCostsFromImpactHandler(SocketHandler):
             print('ServicesError as e: ', e)
             pass
         else:
-            validate_args(self.request.arguments,
+            self.validate_args(self.request.arguments,
                           ['user', 'project', 'pu_filename',
                            'impact_filename', 'impact_type'])
             sql = "select filename from bioprotect.%s;" % self.get_argument(

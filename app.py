@@ -240,17 +240,6 @@ def log(message, color=Fore.RESET):
 
 
 # get the information about which species have already been preprocessed
-def file_to_df(file_name):
-    """Reads a file and returns the data as a DataFrame
-
-    Args:
-        file_name (string): The name of the file to read.
-    Returns:
-        DataFrame: The data from the file.
-    """
-    return pd.read_csv(file_name, sep=None, engine='python') if os.path.exists(file_name) else pd.DataFrame()
-
-
 # gets the marxan log after a run
 def get_bp_log(obj):
     """
@@ -260,76 +249,6 @@ def get_bp_log(obj):
     print('log_file_path: ', log_file_path)
     obj.bpLog = read_file(
         log_file_path) if os.path.exists(log_file_path) else ""
-
-
-def normalize_dataframe(df, column_to_normalize_by, puid_column_name, classes=None):
-    """
-    # sourcery skip: extract-method
-    Converts a DataFrame with duplicate values into a normalized array.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to normalize.
-        column_to_normalize_by (str): The column in the DataFrame used to provide the headings for the normalized data (e.g., "Status" column produces 1,2,3).
-        puid_column_name (str): The name of the planning grid unit ID column to create the array of values.
-        classes (int, optional): Number of classes to classify the data into. Defaults to None.
-
-    Returns:
-        list: The normalized data from the DataFrame organized as a list of values (headings) each with a list of PUIDs, e.g., [32, 2374, 5867, 24967...].
-    """
-    if df.empty:
-        return []
-
-    if classes:
-        # Calculate the range and bin size for classification
-        min_value = df[column_to_normalize_by].min()
-        max_value = df[column_to_normalize_by].max()
-
-        # Handle case where all values in the column are the same
-        num_classes = 1 if min_value == max_value else classes
-        bin_size = (max_value + 1 - min_value) / num_classes
-
-        # Initialize bins
-        bins = [[min_value + bin_size * (i + 1), []]
-                for i in range(num_classes)]
-
-        # Classify rows into bins
-        for idx, row in df.iterrows():
-            bin_index = int(
-                (row[column_to_normalize_by] - min_value) / bin_size)
-            bins[bin_index][1].append(int(row[puid_column_name]))
-
-        return bins, min_value, max_value
-
-    # Group by unique values in the column and organize data
-    groups = df.groupby(column_to_normalize_by)
-    return [
-        [group, group_df[puid_column_name].tolist()]
-        for group, group_df in groups
-        if group != 0
-    ]
-
-
-def validate_args(arguments, req_arguments):
-    # sourcery skip: use-named-expression
-    """
-    Validates that all required arguments are present in the provided arguments dictionary.
-
-    Args:
-        arguments (dict): Dictionary of arguments (e.g., from a Tornado HTTP request).
-        req_arguments (list[str]): List of required argument names.
-
-    Returns:
-        None
-
-    Raises:
-        ServicesError: If any required arguments are missing.
-    """
-    missing_args = [arg for arg in req_arguments if arg not in arguments]
-    if missing_args:
-        raise ServicesError(
-            f"Missing input arguments: {', '.join(missing_args)}")
-    print("Args validated... ", Fore.CYAN)
-    return
 
 
 def get_unique_feature_name(prefix):
@@ -436,43 +355,6 @@ async def finish_feature_import(feature_class_name, name, description, source, u
     return feature_id[0]
 
 
-def get_shapefile_fieldnames(shapefile):
-    """
-    Retrieves the field names from a shapefile.
-
-    Args:
-        shapefile (str): The full path to the shapefile (*.shp).
-
-    Returns:
-        list[str]: A list of the field names in the shapefile.
-
-    Raises:
-        ServicesError: If the shapefile does not exist or cannot be read.
-    """
-    # Ensure OGR exceptions are raised
-    ogr.UseExceptions()
-
-    try:
-        # Open the shapefile
-        data_source = ogr.Open(shapefile)
-        if not data_source:
-            raise ServicesError(
-                f"Shapefile '{shapefile}' not found or could not be opened.")
-
-        # Access the first layer
-        layer = data_source.GetLayer(0)
-        if not layer:
-            raise ServicesError(f"No layers found in shapefile '{shapefile}'.")
-
-        # Extract field names from the layer definition
-        layer_definition = layer.GetLayerDefn()
-        return [layer_definition.GetFieldDefn(i).GetName() for i in range(layer_definition.GetFieldCount())]
-
-    except RuntimeError as e:
-        raise ServicesError(
-            f"Error reading shapefile '{shapefile}': {e.args[0]}")
-
-
 def _setCORS(obj):
     """Sets the CORS headers on the request to prevent CORS errors in the client.
 
@@ -504,24 +386,6 @@ def _setCORS(obj):
     else:
         raise HTTPError(403, NO_REFERER_ERROR)
 
-
-####################################################################################################################################################################################################################################################################
-# generic classes
-####################################################################################################################################################################################################################################################################
-
-
-class ServicesError(Exception):
-    """Custom exception class for raising exceptions in this module.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(ServicesError, self)
-
-
-class ExtendableObject(object):
-    """Custom class for allowing objects to be extended with new attributes.
-    """
-    pass
 
 ####################################################################################################################################################################################################################################################################
 # RequestHandler subclasses
@@ -754,7 +618,7 @@ class uploadFileToFolder(BaseHandler):
     def post(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, ['filename', 'destFolder'])
+            self.validate_args(self.request.arguments, ['filename', 'destFolder'])
             filename = self.get_argument('filename')
             dest_folder = self.get_argument('destFolder')
             print('====================== dest_folder: ', dest_folder)
@@ -791,7 +655,7 @@ class uploadFile(BaseHandler):
     def post(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, [
+            self.validate_args(self.request.arguments, [
                 'user', 'project', 'filename'])
             # write the file to the server
             write_to_file(self.project_folder + self.get_argument('filename'),
@@ -820,7 +684,7 @@ class unzipShapefile(BaseHandler):
     async def get(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, ['filename'])
+            self.validate_args(self.request.arguments, ['filename'])
             filename = self.get_argument('filename')
             filepath = project_paths.IMPORT_FOLDER
             print('===================== filepath: ', filepath)
@@ -853,7 +717,7 @@ class getShapefileFieldnames(BaseHandler):
     def get(self):
         ogr.UseExceptions()
         try:
-            validate_args(self.request.arguments, ['filename'])
+            self.validate_args(self.request.arguments, ['filename'])
 
             # load the shapefile
             shapefile = project_paths.IMPORT_FOLDER + \
@@ -901,7 +765,7 @@ class deleteShapefile(BaseHandler):
     def get(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, [
+            self.validate_args(self.request.arguments, [
                 'zipfile', 'shapefile'])
             delete_zipped_shapefile(project_paths.IMPORT_FOLDER, self.get_argument(
                 'zipfile'), self.get_argument('shapefile')[:-4])
@@ -1063,42 +927,6 @@ class GetUploadedActivitiesHandler(BaseHandler):
                                 "data": self.allUploadedActivities.to_dict(orient="records")})
         except Exception as e:
             print(self, e.args[0])
-
-
-async def _finishImportingImpact(feature_class_name, activity, description, user):
-    """Finishes creating a feature by adding a spatial index and a record in the metadata_interest_features table.
-
-    Args:
-        feature_class_name (string): The feature class to finish creating.
-       activity (string): Theactivity of the feature class that will be used as an alias in the metadata_interest_features table.
-        source (string): The source for the feature.
-        user (string): The user who created the feature.
-    Returns:
-        int: The id of the feature created.
-    Raises:
-        ServicesError: If the feature already exists.
-    """
-    print('finishing importing raster...')
-    # get the Mapbox tilesetId
-    id = None
-    tilesetId = config['mbuser'] + "." + feature_class_name
-    try:
-        # create a record for this new feature in the metadata_interest_features table
-        print("creating record for feature in db")
-        id = await pg.execute(
-            sql.SQL("""
-            INSERT INTO bioprotect.metadata_impacts (feature_class_name, alias, description, creation_date, tilesetid, extent, source, created_by) SELECT %s, %s, %s, now(), %s, rast.extent, %s, %s FROM (SELECT Box2D(ST_Envelope(rast)) extent FROM ( SELECT rid, rast FROM bioprotect.{}) as rast2 ) as rast RETURNING tableoid""")
-            .format(sql.Identifier(feature_class_name)),
-            data=[feature_class_name, activity, description,
-                  tilesetId, "raster", "cartig"],
-            return_format="Array")
-        return id
-    except (Exception) as e:
-        print('Unable to create record in db e: ', e)
-    finally:
-        if id is not None:
-            return id[0]
-        return
 
 
 # tornado functions

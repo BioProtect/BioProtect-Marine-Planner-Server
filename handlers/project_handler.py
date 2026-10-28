@@ -477,11 +477,15 @@ class ProjectHandler(BaseHandler):
             return_format="DataFrame"
         )
 
-        # 6 - Load and normalize planning unit data
-        # This is just the status values
-        # THIS IS A PGADMIN FUNCTION
+        # 6 - Locked-in/out planning units, {status: [h3_index]}. Status 0 is
+        # left out: the map draws a cell with no status as unlocked, and
+        # sending every cell was ~17 MB at 877k cells.
         df = await self.pg.execute(
-            "SELECT * FROM bioprotect.get_planning_units_for_project(%s)",
+            """
+            SELECT h3_index, status
+            FROM bioprotect.get_planning_units_for_project(%s)
+            WHERE status <> 0
+            """,
             data=[project_id],
             return_format="DataFrame"
         )

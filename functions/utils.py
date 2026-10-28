@@ -177,63 +177,6 @@ def reproject_shape(filename, save_path, reproject):
     return save_path
 
 
-def reproject_and_normalise_upload(raster_name, data, reprojection_crs, wgs84):
-    """
-    Reprojects and normalizes an uploaded raster to match a common template raster.
-
-    Args:
-        raster_name (str): Base name of the raster file (e.g., "input.tif")
-        data (DatasetReader): An open rasterio dataset
-        reprojection_crs (str): Target CRS for normalization (e.g., EPSG:100026)
-        wgs84 (str): CRS string for checking if reprojection to WGS84 is needed
-
-    Returns:
-        str: Path to the normalized and aligned raster
-    """
-    tmp_folder = f"data/tmp/"
-    normalized_path = f"{tmp_folder}{raster_name}"
-
-    # Step 1: Reproject to WGS84 if necessary
-    if '4326' not in data.crs.to_string():
-        data_path = reproject_raster(
-            input_path=data.name,
-            output_folder=tmp_folder,
-            reprojection_crs=wgs84
-        )
-        rast_data = rasterio.open(data_path)
-    else:
-        rast_data = data
-
-    # Step 2: Load template metadata to align with
-    template_info = get_rasters_transform(
-        rast='data/rasters/all_habitats.tif',
-        reprojection_crs=reprojection_crs
-    )
-    meta = template_info['meta'].copy()
-    meta.update(nodata=0)
-
-    # Step 3: Normalize and reproject to match the template
-    with rasterio.open(normalized_path, "w", **meta) as dst:
-        for i in range(1, rast_data.count + 1):
-            band = rast_data.read(i)
-            band = np.where(band < 0, 0, band)
-            norm_band = normalize_nparray(band)
-
-            reproject(
-                source=norm_band,
-                destination=rasterio.band(dst, i),
-                src_transform=rast_data.transform,
-                src_crs=rast_data.crs,
-                dst_transform=template_info['transform'],
-                dst_crs=reprojection_crs,
-                resampling=Resampling.bilinear,
-                width=template_info['width'],
-                height=template_info['height']
-            )
-
-    return normalized_path
-
-
 def reproject_raster_to_all_habs(tmp_path, src_data, src_meta, final_output_path):
     """
     Reprojects a raster to match the 'all_habitats.tif' reference raster.

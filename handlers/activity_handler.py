@@ -43,7 +43,7 @@ class UploadActivityHandler(SocketHandler):
         Send a WebSocket message (any content) to trigger the import.
 
     For rasters:
-        The raster file should already be saved to data/tmp/ (via uploadFileToFolder).
+        The raster file should already be saved to IMPORT_FOLDER (via uploadFileToFolder).
         Send a WebSocket message to trigger the import.
     """
 
@@ -165,7 +165,7 @@ class UploadActivityHandler(SocketHandler):
         the resulting polygons as vector geometry in PostGIS.
         """
         activity_table = get_unique_activity_name()
-        raster_path = os.path.join('data/tmp', filename)
+        raster_path = os.path.join(project_paths.IMPORT_FOLDER, filename)
 
         if not os.path.isfile(raster_path):
             raise ServicesError(f"Raster file not found: {raster_path}")
@@ -175,78 +175,77 @@ class UploadActivityHandler(SocketHandler):
             'info': 'Reprojecting raster to WGS84...'
         })
 
-        # Reproject to WGS84 if needed, then polygonize via PostGIS
-        reprojected_path = os.path.join('data/tmp', f'repro_{filename}')
-        fallback_crs = f"EPSG:{self.crs_epsg}" if self.project_id else None
-        reproject_to_wgs84(raster_path, reprojected_path, fallback_crs=fallback_crs)
-        info = get_raster_band_info(raster_path)
-        if fallback_crs and info["crs_epsg"] is None and info["crs_wkt"] is None:
+        reprojected_path = os.path.join(
+            project_paths.IMPORT_FOLDER, f'repro_{filename}')
+        temp_raster_table = f"tmp_rast_{uuid.uuid4().hex[:16]}"
+        try:
+            # Reproject to WGS84 if needed, then polygonize via PostGIS
+            fallback_crs = f"EPSG:{self.crs_epsg}" if self.project_id else None
+            reproject_to_wgs84(raster_path, reprojected_path, fallback_crs=fallback_crs)
+            info = get_raster_band_info(raster_path)
+            if fallback_crs and info["crs_epsg"] is None and info["crs_wkt"] is None:
+                self.send_response({
+                    'status': 'Preprocessing',
+                    'info': await off_grid_warning(
+                        self.pg, self.project_id, self.crs_epsg,
+                        bbox=bounds_wgs84(raster_path, fallback_crs))
+                    or f"The raster has no CRS, so it was read as "
+                       f"EPSG:{self.crs_epsg} (the project CRS)."
+                })
+
             self.send_response({
                 'status': 'Preprocessing',
-                'info': await off_grid_warning(
-                    self.pg, self.project_id, self.crs_epsg,
-                    bbox=bounds_wgs84(raster_path, fallback_crs))
-                or f"The raster has no CRS, so it was read as "
-                   f"EPSG:{self.crs_epsg} (the project CRS)."
+                'info': 'Loading raster into temporary table...'
             })
 
-        self.send_response({
-            'status': 'Preprocessing',
-            'info': 'Loading raster into temporary table...'
-        })
+            # Load raster into a temporary PostGIS raster table
+            db_config = self.pg.config
 
-        # Load raster into a temporary PostGIS raster table
-        temp_raster_table = f"tmp_rast_{uuid.uuid4().hex[:16]}"
-        db_config = self.pg.config
+            raster2pgsql_cmd = [
+                "raster2pgsql", "-s", "4326", "-d", "-I", "-C", "-F",
+                reprojected_path, f"bioprotect.{temp_raster_table}"
+            ]
 
-        raster2pgsql_cmd = [
-            "raster2pgsql", "-s", "4326", "-d", "-I", "-C", "-F",
-            reprojected_path, f"bioprotect.{temp_raster_table}"
-        ]
+            psql_cmd = [
+                "psql", db_config.build_connection_string()
+            ]
 
-        psql_cmd = [
-            "psql", db_config.build_connection_string()
-        ]
+            try:
+                raster_proc = subprocess.Popen(
+                    raster2pgsql_cmd, stdout=subprocess.PIPE)
+                subprocess.run(psql_cmd, stdin=raster_proc.stdout, check=True)
+                raster_proc.stdout.close()
+            except (subprocess.CalledProcessError, TypeError) as e:
+                raise ServicesError(
+                    f"Failed to load raster into database: {e}")
 
-        try:
-            raster_proc = subprocess.Popen(
-                raster2pgsql_cmd, stdout=subprocess.PIPE)
-            subprocess.run(psql_cmd, stdin=raster_proc.stdout, check=True)
-            raster_proc.stdout.close()
-        except (subprocess.CalledProcessError, TypeError) as e:
-            raise ServicesError(
-                f"Failed to load raster into database: {e}")
+            self.send_response({
+                'status': 'Preprocessing',
+                'info': 'Polygonizing raster...'
+            })
 
-        self.send_response({
-            'status': 'Preprocessing',
-            'info': 'Polygonizing raster...'
-        })
-
-        # Polygonize: convert raster to vector geometry table
-        await self.pg.execute(
-            sql.SQL("""
-                CREATE TABLE bioprotect.{activity_table} AS
-                SELECT (ST_DumpAsPolygons(rast)).geom AS geometry,
-                       (ST_DumpAsPolygons(rast)).val  AS value
-                FROM bioprotect.{temp_raster_table}
-                WHERE (ST_DumpAsPolygons(rast)).val > 0;
-            """).format(
-                activity_table=sql.Identifier(activity_table),
-                temp_raster_table=sql.Identifier(temp_raster_table)
+            # Polygonize: convert raster to vector geometry table
+            await self.pg.execute(
+                sql.SQL("""
+                    CREATE TABLE bioprotect.{activity_table} AS
+                    SELECT (ST_DumpAsPolygons(rast)).geom AS geometry,
+                           (ST_DumpAsPolygons(rast)).val  AS value
+                    FROM bioprotect.{temp_raster_table}
+                    WHERE (ST_DumpAsPolygons(rast)).val > 0;
+                """).format(
+                    activity_table=sql.Identifier(activity_table),
+                    temp_raster_table=sql.Identifier(temp_raster_table)
+                )
             )
-        )
-
-        # Drop temp raster table
-        await self.pg.execute(
-            sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(
-                sql.Identifier(temp_raster_table)
+        finally:
+            await self.pg.execute(
+                sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(
+                    sql.Identifier(temp_raster_table)
+                )
             )
-        )
-
-        # Clean up temp files
-        for f in [raster_path, reprojected_path]:
-            if os.path.exists(f):
-                os.remove(f)
+            for f in [raster_path, reprojected_path]:
+                if os.path.exists(f):
+                    os.remove(f)
 
         # Add spatial index and primary key
         await self._finalise_activity_table(activity_table)

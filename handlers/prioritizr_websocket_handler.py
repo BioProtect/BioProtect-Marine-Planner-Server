@@ -3,9 +3,16 @@ import json
 import os
 import pty
 import re
+import signal
 
 from handlers.websocket_handler import SocketHandler
 from services.service_error import ServicesError, raise_error
+
+# Each run is its own R process, one solver thread, with the whole problem in
+# RAM. Cap how many solve at once; the rest wait as 'queued'. Per server
+# process - fine while Tornado runs as one process.
+MAX_CONCURRENT_RUNS = int(os.environ.get("PRIORITIZR_MAX_RUNS", 4))
+_run_slots = asyncio.Semaphore(MAX_CONCURRENT_RUNS)
 
 # --------------------------------------------------------------------
 # PTY output sanitisation
@@ -84,6 +91,7 @@ class PrioritizrWSHandler(SocketHandler):
         self.proc = None
         self.master_fd = None
         self.run_id = None
+        self._closed = False
         # Accumulates partial PTY reads until we see a newline so we
         # never split a word across two log rows.
         self._pty_buffer = ""
@@ -140,6 +148,26 @@ class PrioritizrWSHandler(SocketHandler):
             "info": f"Prioritizr run {self.run_id} queued. Preparing to start..."
         })
 
+        if _run_slots.locked():
+            self.send_response({
+                "status": "Queued",
+                "run_id": self.run_id,
+                "info": f"{MAX_CONCURRENT_RUNS} runs are already in progress. "
+                        "This one starts when one finishes."
+            })
+
+        async with _run_slots:
+            if self._closed:
+                # user left while waiting; don't spend a slot on it
+                await self.pg.execute(
+                    "UPDATE bioprotect.prioritizr_runs SET status='Failed', error=%s WHERE id=%s",
+                    data=["Cancelled: connection closed before the run started",
+                          self.run_id],
+                )
+                return
+            await self._prepare_and_run()
+
+    async def _prepare_and_run(self):
         # === prepare DB input ===
         await self.pg.execute(
             "UPDATE bioprotect.prioritizr_runs SET status='preparing' WHERE id=%s",
@@ -242,19 +270,21 @@ class PrioritizrWSHandler(SocketHandler):
                 "info": "Prioritizr run completed"
             })
         except Exception as e:
+            # rc isn't set if this failed before R exited
+            self._kill_r()
             await self.pg.execute(
                 """
                 UPDATE bioprotect.prioritizr_runs
                 SET status='Failed', error=%s
                 WHERE id=%s
                 """,
-                data=[f"R exited with code {rc}", self.run_id],
+                data=[str(e), self.run_id],
             )
             self.close({
                 "status": "Failed",
                 "run_id": self.run_id,
-                "error": f"R exited with code {rc}",
-                "info": f"R exited with code {rc}",
+                "error": str(e),
+                "info": f"Prioritizr run failed: {e}",
             })
             return
 
@@ -350,13 +380,18 @@ class PrioritizrWSHandler(SocketHandler):
                 "message": clean,
             })
 
-    def on_close(self):
-        # Kill child process group; systemd KillMode=control-group helps too
+    def _kill_r(self):
+        # R runs in its own session (start_new_session), so its pid is the
+        # process group id: killpg takes any children R spawned with it
         if self.proc and self.proc.returncode is None:
             try:
-                self.proc.kill()
-            except Exception:
+                os.killpg(self.proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
                 pass
+
+    def on_close(self):
+        self._closed = True
+        self._kill_r()
         if self.master_fd:
             try:
                 os.close(self.master_fd)

@@ -29,7 +29,7 @@ from classes.postgis_class import get_pg
 from colorama import Fore, Style
 from functions.utils import (create_cost_from_impact, cumul_impact,
                              get_tif_list, pad_dict, replace_chars,
-                             reproject_and_normalise_upload, reproject_raster,
+                             reproject_raster,
                              reproject_raster_to_all_habs)
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
@@ -82,7 +82,7 @@ PERMITTED_METHODS = ["getServerData", "RestartMartin",
                      "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost'],
+    "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost'],
     "User": ["clearRunLogs"],
     "Admin": []
 }

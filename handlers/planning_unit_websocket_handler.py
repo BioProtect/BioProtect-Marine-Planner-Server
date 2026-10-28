@@ -1,10 +1,12 @@
 import asyncio
 import json
+import os
 from functools import partial
 
 import geopandas as gpd
 import h3
 from classes.db_config import DBConfig
+from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
 from psycopg2 import sql
 from services.service_error import ServicesError
@@ -23,6 +25,17 @@ MAX_DRAWN_CELLS = 1_000_000
 ANTIMERIDIAN_ERROR = (
     "Planning grids that cross the 180° meridian aren't supported yet. "
     "Keep the area to one side of it.")
+
+
+def area_km2(df):
+    """Total area of a GeoDataFrame in km². EPSG:6933 is equal-area, so .area is in m²."""
+    return df.to_crs(6933).area.sum() / 1e6
+
+
+# ponytail: average cell area, so this undercounts ~30% at 60°N where cells
+# are smaller. Exact is h3_polygon_to_cells, too slow for big areas.
+def estimate_cells(area, resolution):
+    return area / h3.average_hexagon_area(resolution, "km^2")
 
 
 class PlanningGridWSHandler(SocketHandler):
@@ -181,9 +194,7 @@ class PlanningGridWSHandler(SocketHandler):
                 minx, _, maxx, _ = df.total_bounds
                 if minx < -180 or maxx > 180:
                     raise ServicesError(ANTIMERIDIAN_ERROR)
-                # EPSG:6933 is equal-area, so .area is in m²
-                estimate = df.to_crs(6933).area.sum() / 1e6 / \
-                    h3.average_hexagon_area(resolution, "km^2")
+                estimate = estimate_cells(area_km2(df), resolution)
                 if estimate > MAX_DRAWN_CELLS:
                     raise ServicesError(
                         f"The drawn area would make about {estimate:,.0f} planning units "
@@ -313,3 +324,11 @@ class PlanningGridWSHandler(SocketHandler):
                 sql.SQL("DROP MATERIALIZED VIEW IF EXISTS bioprotect.{} CASCADE").format(
                     sql.Identifier(view_name))
             )
+        finally:
+            # the uploaded zip is spent either way: a retry re-uploads it.
+            # Client-supplied path, so only ever delete inside IMPORT_FOLDER.
+            if shapefile_path:
+                path = os.path.realpath(shapefile_path)
+                imports = os.path.realpath(get_folder_path_config().IMPORT_FOLDER)
+                if os.path.commonpath([path, imports]) == imports and os.path.isfile(path):
+                    os.remove(path)

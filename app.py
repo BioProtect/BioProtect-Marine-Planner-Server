@@ -857,44 +857,6 @@ class GetActivitiesHandler(BaseHandler):
             print(self, e.args[0])
 
 
-async def _getAllImpacts(obj):
-    """Gets all feature information from the PostGIS database. These are set on the passed obj in the allImpacts attribute.
-
-    Args:
-        obj (BaseHandler): The request handler instance.
-    Returns:
-        None
-    """
-    print('getting all impacts.......')
-    obj.allImpacts = await pg.execute("SELECT feature_class_name, alias, description, extent, to_char(creation_date, 'DD/MM/YY HH24:MI:SS')::text AS creation_date, tilesetid, source, id, created_by FROM bioprotect.metadata_impacts ORDER BY lower(alias);", return_format="DataFrame")
-
-
-class GetAllImpactsHandler(BaseHandler):
-    """REST HTTP handler. Gets all species information from the PostGIS database. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-        "info": Informational message,
-        "data": dict[]: A list of the features. Each dict contains the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by
-        }
-    """
-
-    async def get(self):
-        print('Get all impacts handerler.....')
-        try:
-            # get all the species data
-            await _getAllImpacts(self)
-            # set the response
-            self.send_response({"info": "All impact data received",
-                                "data": self.allImpacts.to_dict(orient="records")})
-        except Exception as e:
-            print(self, e.args[0])
-
-
 class GetUploadedActivitiesHandler(BaseHandler):
     """
         REST HTTP handler. Gets all species information from the PostGIS database. The required arguments in the request.arguments parameter are:
@@ -993,7 +955,6 @@ class Application(tornado.web.Application):
             ("/server/getServerData", getServerData),
             ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
             ("/server/getActivities", GetActivitiesHandler),
-            ("/server/getAllImpacts", GetAllImpactsHandler),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),
             ("/server/unzipShapefile", unzipShapefile),

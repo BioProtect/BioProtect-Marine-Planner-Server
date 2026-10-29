@@ -246,9 +246,8 @@ class ProjectHandler(BaseHandler):
             pu_metadata = {}
             if project.get("planning_unit_id"):
                 df = await self.pg.execute("""
-                    SELECT mp.alias, mp.description, mp.domain, mp._area AS area, mp.creation_date, mp.created_by, g.original_n AS country
+                    SELECT mp.alias, mp.description, mp.domain, mp._area AS area, mp.creation_date, mp.created_by
                     FROM bioprotect.metadata_planning_units mp
-                    LEFT OUTER JOIN bioprotect.gaul_2015_simplified_1km g ON g.id_country = mp.country_id
                     WHERE mp.unique_id = %s
                 """, [project["planning_unit_id"]], return_format="DataFrame")
 
@@ -261,7 +260,6 @@ class ProjectHandler(BaseHandler):
                         'pu_area': row.get('area'),
                         'pu_creation_date': row.get('creation_date'),
                         'pu_created_by': row.get('created_by'),
-                        'pu_country': row.get('country'),
                     }
 
             # Merge into full project data structure
@@ -613,7 +611,6 @@ class ProjectHandler(BaseHandler):
             pu_meta = ({
                 'pu_tilesetid': row.get('feature_class_name', 'not found'),
                 'pu_alias': row.get('alias', 'not found'),
-                'pu_country': row.get('country', 'Unknown'),
                 'pu_description': row.get('description', 'No description'),
                 'pu_domain': row.get('domain', 'Unknown domain'),
                 'pu_area': row.get('area', 'Unknown area'),
@@ -627,8 +624,7 @@ class ProjectHandler(BaseHandler):
                 'pu_domain': 'Unknown domain',
                 'pu_area': 'Unknown area',
                 'pu_creation_date': 'Unknown date',
-                'pu_created_by': 'Unknown',
-                'pu_country': 'Unknown'
+                'pu_created_by': 'Unknown'
             })
 
         metadata.update(pu_meta)

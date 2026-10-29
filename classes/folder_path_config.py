@@ -1,3 +1,4 @@
+import functools
 import json
 import re
 import string
@@ -180,11 +181,6 @@ class FolderPathConfig:
         return text
 
 
-folder_path_config = None
-
-
+@functools.cache
 def get_folder_path_config():
-    global folder_path_config
-    if folder_path_config is None:
-        folder_path_config = FolderPathConfig()
-    return folder_path_config
+    return FolderPathConfig()

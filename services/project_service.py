@@ -78,7 +78,3 @@ async def write_csv(obj, file_to_write, df, write_index=False):
     df.to_csv(path.join(obj.input_folder, file_name), index=write_index)
 
 
-def custom_serializer(obj):
-    if isinstance(obj, datetime):
-        return obj.isoformat()  # Convert datetime to string
-    raise TypeError("Type not serializable")

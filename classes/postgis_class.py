@@ -88,8 +88,8 @@ class PostGIS:
                         df.to_csv(filename, index=False)
                     else:
                         return None
-                except errors.UniqueViolation:
-                    raise ServicesError("That item already exists")
+                except errors.UniqueViolation as e:
+                    raise ServicesError("That item already exists") from e
                 except errors.InternalError as e:
                     raise ServicesError("Query stopped: " + str(e))
                 except Exception as e:

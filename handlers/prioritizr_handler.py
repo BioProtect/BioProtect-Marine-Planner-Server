@@ -34,13 +34,6 @@ class PrioritizrHandler(BaseHandler):
         except ServicesError:
             return None
 
-    def validate_args(self, args, required_keys):
-        """Checks that all of the arguments in argumentList are in the arguments dictionary."""
-        missing = [key for key in required_keys if key not in args]
-        if missing:
-            raise ServicesError(
-                f"Missing required arguments: {', '.join(missing)}")
-
     async def get(self):
         action = self.get_argument("action", None)
 

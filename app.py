@@ -7,14 +7,10 @@ import os
 import platform
 import shutil
 import signal
-import subprocess
 import sys
-import time
 import uuid
 import webbrowser
 from datetime import datetime, timedelta, timezone
-from subprocess import PIPE, Popen
-from threading import Thread
 from urllib.parse import urlparse
 
 import colorama
@@ -33,7 +29,7 @@ from classes.postgis_class import get_pg
 from colorama import Fore, Style
 from functions.utils import (create_cost_from_impact, cumul_impact,
                              get_tif_list, pad_dict, replace_chars,
-                             reproject_and_normalise_upload, reproject_raster,
+                             reproject_raster,
                              reproject_raster_to_all_habs)
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
@@ -43,7 +39,6 @@ from handlers.planning_unit_websocket_handler import PlanningGridWSHandler
 from handlers.preprocess_feature_websocket_handler import PreprocessFeature
 from handlers.project_handler import ProjectHandler
 from handlers.user_handler import UserHandler
-from handlers.websocket_handler import SocketHandler
 from handlers.prioritizr_handler import PrioritizrHandler
 from handlers.prioritizr_websocket_handler import PrioritizrWSHandler
 from handlers.activity_handler import UploadActivityHandler, RunCumulativeImpactHandler
@@ -56,7 +51,6 @@ from handlers.cost_handler import (DeleteCostHandler,
                                    CreateCostsFromImpactHandler)
 from handlers.notification_handler import NotificationHandler
 from handlers.reference_layers_handler import ReferenceLayersHandler
-from mapbox import Uploader
 from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
@@ -84,12 +78,12 @@ import hashlib
 ####################################################################################################################################################################################################################################################################
 
 # SECURITY SETTINGS
-PERMITTED_METHODS = ["getServerData", "testTornado", "RestartMartin",
+PERMITTED_METHODS = ["getServerData", "RestartMartin",
                      "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "getCountries", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importPlanningUnitGrid", "createFeaturePreprocessingFileFromImport", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "testRoleAuthorisation", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames",  "shutdown", "importProject", 'updateCosts', 'deleteCost'],
-    "User": ["testRoleAuthorisation", "clearRunLogs", "shutdown"],
+    "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost'],
+    "User": ["clearRunLogs"],
     "Admin": []
 }
 """Dict that controls access to REST services using role-based authentication. Add REST services that you want to lock down to specific roles - a class added to an array will make that method unavailable for that role"""
@@ -187,12 +181,6 @@ def log_other_info():
         log(pad_dict("SSL certificate file:", "None"))
         protocol = "http://"
 
-    # Construct the test URL
-    host_part = "<host>"
-    port_part = f":{db_config.SERVER_PORT}" if db_config.SERVER_PORT != '80' else ""
-    test_path = "/server/testTornado"
-    test_url = f"{protocol}{host_part}{port_part}{test_path}"
-
     log(pad_dict("PostgreSQL:", DB_V_POSTGRES))
     log(pad_dict("PostGIS:", DB_V_POSTGIS))
     log(pad_dict("Planning grid limit:", project_paths.PLANNING_GRID_UNITS_LIMIT))
@@ -202,7 +190,6 @@ def log_other_info():
     log(pad_dict("ogr2ogr executable:", db_config.OGR2OGR_EXECUTABLE))
     log(pad_dict("GDAL_DATA path:", GDAL_ENV_VAR))
     log(pad_dict("Marxan executable:", db_config.MARXAN_EXECUTABLE))
-    log(f"To test server goto {test_url}", Fore.GREEN)
     log(db_config.STOP_CMD, Fore.RED)
 
 
@@ -213,20 +200,7 @@ project_paths = None
 db_config = None
 
 
-async def shutdown():
-    global pg
-    if pg:
-        print("Shutting down DB connection pool...")
-        await pg.close_pool()
-    tornado.ioloop.IOLoop.current().stop()
-
 # Catch Ctrl+C or kill signals
-
-
-def setup_shutdown_hooks():
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.ensure_future(shutdown()))
 
 
 async def set_global_vars():
@@ -266,17 +240,6 @@ def log(message, color=Fore.RESET):
 
 
 # get the information about which species have already been preprocessed
-def file_to_df(file_name):
-    """Reads a file and returns the data as a DataFrame
-
-    Args:
-        file_name (string): The name of the file to read.
-    Returns:
-        DataFrame: The data from the file.
-    """
-    return pd.read_csv(file_name, sep=None, engine='python') if os.path.exists(file_name) else pd.DataFrame()
-
-
 # gets the marxan log after a run
 def get_bp_log(obj):
     """
@@ -286,108 +249,6 @@ def get_bp_log(obj):
     print('log_file_path: ', log_file_path)
     obj.bpLog = read_file(
         log_file_path) if os.path.exists(log_file_path) else ""
-
-
-def normalize_dataframe(df, column_to_normalize_by, puid_column_name, classes=None):
-    """
-    # sourcery skip: extract-method
-    Converts a DataFrame with duplicate values into a normalized array.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to normalize.
-        column_to_normalize_by (str): The column in the DataFrame used to provide the headings for the normalized data (e.g., "Status" column produces 1,2,3).
-        puid_column_name (str): The name of the planning grid unit ID column to create the array of values.
-        classes (int, optional): Number of classes to classify the data into. Defaults to None.
-
-    Returns:
-        list: The normalized data from the DataFrame organized as a list of values (headings) each with a list of PUIDs, e.g., [32, 2374, 5867, 24967...].
-    """
-    if df.empty:
-        return []
-
-    if classes:
-        # Calculate the range and bin size for classification
-        min_value = df[column_to_normalize_by].min()
-        max_value = df[column_to_normalize_by].max()
-
-        # Handle case where all values in the column are the same
-        num_classes = 1 if min_value == max_value else classes
-        bin_size = (max_value + 1 - min_value) / num_classes
-
-        # Initialize bins
-        bins = [[min_value + bin_size * (i + 1), []]
-                for i in range(num_classes)]
-
-        # Classify rows into bins
-        for idx, row in df.iterrows():
-            bin_index = int(
-                (row[column_to_normalize_by] - min_value) / bin_size)
-            bins[bin_index][1].append(int(row[puid_column_name]))
-
-        return bins, min_value, max_value
-
-    # Group by unique values in the column and organize data
-    groups = df.groupby(column_to_normalize_by)
-    return [
-        [group, group_df[puid_column_name].tolist()]
-        for group, group_df in groups
-        if group != 0
-    ]
-
-
-def validate_args(arguments, req_arguments):
-    # sourcery skip: use-named-expression
-    """
-    Validates that all required arguments are present in the provided arguments dictionary.
-
-    Args:
-        arguments (dict): Dictionary of arguments (e.g., from a Tornado HTTP request).
-        req_arguments (list[str]): List of required argument names.
-
-    Returns:
-        None
-
-    Raises:
-        ServicesError: If any required arguments are missing.
-    """
-    missing_args = [arg for arg in req_arguments if arg not in arguments]
-    if missing_args:
-        raise ServicesError(
-            f"Missing input arguments: {', '.join(missing_args)}")
-    print("Args validated... ", Fore.CYAN)
-    return
-
-
-def upload_tileset(filename, tileset_name):
-    """
-    Uploads a zip file to Mapbox as a new tileset using the Mapbox Uploads API.
-
-    Args:
-        filename (str): The full path of the zip file to upload.
-        tileset_name (str): The name of the resulting tileset on Mapbox.
-
-    Returns:
-        str: The upload ID of the job.
-
-    Raises:
-        ServicesError: If the Mapbox Uploads API fails to return an upload ID.
-    """
-    # Initialize the Mapbox Uploader service
-    service = Uploader(access_token=project_paths.MBAT)
-
-    try:
-        with open(filename, 'rb') as file:
-            upload_response = service.upload(file, tileset_name)
-            upload_data = upload_response.json()
-
-            if 'id' in upload_data:
-                return upload_data['id']
-            else:
-                raise ServicesError(
-                    "Failed to retrieve an upload ID from Mapbox response.")
-    except Exception as e:
-        raise ServicesError(
-            f"An error occurred during the upload process: {e}")
 
 
 def get_unique_feature_name(prefix):
@@ -494,43 +355,6 @@ async def finish_feature_import(feature_class_name, name, description, source, u
     return feature_id[0]
 
 
-def get_shapefile_fieldnames(shapefile):
-    """
-    Retrieves the field names from a shapefile.
-
-    Args:
-        shapefile (str): The full path to the shapefile (*.shp).
-
-    Returns:
-        list[str]: A list of the field names in the shapefile.
-
-    Raises:
-        ServicesError: If the shapefile does not exist or cannot be read.
-    """
-    # Ensure OGR exceptions are raised
-    ogr.UseExceptions()
-
-    try:
-        # Open the shapefile
-        data_source = ogr.Open(shapefile)
-        if not data_source:
-            raise ServicesError(
-                f"Shapefile '{shapefile}' not found or could not be opened.")
-
-        # Access the first layer
-        layer = data_source.GetLayer(0)
-        if not layer:
-            raise ServicesError(f"No layers found in shapefile '{shapefile}'.")
-
-        # Extract field names from the layer definition
-        layer_definition = layer.GetLayerDefn()
-        return [layer_definition.GetFieldDefn(i).GetName() for i in range(layer_definition.GetFieldCount())]
-
-    except RuntimeError as e:
-        raise ServicesError(
-            f"Error reading shapefile '{shapefile}': {e.args[0]}")
-
-
 def _setCORS(obj):
     """Sets the CORS headers on the request to prevent CORS errors in the client.
 
@@ -561,76 +385,6 @@ def _setCORS(obj):
                             "' does not have permission to access the service (CORS error)")
     else:
         raise HTTPError(403, NO_REFERER_ERROR)
-
-
-####################################################################################################################################################################################################################################################################
-# generic classes
-####################################################################################################################################################################################################################################################################
-
-
-class ServicesError(Exception):
-    """Custom exception class for raising exceptions in this module.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(ServicesError, self)
-
-
-class ExtendableObject(object):
-    """Custom class for allowing objects to be extended with new attributes.
-    """
-    pass
-
-####################################################################################################################################################################################################################################################################
-# subclass of Popen to allow registering callbacks when processes complete on Windows (tornado.process.Subprocess.set_exit_callback is not supported on Windows)
-####################################################################################################################################################################################################################################################################
-
-
-class BPSubProcess(Popen):
-    """
-    Subclass of Popen to allow registering callbacks when processes complete on Windows.
-    This addresses the lack of `tornado.process.Subprocess.set_exit_callback` support on Windows.
-
-    Args:
-        See https://docs.python.org/3/library/subprocess.html#popen-constructor
-    """
-
-    def set_exit_callback_windows(self, callback, *args, **kwargs):
-        """
-        Registers a callback function on Windows by creating a separate thread
-        to poll the process until it finishes.
-
-        Args:
-            callback (function): The function to call when the process completes.
-            *args: Additional positional arguments for the callback.
-            **kwargs: Additional keyword arguments for the callback.
-        """
-        # Create a thread to monitor the process and call the callback on completion
-        self._thread = Thread(
-            target=self.poll_completion,
-            args=(callback, args, kwargs),
-            daemon=True  # Ensures the thread doesn't block program exit
-        )
-        self._thread.start()
-
-    def poll_completion(self, callback, args, kwargs):
-        """
-        Polls the subprocess to determine when it has finished.
-
-        Args:
-            callback (function): The function to call when the process completes.
-            args (tuple): Positional arguments to pass to the callback.
-            kwargs (dict): Keyword arguments to pass to the callback.
-        """
-        # Poll the process at regular intervals until it finishes
-        while self.poll() is None:
-            time.sleep(1)  # Sleep for 1 second to reduce CPU usage
-
-        # Call the callback with the process return code and any additional arguments
-        callback(self.returncode, *args, **kwargs)
-
-        # Clean up the thread reference
-        self._thread = None
 
 
 ####################################################################################################################################################################################################################################################################
@@ -789,27 +543,6 @@ class AuthHandler(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class getCountries(BaseHandler):
-    """REST HTTP handler. Gets a list of countries. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "records": dict[]: The country records. Each dict contains the keys: iso3, name_iso31, has_marine
-        }
-    """
-
-    async def get(self):
-        try:
-            content = await pg.execute("SELECT DISTINCT (t.name_iso31), t.iso3, CASE WHEN m.iso3 IS NULL THEN False ELSE True END has_marine FROM bioprotect.gaul_2015_simplified_1km t LEFT JOIN bioprotect.eez_simplified_1km m on t.iso3 = m.iso3 WHERE t.iso3 NOT LIKE '%|%' ORDER BY t.name_iso31;", return_format="Dict")
-            self.send_response({'records': content})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 class getServerData(BaseHandler):
     """REST HTTP handler. Gets the server configuration data from the server.dat file as an abject. The required arguments in the request.arguments parameter are:
 
@@ -866,59 +599,6 @@ class getServerData(BaseHandler):
             raise_error(self, e.args[0])
 
 
-# not currently used
-class createFeaturePreprocessingFileFromImport(BaseHandler):
-    """REST HTTP handler. Used to populate the feature_preprocessing.dat file from an imported PUVSPR file. The required arguments in the request.arguments parameter are:
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    async def get(self):
-        try:
-            # validate the input arguments
-            validate_args(self.request.arguments, ['user', 'project'])
-            # run the internal routine
-            puvspr_path = os.path.join(
-                self.input_folder, self.projectData["files"]["PUVSPRNAME"])
-            df = file_to_df(puvspr_path)
-
-            if df.empty:
-                raise ServicesError(
-                    "There are no records in the puvspr.dat file.")
-
-            # Calculate statistics: sum and count for each species
-            summary = df.pivot_table(
-                index='species',
-                aggfunc={'amount': ['sum', 'count']}
-            ).reset_index()
-
-            # Flatten the pivot table and rename columns
-            summary.columns = ['species', 'pu_area', 'pu_count']
-            summary['id'] = summary['species']
-
-            # Reorder and clean up columns
-            summary = summary[['id', 'pu_area', 'pu_count']]
-
-            # Save the processed data to the feature_preprocessing.dat file
-            feature_preprocessing_path = os.path.join(
-                self.input_folder, "feature_preprocessing.dat")
-            summary.to_csv(feature_preprocessing_path, index=False)
-
-            # set the response
-            self.send_response(
-                {'info': "feature_preprocessing.dat file populated"})
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
 class uploadFileToFolder(BaseHandler):
     """REST HTTP handler. Uploads a file to a specific folder within the Marxan root folder. The required arguments in the request.arguments parameter are:
 
@@ -938,7 +618,7 @@ class uploadFileToFolder(BaseHandler):
     def post(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, ['filename', 'destFolder'])
+            self.validate_args(self.request.arguments, ['filename', 'destFolder'])
             filename = self.get_argument('filename')
             dest_folder = self.get_argument('destFolder')
             print('====================== dest_folder: ', dest_folder)
@@ -975,7 +655,7 @@ class uploadFile(BaseHandler):
     def post(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, [
+            self.validate_args(self.request.arguments, [
                 'user', 'project', 'filename'])
             # write the file to the server
             write_to_file(self.project_folder + self.get_argument('filename'),
@@ -1004,7 +684,7 @@ class unzipShapefile(BaseHandler):
     async def get(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, ['filename'])
+            self.validate_args(self.request.arguments, ['filename'])
             filename = self.get_argument('filename')
             filepath = project_paths.IMPORT_FOLDER
             print('===================== filepath: ', filepath)
@@ -1037,7 +717,7 @@ class getShapefileFieldnames(BaseHandler):
     def get(self):
         ogr.UseExceptions()
         try:
-            validate_args(self.request.arguments, ['filename'])
+            self.validate_args(self.request.arguments, ['filename'])
 
             # load the shapefile
             shapefile = project_paths.IMPORT_FOLDER + \
@@ -1085,7 +765,7 @@ class deleteShapefile(BaseHandler):
     def get(self):
         try:
             # validate the input arguments
-            validate_args(self.request.arguments, [
+            self.validate_args(self.request.arguments, [
                 'zipfile', 'shapefile'])
             delete_zipped_shapefile(project_paths.IMPORT_FOLDER, self.get_argument(
                 'zipfile'), self.get_argument('shapefile')[:-4])
@@ -1093,75 +773,6 @@ class deleteShapefile(BaseHandler):
             self.send_response({'info': "Shapefile deleted"})
         except ServicesError as e:
             raise_error(self, e.args[0])
-
-
-class testRoleAuthorisation(BaseHandler):
-    """REST HTTP handler. For testing role access to servivces. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        self.send_response({'info': "Service successful"})
-
-
-class shutdown(BaseHandler):
-    """REST HTTP handler. Shuts down the server and computer after a period of time - currently only on Unix. The required arguments in the request.arguments parameter are:
-
-    Args:
-        delay (string): The delay in minutes after which the server will be shutdown.
-    Returns:
-        None
-    """
-
-    async def get(self):
-        try:
-            if platform.system() != "Windows":
-                validate_args(self.request.arguments, ['delay'])
-                minutes = int(self.get_argument("delay"))
-                # this wont be sent until the await returns
-                self.send_response({'info': "Shutting down"})
-                # if we shutdown is postponed, write the shutdown file
-                if (minutes != 0):
-                    # write the shutdown file with the time in UTC isoformat
-                    write_to_file(project_paths.PROJECT_FOLDER + "shutdown.dat", (datetime.datetime.now(
-                        timezone.utc) + timedelta(minutes/1440)).isoformat())
-                # wait for so many minutes
-                await asyncio.sleep(minutes * 60)
-                logging.warning("server stopping due to shutdown event")
-                # delete the shutdown file
-                if (os.path.exists(project_paths.PROJECT_FOLDER + "shutdown.dat")):
-                    logging.warning("Deleting the shutdown file")
-                    os.remove(project_paths.PROJECT_FOLDER + "shutdown.dat")
-                # shutdown the os
-                logging.warning("server stopped")
-                os.system('sudo shutdown now')
-        except ServicesError as e:
-            raise_error(self, e.args[0])
-
-
-class testTornado(BaseHandler):
-    """REST HTTP handler. Tests tornado is working properly. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-            "info": Informational message
-        }
-    """
-
-    def get(self):
-        self.send_response({'info': "Tornado running"})
 
 
 class RestartMartin(BaseHandler):
@@ -1182,32 +793,6 @@ class RestartMartin(BaseHandler):
             self.send_response(restart_martin())
         except Exception as e:
             raise_error(self, str(e))
-####################################################################################################################################################################################################################################################################
-# WebSocketHandler subclasses
-####################################################################################################################################################################################################################################################################
-
-
-####################################################################################################################################################################################################################################################################
-# baseclass for handling long-running PostGIS queries using WebSockets
-####################################################################################################################################################################################################################################################################
-
-
-class QueryWebSocketHandler(SocketHandler):
-    """Base class for handling long-running PostGIS queries using WebSockets.
-
-    Attributes:
-        pid: A string with the back-end process id of the PostGIS query (prefixed with 'q'). This allows the query to be stopped.
-    """
-    # runs a PostGIS query asynchronously and writes the pid to the client so the query can be stopped
-
-    async def executeQuery(self, sql, data=None, return_format=None):
-        try:
-            print('return await pg.execute..... line 3385')
-            return await pg.execute(sql, data=data, return_format=return_format, socketHandler=self)
-        except psycopg2.OperationalError as e:
-            self.close({'error': "Preprocessing stopped by operating system"})
-        except asyncio.CancelledError:
-            self.close({'error': "Preprocessing stopped by " + self.user})
 
 
 #  ***********************************
@@ -1272,44 +857,6 @@ class GetActivitiesHandler(BaseHandler):
             print(self, e.args[0])
 
 
-async def _getAllImpacts(obj):
-    """Gets all feature information from the PostGIS database. These are set on the passed obj in the allImpacts attribute.
-
-    Args:
-        obj (BaseHandler): The request handler instance.
-    Returns:
-        None
-    """
-    print('getting all impacts.......')
-    obj.allImpacts = await pg.execute("SELECT feature_class_name, alias, description, extent, to_char(creation_date, 'DD/MM/YY HH24:MI:SS')::text AS creation_date, tilesetid, source, id, created_by FROM bioprotect.metadata_impacts ORDER BY lower(alias);", return_format="DataFrame")
-
-
-class GetAllImpactsHandler(BaseHandler):
-    """REST HTTP handler. Gets all species information from the PostGIS database. The required arguments in the request.arguments parameter are:
-
-    Args:
-        None
-    Returns:
-        A dict with the following structure (if the class raises an exception, the error message is included in an 'error' key/value pair):
-
-        {
-        "info": Informational message,
-        "data": dict[]: A list of the features. Each dict contains the keys: id,feature_class_name,alias,description,area,extent,creation_date,tilesetid,source,created_by
-        }
-    """
-
-    async def get(self):
-        print('Get all impacts handerler.....')
-        try:
-            # get all the species data
-            await _getAllImpacts(self)
-            # set the response
-            self.send_response({"info": "All impact data received",
-                                "data": self.allImpacts.to_dict(orient="records")})
-        except Exception as e:
-            print(self, e.args[0])
-
-
 class GetUploadedActivitiesHandler(BaseHandler):
     """
         REST HTTP handler. Gets all species information from the PostGIS database. The required arguments in the request.arguments parameter are:
@@ -1342,83 +889,6 @@ class GetUploadedActivitiesHandler(BaseHandler):
                                 "data": self.allUploadedActivities.to_dict(orient="records")})
         except Exception as e:
             print(self, e.args[0])
-
-
-def setup_sens_matrix():
-    print('Setting up sensitivity matrix....')
-    habitat_list = [item['label']
-                    for item in
-                    get_tif_list('/'+config['input_coral'], 'asc') +
-                    get_tif_list('/'+config['input_fish'], 'asc')]
-    sens_mat = project_paths['sensmat']
-    print('habitat_list: ', habitat_list)
-    for habitat_name in habitat_list:
-        sens_mat.loc[habitat_name] = sens_mat.loc['VME']
-    return sens_mat
-
-
-async def _finishImportingImpact(feature_class_name, activity, description, user):
-    """Finishes creating a feature by adding a spatial index and a record in the metadata_interest_features table.
-
-    Args:
-        feature_class_name (string): The feature class to finish creating.
-       activity (string): Theactivity of the feature class that will be used as an alias in the metadata_interest_features table.
-        source (string): The source for the feature.
-        user (string): The user who created the feature.
-    Returns:
-        int: The id of the feature created.
-    Raises:
-        ServicesError: If the feature already exists.
-    """
-    print('finishing importing raster...')
-    # get the Mapbox tilesetId
-    id = None
-    tilesetId = config['mbuser'] + "." + feature_class_name
-    try:
-        # create a record for this new feature in the metadata_interest_features table
-        print("creating record for feature in db")
-        id = await pg.execute(
-            sql.SQL("""
-            INSERT INTO bioprotect.metadata_impacts (feature_class_name, alias, description, creation_date, tilesetid, extent, source, created_by) SELECT %s, %s, %s, now(), %s, rast.extent, %s, %s FROM (SELECT Box2D(ST_Envelope(rast)) extent FROM ( SELECT rid, rast FROM bioprotect.{}) as rast2 ) as rast RETURNING tableoid""")
-            .format(sql.Identifier(feature_class_name)),
-            data=[feature_class_name, activity, description,
-                  tilesetId, "raster", "cartig"],
-            return_format="Array")
-        return id
-    except (Exception) as e:
-        print('Unable to create record in db e: ', e)
-    finally:
-        if id is not None:
-            return id[0]
-        return
-
-
-def add_shapefile_to_db(filename, gridname, tablename):
-    try:
-        shp2pgsql_cmd = [
-            "shp2pgsql", "-d", "-g", "geom", "-I",
-            filename, tablename
-        ]
-
-        # Build psql command
-        psql_cmd = [
-            "psql", "-h", db_config.DATABASE_HOST, "-p", "5432",
-            "-U", db_config.DATABASE_USER, "-d", db_config.DATABASE_NAME
-        ]
-
-        # Run shp2pgsql and pipe its output into psql
-        shp2pgsql_proc = subprocess.Popen(
-            shp2pgsql_cmd, stdout=subprocess.PIPE)
-        psql_proc = subprocess.run(
-            psql_cmd, stdin=shp2pgsql_proc.stdout, check=True)
-
-        # Ensure the pipeline is closed properly
-        shp2pgsql_proc.stdout.close()
-        psql_proc.check_returncode()
-        return True
-    except TypeError as e:
-        print("Pass in the location of the file as a string, not anything else....")
-        return False
 
 
 # tornado functions
@@ -1458,8 +928,7 @@ class Application(tornado.web.Application):
             ("/server/users", UserHandler, dict(pg=pg, project_paths=project_paths)),
             ("/server/features", FeatureHandler, dict(pg=pg,
                                                       finish_feature_import=finish_feature_import)),
-            ("/server/planning-units", PlanningUnitHandler, dict(pg=pg,
-                                                                 upload_tileset=upload_tileset)),
+            ("/server/planning-units", PlanningUnitHandler, dict(pg=pg)),
             ("/server/prioritizr", PrioritizrHandler, dict(pg=pg)),
             ("/server/prioritizr-ws", PrioritizrWSHandler, dict(pg=pg,
                                                                 r_script_path="./services/run_prioritzr_v2.R")),
@@ -1474,8 +943,6 @@ class Application(tornado.web.Application):
             ("/server/createCostsFromImpact",
              CreateCostsFromImpactHandler, dict(pg=pg)),
 
-            ("/server/createFeaturePreprocessingFileFromImport",
-             createFeaturePreprocessingFileFromImport),
             ("/server/importFeatures", ImportFeaturesWSHandler,
              dict(pg=pg,
                   finish_feature_import=finish_feature_import,
@@ -1488,8 +955,6 @@ class Application(tornado.web.Application):
             ("/server/getServerData", getServerData),
             ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
             ("/server/getActivities", GetActivitiesHandler),
-            ("/server/getAllImpacts", GetAllImpactsHandler),
-            ("/server/getCountries", getCountries),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),
             ("/server/unzipShapefile", unzipShapefile),
@@ -1497,9 +962,6 @@ class Application(tornado.web.Application):
 
             ("/server/preprocessFeature", PreprocessFeature, dict(pg=pg)),
 
-            ("/server/testRoleAuthorisation", testRoleAuthorisation),
-            ("/server/shutdown", shutdown),
-            ("/server/testTornado", testTornado),
             ("/server/restart-martin", RestartMartin),
 
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
@@ -1528,8 +990,6 @@ async def initialiseApp():
     project_paths = get_folder_path_config()
     db_config = DBConfig()
     await set_global_vars()
-
-    # setup_shutdown_hooks()
 
     # LOGGING SECTION
     # turn on logging. Get parent logger. Set the logging level. Set format for streaming logger

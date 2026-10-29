@@ -19,14 +19,6 @@ class FeatureHandler(BaseHandler):
         super().initialize(pg=pg)
         self.finish_feature_import = finish_feature_import
 
-    def validate_args(self, args, required_keys):
-        # sourcery skip: use-named-expression
-        """Checks that all of the arguments in argumentList are in the arguments dictionary."""
-        missing = [key for key in required_keys if key not in args]
-        if missing:
-            raise ServicesError(
-                f"Missing required arguments: {', '.join(missing)}")
-
     async def get(self):
         """
         Handles GET requests for various feature-related actions based on query parameters.

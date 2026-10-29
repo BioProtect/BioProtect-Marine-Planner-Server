@@ -1,21 +1,17 @@
 import asyncio
-import uuid
-from os import sep
-from os.path import join, relpath
+import json
+from os.path import commonpath, realpath
 
+import geopandas as gpd
 import pandas as pd
 from classes.db_config import DBConfig
+from classes.folder_path_config import get_folder_path_config
 from handlers.base_handler import BaseHandler
+from handlers.planning_unit_websocket_handler import area_km2
 from psycopg2 import sql
-from services.file_service import (check_zipped_shapefile, create_zipfile,
-                                   delete_zipped_shapefile, file_to_df,
-                                   get_files_in_folder,
-                                   get_key_values_from_file,
-                                   get_shapefile_fieldnames,
-                                   normalize_dataframe, unzip_shapefile)
+from services.file_service import create_zipfile
 from services.service_error import ServicesError, raise_error
 from sqlalchemy import create_engine
-from tornado import escape
 
 
 class PlanningUnitHandler(BaseHandler):
@@ -23,10 +19,6 @@ class PlanningUnitHandler(BaseHandler):
     Handles planning unit-related operations, such as importing, exporting, deleting,
     retrieving, and updating planning units.
     """
-
-    def initialize(self, pg, upload_tileset):
-        super().initialize(pg=pg)
-        self.upload_tileset = upload_tileset
 
     @staticmethod
     def create_status_dataframe(puid_array, pu_status):
@@ -103,13 +95,31 @@ class PlanningUnitHandler(BaseHandler):
             action = self.get_argument('action', None)
             if action == 'update':
                 await self.update_planning_units()
-            elif action == 'import':
-                await self.import_planning_unit_grid()
+            elif action == 'estimate':
+                await self.estimate_area()
             else:
                 raise ServicesError("Invalid action specified.")
 
         except ServicesError as e:
             raise_error(self, e.args[0])
+
+    async def estimate_area(self):
+        """Area of an uploaded shapefile or a drawn FeatureCollection, so the
+        new-grid dialogs can suggest a resolution. JSON body: shapefile_path or geojson."""
+        data = json.loads(self.request.body or "{}")
+        if data.get("geojson"):
+            df = gpd.GeoDataFrame.from_features(
+                data["geojson"]["features"], crs="EPSG:4326")
+        elif data.get("shapefile_path"):
+            path = realpath(data["shapefile_path"])
+            root = realpath(get_folder_path_config().PROJECT_FOLDER)
+            if commonpath([path, root]) != root:
+                raise ServicesError("Invalid shapefile path.")
+            df = await asyncio.get_running_loop().run_in_executor(
+                None, gpd.read_file, path)
+        else:
+            raise ServicesError("Send shapefile_path or geojson.")
+        self.send_response({"area_km2": area_km2(df)})
 
     # GET FUNCTIONS ###############################################################
 
@@ -360,89 +370,3 @@ class PlanningUnitHandler(BaseHandler):
             raise_error(self, e.args[0])
         except Exception as e:
             raise_error(self, str(e))
-
-    async def import_planning_unit_grid(self):
-        self.validate_args(self.request.arguments, [
-                           'filename', 'name', 'description'])
-        filename = self.get_argument('filename')
-        name = self.get_argument('name')
-        description = self.get_argument('description')
-        user = self.get_current_user()
-        import_folder = self.proj_paths.IMPORT_FOLDER
-
-        root_filename = await asyncio.get_running_loop().run_in_executor(
-            None, unzip_shapefile, import_folder, filename
-        )
-
-        feature_class_name = "pu_" + uuid.uuid4().hex[:29]
-        tileset_id = f"planning_unit.{feature_class_name}"
-        shapefile_path = join(
-            import_folder, f"{root_filename}.shp")
-
-        try:
-            check_zipped_shapefile(shapefile_path)
-            fieldnames = get_shapefile_fieldnames(shapefile_path)
-            if "PUID" in fieldnames:
-                raise ServicesError(
-                    "The field 'puid' in the shapefile must be lowercase.")
-
-            await self.pg.execute(
-                """
-                INSERT INTO bioprotect.metadata_planning_units(
-                    feature_class_name, alias, description, creation_date, source, created_by, tilesetid
-                ) VALUES (%s, %s, %s, now(), 'Imported from shapefile', %s, %s);
-                """,
-                [feature_class_name, name, description, user, tileset_id]
-            )
-
-            await self.pg.importShapefile(import_folder, f"{root_filename}.shp", feature_class_name)
-            await self.pg.is_valid(feature_class_name)
-
-            await self.pg.execute(
-                sql.SQL("ALTER TABLE bioprotect.{} ALTER COLUMN puid TYPE integer;").format(
-                    sql.Identifier(feature_class_name))
-            )
-
-            await self.pg.execute(
-                sql.SQL(
-                    """
-                    UPDATE bioprotect.metadata_planning_units
-                    SET envelope = (
-                        SELECT ST_Transform(ST_Envelope(ST_Collect(geometry)), 4326)
-                        FROM bioprotect.{}
-                    )
-                    WHERE feature_class_name = %s;
-                    """
-                ).format(sql.Identifier(feature_class_name)),
-                [feature_class_name]
-            )
-
-            await self.pg.execute(
-                sql.SQL(
-                    """
-                    UPDATE bioprotect.metadata_planning_units
-                    SET planning_unit_count = (
-                        SELECT COUNT(puid)
-                        FROM bioprotect.{}
-                    )
-                    WHERE feature_class_name = %s;
-                    """
-                ).format(sql.Identifier(feature_class_name)),
-                [feature_class_name]
-            )
-
-            upload_id = self.upload_tileset(shapefile_path, feature_class_name)
-
-        except ServicesError as e:
-            raise
-        finally:
-            await asyncio.get_running_loop().run_in_executor(
-                None, delete_zipped_shapefile, import_folder, filename, root_filename
-            )
-
-        self.send_response({
-            'info': f"Planning grid '{name}' imported",
-            'feature_class_name': feature_class_name,
-            'uploadId': upload_id,
-            'alias': name
-        })

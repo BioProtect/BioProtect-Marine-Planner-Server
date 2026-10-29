@@ -19,7 +19,6 @@ import psutil
 import rasterio
 from classes.db_config import get_db_config
 from classes.folder_path_config import get_folder_path_config
-from mapbox import Uploader
 from osgeo import gdal, gdalconst
 from pyproj import CRS
 from rasterio.enums import Resampling as ResampleEnum
@@ -61,31 +60,6 @@ def pad_dict(k, val, width=25):
     return f"{k:<{width}}{val}"
 
 
-def get_free_space_gb():
-    """Gets the drive free space in gigabytes.
-
-    Args:
-        None
-    Returns:
-        string: The free space in Gb, e.g. 1.2 Gb
-    """
-    if platform.system() == 'Windows':
-        # Get free space on Windows using ctypes
-        free_bytes = ctypes.c_ulonglong(0)
-        ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-            ctypes.c_wchar_p(folder_path_config.PROJECT_FOLDER),
-            None, None, ctypes.pointer(free_bytes)
-        )
-        space_gb = free_bytes.value / (1024 ** 3)  # Convert bytes to gigabytes
-    else:
-        # Get free space on Unix-like systems
-        st = os.statvfs(folder_path_config.PROJECT_FOLDER)
-        space_gb = st.f_bavail * st.f_frsize / \
-            (1024 ** 3)  # Convert bytes to gigabytes
-
-    return f"{space_gb:.1f} Gb"  # Format and return as a string
-
-
 def get_tif_list(tif_dir, extension="tif"):
     """Get a list of all the tifs in a directory
 
@@ -102,17 +76,6 @@ def get_tif_list(tif_dir, extension="tif"):
     } for file in files]
 
     return sorted(file_list, key=lambda i: i["label"])
-
-
-def setup_sens_matrix():
-    print('Setting up sensitivity matrix....')
-    habitat_list = [item['label'] for item in
-                    get_tif_list('/'+folder_path_config.gis_config['input_coral'], 'asc') +
-                    get_tif_list('/'+folder_path_config.gis_config['input_fish'], 'asc')]
-    sens_mat = folder_path_config.gis_config['sensmat']
-    for habitat_name in habitat_list:
-        sens_mat.loc[habitat_name] = sens_mat.loc['VME']
-    return sens_mat
 
 
 def normalize_nparray(nparray):
@@ -212,63 +175,6 @@ def reproject_shape(filename, save_path, reproject):
     shapefile = shapefile.to_crs(reproject)
     shapefile.to_file(save_path / filename.name)
     return save_path
-
-
-def reproject_and_normalise_upload(raster_name, data, reprojection_crs, wgs84):
-    """
-    Reprojects and normalizes an uploaded raster to match a common template raster.
-
-    Args:
-        raster_name (str): Base name of the raster file (e.g., "input.tif")
-        data (DatasetReader): An open rasterio dataset
-        reprojection_crs (str): Target CRS for normalization (e.g., EPSG:100026)
-        wgs84 (str): CRS string for checking if reprojection to WGS84 is needed
-
-    Returns:
-        str: Path to the normalized and aligned raster
-    """
-    tmp_folder = f"data/tmp/"
-    normalized_path = f"{tmp_folder}{raster_name}"
-
-    # Step 1: Reproject to WGS84 if necessary
-    if '4326' not in data.crs.to_string():
-        data_path = reproject_raster(
-            input_path=data.name,
-            output_folder=tmp_folder,
-            reprojection_crs=wgs84
-        )
-        rast_data = rasterio.open(data_path)
-    else:
-        rast_data = data
-
-    # Step 2: Load template metadata to align with
-    template_info = get_rasters_transform(
-        rast='data/rasters/all_habitats.tif',
-        reprojection_crs=reprojection_crs
-    )
-    meta = template_info['meta'].copy()
-    meta.update(nodata=0)
-
-    # Step 3: Normalize and reproject to match the template
-    with rasterio.open(normalized_path, "w", **meta) as dst:
-        for i in range(1, rast_data.count + 1):
-            band = rast_data.read(i)
-            band = np.where(band < 0, 0, band)
-            norm_band = normalize_nparray(band)
-
-            reproject(
-                source=norm_band,
-                destination=rasterio.band(dst, i),
-                src_transform=rast_data.transform,
-                src_crs=rast_data.crs,
-                dst_transform=template_info['transform'],
-                dst_crs=reprojection_crs,
-                resampling=Resampling.bilinear,
-                width=template_info['width'],
-                height=template_info['height']
-            )
-
-    return normalized_path
 
 
 def reproject_raster_to_all_habs(tmp_path, src_data, src_meta, final_output_path):
@@ -648,20 +554,6 @@ def cumul_impact(ecosys_list, sens_mat, stressors_list, nodata_val=0):
 
     normalised_cumul_impact = normalize_nparray(cumul_impact)
     return [normalised_cumul_impact, meta]
-
-
-def colorise_raster(file_name, outfile_name):
-    with rasterio.Env():
-        with rasterio.open(file_name) as src:
-            shade = src.read(1)
-            meta = src.meta
-
-        colors = create_colormap(shade.min(), shade.max())
-        with rasterio.open(outfile_name, 'w', **meta) as dst:
-            dst.write(shade, indexes=1)
-            dst.write_colormap(1, colors)
-            cmap = dst.colormap(1)
-    return outfile_name
 
 
 wgs84 = CRS.from_proj4(folder_path_config.gis_config.get("wgs84_str"))

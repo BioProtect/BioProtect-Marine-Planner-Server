@@ -4,7 +4,7 @@ Upload a preprocessed raster as a cost profile for a project.
 Three handlers live here:
 
   * GetRasterBandInfoHandler (REST)
-      Inspect an uploaded raster sitting in data/tmp/ and return band
+      Inspect an uploaded raster sitting in imports/ and return band
       count, dtypes, nodata, bounds, CRS. The frontend uses this to
       populate the band picker before submitting the WebSocket upload.
 
@@ -56,35 +56,29 @@ from services.service_error import ServicesError, raise_error
 
 log = logging.getLogger(__name__)
 
+# Uploader or Admin. list_rasters reports it as can_manage; set_visibility
+# and delete_raster enforce it.
+# Takes the current user id twice, positionally.
+_MAY_MANAGE_SQL = """
+        cr.owner_id IS NOT DISTINCT FROM %s
+        OR EXISTS (SELECT 1 FROM bioprotect.users au
+                   WHERE au.id = %s AND au.role = 'Admin')
+"""
+
 project_paths = get_folder_path_config()
 
-# The frontend FileUpload component sends destFolder="imports", which the
-# uploadFileToFolder handler writes to <PROJECT_FOLDER>/imports/. The
-# legacy activity raster path also hardcodes "data/tmp" relative to the
-# server's cwd. We try the canonical IMPORT_FOLDER first and fall back to
-# "data/tmp" for compatibility.
-_TMP_FOLDER = "data/tmp"
-
-
 def _resolve_uploaded_raster(filename: str) -> str:
-    """Return the path of an uploaded raster, checking known locations."""
-    candidates = [
-        os.path.join(project_paths.IMPORT_FOLDER, filename),
-        os.path.join(_TMP_FOLDER, filename),
-    ]
-    for p in candidates:
-        if os.path.isfile(p):
-            return p
-    raise ServicesError(
-        f"Raster file not found in any upload folder: {filename}. "
-        f"Checked: {', '.join(candidates)}"
-    )
+    """Path of a raster uploaded to IMPORT_FOLDER (FileUpload destFolder="imports")."""
+    path = os.path.join(project_paths.IMPORT_FOLDER, filename)
+    if not os.path.isfile(path):
+        raise ServicesError(f"Uploaded raster not found: {filename}")
+    return path
 
 
 class GetRasterBandInfoHandler(BaseHandler):
     """REST: GET /server/getRasterBandInfo?filename=<name>
 
-    Returns metadata for a raster sitting in data/tmp/ so the frontend
+    Returns metadata for a raster sitting in imports/ so the frontend
     can decide whether to show a band picker.
     """
 
@@ -117,7 +111,7 @@ class UploadRasterCostHandler(SocketHandler):
 
     Required query args:
         project_id    int
-        filename      raster file in data/tmp/
+        filename      raster file in imports/
         profile_name  display name for the new cost profile
 
     Optional:
@@ -153,6 +147,7 @@ class UploadRasterCostHandler(SocketHandler):
             log.error("UploadRasterCostHandler open failed: %s", e)
             return
 
+        raster_path = reprojected_path = None
         try:
             self.validate_args(
                 self.request.arguments,
@@ -248,7 +243,6 @@ class UploadRasterCostHandler(SocketHandler):
                         f"reusing cached values, skipping the raster."
                     ),
                 })
-                _remove_files(raster_path)
             else:
                 raster_id = await self._extract_and_cache(
                     raster_path=raster_path,
@@ -312,6 +306,10 @@ class UploadRasterCostHandler(SocketHandler):
                 "error": str(e),
                 "info": "Failed to upload raster cost profile",
             })
+        finally:
+            # success or failure, the upload is spent: values are cached in
+            # the DB, and a failed one has to be re-uploaded anyway
+            _remove_files(raster_path, reprojected_path)
 
     async def _owner_id(self):
         """Numeric user id, or None while auth enforcement is off."""
@@ -343,7 +341,7 @@ class UploadRasterCostHandler(SocketHandler):
         sampling: str = "auto",
         fallback_crs=None,
     ) -> int:
-        """Extract against every hex the raster covers, then bin the file.
+        """Extract against every hex the raster covers.
 
         The extraction target is deliberately wider than the requesting
         project: every h3_cell intersecting the raster footprint, at every
@@ -497,7 +495,6 @@ class UploadRasterCostHandler(SocketHandler):
             [(raster_id, e["h3_index"], float(e["value"])) for e in covered],
         )
 
-        _remove_files(raster_path, reprojected_path)
         return raster_id
 
 
@@ -569,11 +566,14 @@ class CostRasterLibraryHandler(BaseHandler):
         project_id = self.get_argument("project_id", None)
 
         rows = await self.pg.execute(
-            """
+            f"""
             SELECT cr.id, cr.name, cr.description, cr.band, cr.stat,
                    cr.hex_count, cr.visibility, cr.owner_id,
                    cr.date_created, cr.source_filename,
                    (cr.owner_id IS NOT DISTINCT FROM %s) AS is_owner,
+                   ({_MAY_MANAGE_SQL}) AS can_manage,
+                   (SELECT COUNT(*) FROM bioprotect.cost_profiles cp
+                     WHERE cp.source_raster_id = cr.id) AS profile_count,
                    ST_XMin(cr.bounds) AS left, ST_YMin(cr.bounds) AS bottom,
                    ST_XMax(cr.bounds) AS right, ST_YMax(cr.bounds) AS top
               FROM bioprotect.cost_rasters cr
@@ -581,7 +581,7 @@ class CostRasterLibraryHandler(BaseHandler):
                 OR cr.visibility = 'shared'
              ORDER BY cr.date_created DESC;
             """,
-            data=[owner_id, owner_id],
+            data=[owner_id, owner_id, owner_id, owner_id],
             return_format="Dict",
         )
 
@@ -654,31 +654,49 @@ class CostRasterLibraryHandler(BaseHandler):
         })
 
     async def set_visibility(self, body):
-        """Only the owner may share or un-share their raster."""
+        """Share or un-share a raster (uploader or Admin only)."""
         raster_id = int(body.get("raster_id") or 0)
         visibility = body.get("visibility")
         if visibility not in ("private", "shared"):
             raise ServicesError("visibility must be 'private' or 'shared'.")
 
-        await self._assert_owner(raster_id)
-        await self.pg.execute(
-            "UPDATE bioprotect.cost_rasters SET visibility = %s WHERE id = %s;",
-            data=[visibility, raster_id],
+        user_id = await self._owner_id()
+        updated = await self.pg.execute(
+            f"""
+            UPDATE bioprotect.cost_rasters cr SET visibility = %s
+             WHERE cr.id = %s AND ({_MAY_MANAGE_SQL})
+            RETURNING cr.id;
+            """,
+            data=[visibility, raster_id, user_id, user_id],
+            return_format="Array",
         )
+        if not updated:
+            raise ServicesError(
+                "Cost raster not found, or you are not allowed to change it."
+            )
         self.send_response({"info": f"Raster is now {visibility}."})
 
     async def delete_raster(self, body):
-        """Delete a raster and its cached values (owner only).
+        """Delete a raster and its cached values (uploader or Admin only).
 
         Profiles already built from it survive - source_raster_id is
         ON DELETE SET NULL - because their values are their own rows.
         """
         raster_id = int(body.get("raster_id") or 0)
-        await self._assert_owner(raster_id)
-        await self.pg.execute(
-            "DELETE FROM bioprotect.cost_rasters WHERE id = %s;",
-            data=[raster_id],
+        user_id = await self._owner_id()
+        deleted = await self.pg.execute(
+            f"""
+            DELETE FROM bioprotect.cost_rasters cr
+             WHERE cr.id = %s AND ({_MAY_MANAGE_SQL})
+            RETURNING cr.id;
+            """,
+            data=[raster_id, user_id, user_id],
+            return_format="Array",
         )
+        if not deleted:
+            raise ServicesError(
+                "Cost raster not found, or you are not allowed to delete it."
+            )
         self.send_response({"info": "Cost raster deleted."})
 
     # ------------------------------------------------------------------
@@ -695,21 +713,6 @@ class CostRasterLibraryHandler(BaseHandler):
         )
         if not row:
             raise ServicesError("Cost raster not found.")
-
-    async def _assert_owner(self, raster_id: int):
-        owner_id = await self._owner_id()
-        row = await self.pg.execute(
-            """
-            SELECT 1 FROM bioprotect.cost_rasters
-             WHERE id = %s AND owner_id IS NOT DISTINCT FROM %s;
-            """,
-            data=[raster_id, owner_id],
-            return_format="Array",
-        )
-        if not row:
-            raise ServicesError(
-                "Cost raster not found, or you do not own it."
-            )
 
 
 # ----------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 import asyncio
 import json
 import os
+import zipfile
 from functools import partial
 
 import geopandas as gpd
 import h3
+import pandas as pd
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
@@ -25,6 +27,39 @@ MAX_DRAWN_CELLS = 1_000_000
 ANTIMERIDIAN_ERROR = (
     "Planning grids that cross the 180° meridian aren't supported yet. "
     "Keep the area to one side of it.")
+
+
+def read_shapefile_zip(zip_path):
+    """Every shapefile in an uploaded zip, in EPSG:4326 (H3 needs lat/lon).
+
+    Opens each .shp by its path inside the archive: handing GDAL the bare zip
+    fails when the .shp sits in a subfolder, with a misleading "does not exist
+    in the file system".
+    """
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            names = [n for n in z.namelist() if not n.startswith("__MACOSX/")]
+    except zipfile.BadZipFile:
+        raise ServicesError("The uploaded file is not a valid zip.")
+    shps = [n for n in names if n.lower().endswith(".shp")]
+    if not shps:
+        raise ServicesError(
+            f"No .shp file in the zip. It contains: {', '.join(names[:10]) or 'nothing'}")
+    lower = {n.lower() for n in names}
+    frames = []
+    for shp in shps:
+        if shp[:-4].lower() + ".shx" not in lower:
+            raise ServicesError(f"'{shp}' has no matching .shx file in the zip.")
+        df = gpd.read_file(f"/vsizip/{zip_path}/{shp}")
+        if df.crs is None:
+            # no .prj: only safe to assume lat/lon if the numbers look like it
+            minx, miny, maxx, maxy = df.total_bounds
+            if minx < -180 or maxx > 180 or miny < -90 or maxy > 90:
+                raise ServicesError(
+                    f"'{shp}' has no .prj file and isn't in lat/lon, so its location is unknown. Include the .prj in the zip.")
+            df = df.set_crs(4326)
+        frames.append(df.to_crs(4326)[["geometry"]])
+    return gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=4326)
 
 
 def area_km2(df):
@@ -138,6 +173,7 @@ class PlanningGridWSHandler(SocketHandler):
         view_name = f"v_h3_{self.normalize_name(project_area_name)}_res{resolution}"
         alias = f"{project_area_name} (Res {resolution})"
 
+        failed = False
         try:
             # Start the processing steps``
             # Check if it already exists
@@ -201,7 +237,7 @@ class PlanningGridWSHandler(SocketHandler):
                         f"(limit {MAX_DRAWN_CELLS:,}). Draw a smaller area or use a coarser resolution.")
             else:
                 self.send_response({'info': "📦 Reading shapefile..."})
-                df = await loop.run_in_executor(None, gpd.read_file, shapefile_path)
+                df = await loop.run_in_executor(None, read_shapefile_zip, shapefile_path)
 
             self.send_response(
                 {'info': f"🔷 Converting {len(df):,} shapes to H3 cells..."})
@@ -312,6 +348,10 @@ class PlanningGridWSHandler(SocketHandler):
                 "planning_unit_id": planning_unit_id
             })
         except Exception as e:
+            # keep the upload: the dialog retries with the same path
+            failed = True
+            print(f"Failed to create planning grid '{view_name}' from "
+                  f"{shapefile_path or 'drawn area'}: {e!r}")
             self.send_response({
                 "error": f"❌ Failed to create planning grid: {str(e)}"
             })
@@ -325,9 +365,8 @@ class PlanningGridWSHandler(SocketHandler):
                     sql.Identifier(view_name))
             )
         finally:
-            # the uploaded zip is spent either way: a retry re-uploads it.
             # Client-supplied path, so only ever delete inside IMPORT_FOLDER.
-            if shapefile_path:
+            if shapefile_path and not failed:
                 path = os.path.realpath(shapefile_path)
                 imports = os.path.realpath(get_folder_path_config().IMPORT_FOLDER)
                 if os.path.commonpath([path, imports]) == imports and os.path.isfile(path):

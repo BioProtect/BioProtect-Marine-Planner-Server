@@ -27,7 +27,7 @@ from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
 from classes.postgis_class import get_pg
 from colorama import Fore, Style
-from functions.utils import (create_cost_from_impact, cumul_impact,
+from functions.utils import (cumul_impact,
                              get_tif_list, pad_dict, replace_chars,
                              reproject_raster,
                              reproject_raster_to_all_habs)
@@ -47,8 +47,7 @@ from handlers.cost_raster_handler import (UploadRasterCostHandler,
                                           CostRasterLibraryHandler)
 from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
-                                   GetCostProfileActivitiesHandler,
-                                   CreateCostsFromImpactHandler)
+                                   GetCostProfileActivitiesHandler)
 from handlers.notification_handler import NotificationHandler
 from handlers.reference_layers_handler import ReferenceLayersHandler
 from osgeo import ogr
@@ -310,7 +309,7 @@ async def finish_feature_import(feature_class_name, name, description, source, u
                 )
                 SELECT %s, %s, %s, now(), sub._area, %s, sub.extent, %s, %s
                 FROM (
-                    SELECT ST_Area(ST_Transform(geom, 4326)) AS _area, box2d(geom) AS extent
+                    SELECT ST_Area(geom::geography) AS _area, box2d(geom) AS extent
                     FROM (
                         SELECT ST_Union(geometry) AS geom FROM bioprotect.{}
                     ) AS sub2
@@ -940,8 +939,6 @@ class Application(tornado.web.Application):
              SetActiveCostProfileHandler, dict(pg=pg)),
             ("/server/getCostProfileActivities",
              GetCostProfileActivitiesHandler, dict(pg=pg)),
-            ("/server/createCostsFromImpact",
-             CreateCostsFromImpactHandler, dict(pg=pg)),
 
             ("/server/importFeatures", ImportFeaturesWSHandler,
              dict(pg=pg,

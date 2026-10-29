@@ -7,7 +7,7 @@ import pandas as pd
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
 from handlers.base_handler import BaseHandler
-from handlers.planning_unit_websocket_handler import area_km2
+from handlers.planning_unit_websocket_handler import area_km2, read_shapefile_zip
 from psycopg2 import sql
 from services.file_service import create_zipfile
 from services.service_error import ServicesError, raise_error
@@ -116,7 +116,7 @@ class PlanningUnitHandler(BaseHandler):
             if commonpath([path, root]) != root:
                 raise ServicesError("Invalid shapefile path.")
             df = await asyncio.get_running_loop().run_in_executor(
-                None, gpd.read_file, path)
+                None, read_shapefile_zip, path)
         else:
             raise ServicesError("Send shapefile_path or geojson.")
         self.send_response({"area_km2": area_km2(df)})

@@ -58,3 +58,6 @@ imports/*
 
 server.log
 eunis_import_log.csv
+.claude/
+.mcp.json
+CLAUDE.md

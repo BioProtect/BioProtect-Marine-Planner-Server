@@ -6,11 +6,7 @@ costs from cumulative impact data.
 """
 
 from handlers.base_handler import BaseHandler
-from handlers.websocket_handler import SocketHandler
 from services.service_error import ServicesError, raise_error
-from services.file_service import update_file_parameters
-from services.project_service import write_csv
-from functions.utils import create_cost_from_impact
 
 UNIFORM_COST_NAME = "Equal area"
 """The name of the cost profile that is equal area."""
@@ -141,44 +137,3 @@ class GetCostProfileActivitiesHandler(BaseHandler):
             })
         except ServicesError as e:
             raise_error(self, e.args[0])
-
-
-class CreateCostsFromImpactHandler(SocketHandler):
-    """Creates a cost file from cumulative impact data.
-
-    Args:
-        user (string): The name of the user.
-        project (string): The name of the project.
-        pu_filename (string): Planning unit filename.
-        impact_filename (string): Impact file table name.
-        impact_type (string): Type of impact.
-    Returns:
-        {"info": "New cost file created from Cumulative Impact"}
-    """
-
-    async def open(self):
-        print('CreateCostsFromImpactHandler: ')
-        try:
-            await super().open({
-                'info': "Creating Costs from Cumulative Impact..."
-            })
-        except ServicesError as e:
-            print('ServicesError as e: ', e)
-            pass
-        else:
-            self.validate_args(self.request.arguments,
-                          ['user', 'project', 'pu_filename',
-                           'impact_filename', 'impact_type'])
-            sql = "select filename from bioprotect.%s;" % self.get_argument(
-                'impact_filename')
-            records = await self.pg.execute(sql, return_format="Array")
-            impact_filename = records[0][0]
-            file_loc = "data/uploaded_rasters/" + impact_filename
-            create_cost_from_impact(self.get_argument('user'),
-                                    self.get_argument('project'),
-                                    self.get_argument('pu_filename'),
-                                    file_loc,
-                                    self.get_argument('impact_type'))
-            self.close({
-                'info': "New cost file created from Cumulative Impact",
-            })

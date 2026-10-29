@@ -168,7 +168,7 @@ class PostGIS:
             query = f'UPDATE bioprotect.{feature_class_name} SET geometry = bioprotect.ST_SplitAtDateLine(geometry);'
             await self.execute(query)
 
-    async def import_shapefile(self, folder, shapefile, feature_class_name, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):
+    async def import_shapefile(self, folder, shapefile, feature_class_name, s_epsg_code=None, t_epsg_code="EPSG:4326", splitAtDateline=True):
         check_zipped_shapefile(folder + shapefile)
         # When the caller asks us to autodetect the source CRS, we need the
         # .prj file — shapefiles store no CRS info inside the .shp itself.
@@ -184,10 +184,10 @@ class PostGIS:
                 )
         await self.import_file(folder, shapefile, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
 
-    async def import_gml(self, folder, gmlfilename, feature_class_name, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True):
+    async def import_gml(self, folder, gmlfilename, feature_class_name, s_epsg_code=None, t_epsg_code="EPSG:4326", splitAtDateline=True):
         await self.import_file(folder, gmlfilename, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
 
-    async def import_file_GDBFeatureClass(self, folder, fileGDB, sourceFeatureClass, destFeatureClass, s_epsg_code="EPSG:4326", t_epsg_code="EPSG:4326", splitAtDateline=True, where_clause=None):
+    async def import_file_GDBFeatureClass(self, folder, fileGDB, sourceFeatureClass, destFeatureClass, s_epsg_code=None, t_epsg_code="EPSG:4326", splitAtDateline=True, where_clause=None):
         await self.import_file(
             folder, fileGDB, destFeatureClass, s_epsg_code, t_epsg_code, splitAtDateline, sourceFeatureClass, where_clause=where_clause)
 

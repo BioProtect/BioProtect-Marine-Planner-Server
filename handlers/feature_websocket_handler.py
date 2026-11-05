@@ -6,6 +6,7 @@ so the frontend (App.jsx importFeatures -> WebSocketHandler.jsx) needs no edits.
 """
 
 import os
+import re
 
 from psycopg2 import sql
 
@@ -121,7 +122,10 @@ class ImportFeaturesWSHandler(SocketHandler):
                 if name:  # single feature name
                     feature_names = [name]
                 else:  # get the feature names from a field in the shapefile
-                    splitfield = self.get_argument('splitfield')
+                    # ponytail: mirror ogr2ogr's PG LAUNDER (lowercase, [-#' ] -> _),
+                    # since field names come from the .dbf in their original case.
+                    splitfield = re.sub(r"[-#' ]", '_',
+                                        self.get_argument('splitfield').lower())
 
                     # Rows with no value in the split field cannot belong to any
                     # feature class. Count them up front so the omission is

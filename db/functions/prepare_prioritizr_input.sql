@@ -87,8 +87,14 @@ BEGIN
       CASE WHEN cpv.status = 2 THEN 1 ELSE 0 END AS locked_out,
       %s
     FROM bioprotect.project_pus pp
-    JOIN bioprotect.h3_cells hc
-      ON hc.h3_index = pp.h3_index
+    -- h3_cells keys on (h3_index, project_area, resolution): overlapping grids
+    -- hold the same cell more than once. Take one geometry, or the join
+    -- duplicates PUs (run 252: dup key on results) or multiplies feature SUMs.
+    CROSS JOIN LATERAL (
+      SELECT h.geometry FROM bioprotect.h3_cells h
+       WHERE h.h3_index = pp.h3_index
+       LIMIT 1
+    ) hc
     JOIN bioprotect.cost_profile_values cpv
       ON cpv.project_pu_id = pp.id
      AND cpv.cost_profile_id = %s

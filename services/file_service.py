@@ -470,9 +470,10 @@ def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_te
         filenames = [f for f in zip_ref.namelist(
         ) if not f.startswith('__MACOSX')]
 
-        # Check for multiple shapefiles
-        extensions = [path.splitext(f)[1] for f in filenames]
-        if len(extensions) != len(set(extensions)) and reject_multiple_shapefiles:
+        # Count .shp files, not repeated extensions: ArcGIS exports ship both
+        # name.shp.xml and name.xml, which is still one shapefile.
+        shps = [f for f in filenames if f.lower().endswith('.shp')]
+        if len(shps) > 1 and reject_multiple_shapefiles:
             raise ServicesError("The zip file contains multiple shapefiles.")
 
         # Filter files based on the search term, if specified
@@ -487,8 +488,12 @@ def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_te
             raise ServicesError(
                 "The zipped file should not contain directories.")
 
-        # Extract files
-        root_filename = path.splitext(filenames[0])[0]
+        # Name the shapefile after its .shp, not whatever file the zip lists
+        # first (a map.png or readme first would give the wrong root).
+        shps = [f for f in filenames if f.lower().endswith('.shp')]
+        if not shps:
+            raise ServicesError("The zip file does not contain a .shp file.")
+        root_filename = path.splitext(shps[0])[0]
         try:
             if search_term:
                 for f in filenames:

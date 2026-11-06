@@ -384,8 +384,11 @@ async def fetch_project_hexes(pg, project_id: int) -> list[dict]:
                pp.h3_index        AS h3_index,
                ST_AsGeoJSON(hc.geometry) AS geom_json
           FROM bioprotect.project_pus pp
-          JOIN bioprotect.h3_cells hc
-            ON hc.h3_index = pp.h3_index
+          -- one geometry per cell: overlapping grids repeat h3_index
+          CROSS JOIN LATERAL (
+            SELECT h.geometry FROM bioprotect.h3_cells h
+             WHERE h.h3_index = pp.h3_index LIMIT 1
+          ) hc
          WHERE pp.project_id = %s
          ORDER BY pp.id;
         """,

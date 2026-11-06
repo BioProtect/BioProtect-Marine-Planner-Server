@@ -1,14 +1,23 @@
 from dotenv import dotenv_values
 from sqlalchemy import create_engine
 from platform import system
-from os import path, sep
+from os import environ, path, sep
 import sys
+
+
+def load_env_local():
+    """.env.local, with BIOPROTECT_<KEY> environment variables overriding
+    <key> (e.g. BIOPROTECT_DB_NAME -> db_name). Tests use this to point the
+    app at bioprotect_test and a temp import folder."""
+    return {**dotenv_values('.env.local'),
+            **{k[11:].lower(): v for k, v in environ.items()
+               if k.startswith('BIOPROTECT_')}}
 
 
 class DBConfig:
     def __init__(self):
         # Load environment and server configuration
-        self.db_config = dotenv_values('.env.local')
+        self.db_config = load_env_local()
         # print("Loaded .env.local →", repr(self.db_config))
 
         self.set_executables()

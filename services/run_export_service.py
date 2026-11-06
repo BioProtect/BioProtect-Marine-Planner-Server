@@ -81,7 +81,11 @@ def _build_export_sql(table_name, project_id, run_ids, cost_profile_id):
       ({sum_expr})::int                     AS sel_freq,
       ROUND((({sum_expr}) * 100.0 / {n})::numeric, 1)::float8 AS sel_pct
     FROM bioprotect.project_pus pp
-    JOIN bioprotect.h3_cells hc ON hc.h3_index = pp.h3_index
+    -- one geometry per cell: overlapping grids repeat h3_index in h3_cells
+    CROSS JOIN LATERAL (
+      SELECT h.geometry FROM bioprotect.h3_cells h
+       WHERE h.h3_index = pp.h3_index LIMIT 1
+    ) hc
     LEFT JOIN bioprotect.cost_profile_values cpv
       ON cpv.project_pu_id = pp.id
       {cp_clause}

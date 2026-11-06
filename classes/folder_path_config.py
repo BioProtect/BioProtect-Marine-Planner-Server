@@ -9,8 +9,9 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 import json
-from dotenv import dotenv_values
 from pyproj import CRS
+
+from classes.db_config import load_env_local
 
 
 class FolderPathConfig:
@@ -30,7 +31,7 @@ class FolderPathConfig:
 
     def setup_environment(self):
         """Sets up the environment variables using the setup_environment method."""
-        gis_config = dotenv_values('.env.local')
+        gis_config = load_env_local()
         data_path = Path(__file__).resolve().parent.parent
 
         # Load EUNIS codes
@@ -79,10 +80,12 @@ class FolderPathConfig:
 
     def initialize_paths(self):
         """Initializes folder paths and executable paths."""
-        self.EXPORT_FOLDER = self.set_path(
-            self.PROJECT_FOLDER, "exports", True)
-        self.IMPORT_FOLDER = self.set_path(
-            self.PROJECT_FOLDER, "imports", True)
+        # test_*_dir only come from BIOPROTECT_TEST_*_DIR (tests/conftest.py).
+        # Not export_folder: .env.local already uses that key for data/tmp.
+        self.EXPORT_FOLDER = self.gis_config.get('test_export_dir') or \
+            self.set_path(self.PROJECT_FOLDER, "exports", True)
+        self.IMPORT_FOLDER = self.gis_config.get('test_import_dir') or \
+            self.set_path(self.PROJECT_FOLDER, "imports", True)
 
     def load_maresa_data(self, maresa_file):
         """Load and clean the MarESA data."""

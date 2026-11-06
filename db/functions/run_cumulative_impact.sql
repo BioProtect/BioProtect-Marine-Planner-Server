@@ -66,8 +66,13 @@ BEGIN
                pp.h3_index,
                ST_Centroid(hc.geometry) AS hex_centroid
           FROM bioprotect.project_pus pp
-          JOIN bioprotect.h3_cells hc
-            ON hc.h3_index = pp.h3_index
+          -- One geometry per cell: overlapping grids repeat h3_index in
+          -- h3_cells, which would multiply every hex's impact.
+          CROSS JOIN LATERAL (
+            SELECT h.geometry FROM bioprotect.h3_cells h
+             WHERE h.h3_index = pp.h3_index
+             LIMIT 1
+          ) hc
          WHERE pp.project_id = _project_id
     ),
     -- Distinct activity geometries, simplified for performance

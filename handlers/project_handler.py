@@ -363,12 +363,23 @@ class ProjectHandler(BaseHandler):
             SELECT %s AS project_id, hc.h3_index
             FROM bioprotect.h3_cells hc
             JOIN bioprotect.metadata_planning_units mpu
-                ON LOWER(TRIM(hc.project_area)) = LOWER(TRIM(split_part(mpu.alias, ' (', 1)))
+                -- alias is "<area> (Res N)"; strip only that suffix, the
+                -- area name itself may contain brackets
+                ON LOWER(TRIM(hc.project_area)) = LOWER(TRIM(
+                    regexp_replace(mpu.alias, '\s*\(Res \d+\)$', '')))
             WHERE mpu.unique_id = %s
               AND hc.resolution = %s
             """,
             [project_id, planning_unit_id, resolution]
         )
+        n = await self.pg.execute(
+            "SELECT count(*) AS n FROM bioprotect.project_pus WHERE project_id = %s",
+            [project_id], return_format="Array")
+        if n[0]["n"] == 0:
+            # cascades to user_projects and project_pus
+            await self.pg.execute("DELETE FROM bioprotect.projects WHERE id = %s", [project_id])
+            raise ServicesError(
+                f"Planning grid has no cells at resolution {resolution}")
         # A new project's rows are unknown to the planner until analysed,
         # and it then badly misjudges joins on project_pus
         await self.pg.execute("ANALYZE bioprotect.project_pus;")

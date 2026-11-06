@@ -161,13 +161,15 @@ class PlanningGridWSHandler(SocketHandler):
         project_area_name = data.get('alias')
         description = data.get('description')
         resolution = int(data.get('resolution', 7))
+        # Reply and return: nothing is created yet, so the except block's
+        # cleanup must not run
         if resolution not in (6, 7, 8, 9):
-            raise ServicesError(
-                "Invalid resolution. Allowed values: 6, 7, 8, 9.")
+            self.send_response({"error": "Invalid resolution. Allowed values: 6, 7, 8, 9."})
+            return
 
         if not all([shapefile_path or geojson, project_area_name, description]):
-            raise ServicesError(
-                "Missing required fields in WebSocket message.")
+            self.send_response({"error": "Missing required fields in WebSocket message."})
+            return
 
         scale_level = self.get_scale_level(resolution)
         view_name = f"v_h3_{self.normalize_name(project_area_name)}_res{resolution}"

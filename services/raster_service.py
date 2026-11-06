@@ -167,7 +167,13 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None, fallback_crs=N
                 raise ValueError(
                     "The raster does not overlap any planning grid hexes."
                 ) from exc
-            window = window.round_offsets().round_lengths()
+            # Round outward to every pixel the box touches: rounding offsets
+            # and lengths separately turns a sub-pixel box (pixels coarser
+            # than the grid) into a 0-wide window.
+            col0, row0 = math.floor(window.col_off), math.floor(window.row_off)
+            window = Window(col0, row0,
+                            math.ceil(window.col_off + window.width) - col0,
+                            math.ceil(window.row_off + window.height) - row0)
             if window.width < 1 or window.height < 1:
                 raise ValueError(
                     "The raster does not overlap any planning grid hexes."

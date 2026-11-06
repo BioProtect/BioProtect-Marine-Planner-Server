@@ -10,6 +10,27 @@ from tornado.web import HTTPError, RequestHandler
 
 proj_paths = get_folder_path_config()
 
+_PROJECT_ROLES = ["viewer", "editor", "owner"]
+
+
+async def has_project_access(pg, user_id, project_id, min_role="editor"):
+    """True when user_id is a member of project_id with at least min_role,
+    or a global Admin. Anonymous (None) never has access."""
+    if user_id is None:
+        return False
+    roles = _PROJECT_ROLES[_PROJECT_ROLES.index(min_role):]
+    rows = await pg.execute(
+        """
+        SELECT 1 FROM bioprotect.users u
+         WHERE u.id = %s
+           AND (u.role = 'Admin' OR EXISTS (
+                SELECT 1 FROM bioprotect.user_projects up
+                 WHERE up.user_id = u.id AND up.project_id = %s
+                   AND up.role = ANY(%s)))
+        """,
+        data=[user_id, project_id, roles], return_format="Array")
+    return bool(rows)
+
 
 class BaseHandler(RequestHandler):
     """Base class to handle all HTTP requests. Handles authentication, authorisation, exception handling, writing headers and sending responses. All REST request handlers derive from this class.
@@ -86,6 +107,12 @@ class BaseHandler(RequestHandler):
             return int(uid.decode() if isinstance(uid, (bytes, bytearray)) else uid)
         except Exception:
             raise ServicesError("Invalid session user")
+
+    async def _require_project_access(self, project_id, min_role="editor"):
+        """Raises unless the signed-in user may act on project_id."""
+        user_id = await self._get_authenticated_user_id()
+        if not await has_project_access(self.pg, user_id, project_id, min_role):
+            raise ServicesError("Access denied")
 
     def validate_args(self, arguments, required_keys):
         """Validates that all required arguments are present."""

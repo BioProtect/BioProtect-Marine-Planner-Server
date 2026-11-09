@@ -5,6 +5,7 @@ import pty
 import re
 import signal
 
+from handlers.base_handler import has_project_access
 from handlers.websocket_handler import SocketHandler
 from services.service_error import ServicesError, raise_error
 
@@ -126,6 +127,13 @@ class PrioritizrWSHandler(SocketHandler):
             created_by = int(uid.decode() if uid else self.get_argument("user"))
         except (AttributeError, TypeError, ValueError):
             created_by = None
+
+        # Only the session cookie counts for access: the `user` argument is
+        # client-supplied.
+        if not await has_project_access(self.pg, int(uid) if uid else None, project_id):
+            self.send_response({"status": "Error", "error": "Access denied"})
+            self.close()
+            return
 
         # === create run ===
         row = await self.pg.execute(

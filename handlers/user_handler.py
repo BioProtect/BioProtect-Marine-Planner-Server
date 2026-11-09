@@ -61,34 +61,44 @@ class UserHandler(BaseHandler):
         except ServicesError as e:
             raise_error(self, e.args[0])
 
+    async def _is_admin(self, user_id):
+        """Global role from the DB, not the cookie."""
+        row = await self.pg.execute(
+            "SELECT role FROM bioprotect.users WHERE id = %s", [user_id],
+            return_format="Array")
+        return bool(row) and row[0]["role"] == "Admin"
+
     async def create_user(self):
-        self.validate_args(self.request.arguments, [
-                           "user", "password", "fullname", "email"])
+        """Admin only. JSON body: username, email, password, optional role
+        ('User' by default, or 'Admin')."""
+        if not await self._is_admin(await self._get_authenticated_user_id()):
+            raise ServicesError("Access denied")
+
+        body = json.loads(self.request.body or "{}")
+        username = body.get("username")
+        email = body.get("email")
+        password = body.get("password")
+        role = body.get("role", "User")
+
+        if not username or not email or not password:
+            self.set_status(400)
+            self.write({"message": "Username, email, and password are required"})
+            return
+        if role not in ("User", "Admin"):
+            self.set_status(400)
+            self.write({"message": "role must be 'User' or 'Admin'"})
+            return
+
         try:
-            body = json.loads(self.request.body)
-            username = body.get("username")
-            email = body.get("email")
-            password = body.get("password")
-            role = body.get("role", "user")
-            fullname = self.get_argument('fullname')
-
-            if not username or not email or not password:
-                self.set_status(400)
-                self.write(
-                    {"message": "Username, email, and password are required"})
-                return
-
-            password_hash = bcrypt.hash(password)
-            new_user = await self.pg.execute(
+            await self.pg.execute(
                 """
-                INSERT INTO users (username, email, password_hash, role, report_units, basemap, date_created, show_popup, use_feature_colours)
-                VALUES (%s, %s, %s, 'Admin', 'Km2', 'Light', CURRENT_TIMESTAMP, FALSE, FALSE)
+                INSERT INTO bioprotect.users (username, email, password_hash, role, report_units, basemap, date_created, show_popup, use_feature_colours)
+                VALUES (%s, %s, %s, %s, 'Km2', 'Light', CURRENT_TIMESTAMP, FALSE, FALSE)
                 """,
-                data=[username, email, password_hash],
-                return_format="Dict"
+                data=[username, email, bcrypt.hash(password), role],
             )
             self.set_status(201)
-            self.write({"message": "User created", "user": new_user})
+            self.write({"message": "User created"})
 
         except Exception as e:
             # pg.execute wraps DB errors in ServicesError; the original is the __cause__
@@ -214,10 +224,18 @@ class UserHandler(BaseHandler):
         """
         Update an existing user by ID (password, username, email, role).
         """
+        # Self-service only, unless the caller is a global Admin; only an
+        # Admin may change a role. Role comes from the DB, not the cookie.
+        me = await self._get_authenticated_user_id()
+        is_admin = await self._is_admin(me)
+        user_id = int(self.get_argument("user_id", me))
+        if (user_id != me or "role" in self.request.arguments) and not is_admin:
+            raise ServicesError("Access denied")
+
         try:
             body = {k: self.get_argument(k) for k in self.request.arguments}
-            print("BODY====== ", body)
-            user_id = int(self.get_argument("user_id"))
+            if "name" in body:  # ProfileDialog sends name
+                body.setdefault("username", body.pop("name"))
             updates = []
             params = []
 
@@ -254,6 +272,12 @@ class UserHandler(BaseHandler):
             """
 
             await self.pg.execute(query, data=params)
+
+            # get_user looks the user up by this cookie: keep it current
+            # after a self-rename (someone else's refreshes at their next login)
+            new_name = body.get("username")
+            if user_id == me and new_name:
+                self.set_signed_cookie("user", new_name)
 
             self.write({"success": True, "message": "User updated"})
 

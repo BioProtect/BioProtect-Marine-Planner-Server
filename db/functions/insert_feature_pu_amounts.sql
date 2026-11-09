@@ -53,6 +53,18 @@ BEGIN
         -- CRS (geography when that is geographic; see area_km2.sql). km² is
         -- the app-wide canonical unit for feature amounts — keeps numbers
         -- readable and avoids prioritizr's 1e6 presolve numerical cap.
+        -- Cut the feature into <=256-vertex pieces first. Without this, every
+        -- cell runs ST_Intersection against the whole (often huge) polygon:
+        -- a 33k-vertex feature over 18k cells took 50s vs 1.5s subdivided,
+        -- same amounts. ON COMMIT DROP: one function call = one transaction.
+        DROP TABLE IF EXISTS pg_temp.feature_pieces;
+        EXECUTE format($f$
+            CREATE TEMP TABLE feature_pieces ON COMMIT DROP AS
+            SELECT ST_Subdivide(geometry, 256) AS geometry FROM bioprotect.%I
+        $f$, p_feature_class);
+        CREATE INDEX ON pg_temp.feature_pieces USING gist (geometry);
+        ANALYZE pg_temp.feature_pieces;
+
         EXECUTE format($f$
             INSERT INTO bioprotect.pu_feature_amounts (project_id, feature_unique_id, h3_index, amount)
             SELECT
@@ -66,10 +78,10 @@ BEGIN
                     %L::integer
                 ) AS amount
             FROM bioprotect.%I AS grid
-            JOIN bioprotect.%I AS feat
+            JOIN pg_temp.feature_pieces AS feat
               ON ST_Intersects(grid.geometry, feat.geometry)
             GROUP BY grid.h3_index
-        $f$, p_project_id, p_feature_id, v_area_srid, v_grid_table, p_feature_class);
+        $f$, p_project_id, p_feature_id, v_area_srid, v_grid_table);
     END IF;
 END;
 $function$

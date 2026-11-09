@@ -810,9 +810,11 @@ class ProjectHandler(BaseHandler):
                 "Lengths of features, targets, and spf must match.")
 
         for idx, fid in enumerate(feature_ids):
-            tv = float(targets[idx]) if targets and idx < len(
-                targets) else None
-            spf = float(spfs[idx]) if spfs and idx < len(spfs) else None
+            # null/'' = not set; the SQL function defaults a missing target to 0
+            t = targets[idx] if idx < len(targets) else None
+            s = spfs[idx] if idx < len(spfs) else None
+            tv = float(t) if t not in (None, "") else None
+            spf = float(s) if s not in (None, "") else None
             weight = None
             target_type = "prop"  # later if you want to support other types
 

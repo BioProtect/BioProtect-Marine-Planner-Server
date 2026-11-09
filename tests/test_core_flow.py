@@ -70,6 +70,23 @@ async def test_project_gets_grid_cells_edges_owner_and_feature_targets(server, g
         pf = await rows(server.pg, "SELECT target_value, spf FROM bioprotect.project_features "
                                    "WHERE project_id = %s AND feature_unique_id = %s", [pid, fid])
         assert [(float(r["target_value"]), float(r["spf"])) for r in pf] == [(40.0, 2.0)]
+
+        # Frontend sends null for a feature with no target set (prod 500, 2026-11-09)
+        status, body = await api(server, "POST", "/server/projects",
+                                 {"action": "update_features"},
+                                 {"project_id": pid, "interest_features": [fid],
+                                  "target_values": [None], "spf_values": [None]})
+        assert status == 200 and "error" not in (body or {}), body
+        pf = await rows(server.pg, "SELECT target_value FROM bioprotect.project_features "
+                                   "WHERE project_id = %s AND feature_unique_id = %s", [pid, fid])
+        assert [float(r["target_value"]) for r in pf] == [40.0]  # null kept the target set earlier
+        # ...and a newly added feature with no target stays unset (NULL), not 0
+        await server.pg.execute("DELETE FROM bioprotect.project_features WHERE project_id = %s", [pid])
+        await api(server, "POST", "/server/projects", {"action": "update_features"},
+                  {"project_id": pid, "interest_features": [fid], "target_values": [None]})
+        pf = await rows(server.pg, "SELECT target_value FROM bioprotect.project_features "
+                                   "WHERE project_id = %s AND feature_unique_id = %s", [pid, fid])
+        assert [r["target_value"] for r in pf] == [None]
     finally:
         await server.pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE unique_id = %s", [fid])
 

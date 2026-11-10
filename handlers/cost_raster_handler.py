@@ -34,7 +34,7 @@ import logging
 import os
 
 from classes.folder_path_config import get_folder_path_config
-from handlers.base_handler import BaseHandler
+from handlers.base_handler import BaseHandler, has_project_access
 from handlers.websocket_handler import SocketHandler
 from services.raster_service import (
     SUPPORTED_STATS,
@@ -175,6 +175,8 @@ class UploadRasterCostHandler(SocketHandler):
                 raise ServicesError(
                     "floor must be strictly between 0 and 1."
                 )
+            if not await has_project_access(self.pg, await self._owner_id(), project_id):
+                raise ServicesError("Access denied")
 
             raster_path = _resolve_uploaded_raster(filename)
             # Reprojected copy lives next to the source.
@@ -621,6 +623,7 @@ class CostRasterLibraryHandler(BaseHandler):
         if not raster_id or not project_id:
             raise ServicesError("raster_id and project_id are required.")
 
+        await self._require_project_access(int(project_id))
         await self._assert_readable(int(raster_id))
 
         floor = float(body.get("floor", 0.001))

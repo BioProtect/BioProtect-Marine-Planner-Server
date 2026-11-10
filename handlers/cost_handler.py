@@ -26,6 +26,13 @@ class DeleteCostHandler(BaseHandler):
             self.validate_args(self.request.arguments, ['cost_profile_id'])
             cost_profile_id = int(self.get_argument("cost_profile_id"))
 
+            owner = await self.pg.execute(
+                "SELECT project_id FROM bioprotect.cost_profiles WHERE id = %s;",
+                data=[cost_profile_id], return_format="Array")
+            if not owner:
+                raise ServicesError(f"Cost profile {cost_profile_id} not found.")
+            await self._require_project_access(owner[0]["project_id"])
+
             # Check if this profile is the active profile on any project
             active_check = await self.pg.execute(
                 "SELECT id, name FROM bioprotect.projects "
@@ -71,6 +78,7 @@ class SetActiveCostProfileHandler(BaseHandler):
                           ['project_id', 'cost_profile_id'])
             project_id = int(self.get_argument("project_id"))
             cost_profile_id = int(self.get_argument("cost_profile_id"))
+            await self._require_project_access(project_id)
 
             # Verify the cost profile belongs to this project
             result = await self.pg.execute(

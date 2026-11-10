@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import uuid
@@ -92,8 +93,11 @@ class PostGIS:
                     raise ServicesError("That item already exists") from e
                 except errors.InternalError as e:
                     raise ServicesError("Query stopped: " + str(e))
+                except asyncio.TimeoutError as e:  # str() of this is '', so the log line used to be blank
+                    logging.error(f"SQL timed out after {self.pool.timeout}s: {str(sql_query)[:200]}")
+                    raise ServicesError("Database query timed out") from e
                 except Exception as e:
-                    logging.error(f"Error executing SQL: {e}")
+                    logging.error(f"Error executing SQL: {e!r}")
                     raise ServicesError(
                         f"Database query failed: {str(e)}") from e
 

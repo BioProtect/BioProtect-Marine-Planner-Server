@@ -180,3 +180,61 @@ async def test_self_rename_via_name_refreshes_the_user_cookie(server):
         assert got == [{"username": "pytest_user_renamed"}]
     finally:
         await server.pg.execute("UPDATE bioprotect.users SET username = 'pytest_user' WHERE id = %s", [uid])
+
+
+# --- user list / delete (Admin "Manage Users") -----------------------------
+
+async def _new_user(server):
+    import uuid
+    name = f"pytest_del_{uuid.uuid4().hex[:6]}"
+    code, _ = await api(server, "POST", "/server/users", {"action": "create"},
+                        {"username": name, "email": f"{name}@x.test", "password": "pw"})
+    assert code == 201
+    return name
+
+
+async def test_only_an_admin_lists_users(server):
+    _, body = await api(server, "GET", "/server/users", {"action": "list"})
+    assert {"pytest_admin", "pytest_user"} <= {u["username"] for u in body["users"]}
+    assert "password_hash" not in body["users"][0]
+    _, body = await api(server, "GET", "/server/users", {"action": "list"}, user="pytest_user")
+    assert "users" not in body and "error" in body
+
+
+async def test_only_an_admin_deletes_a_user_and_the_row_goes(server):
+    name = await _new_user(server)
+    try:
+        _, body = await api(server, "GET", "/server/users", {"action": "delete", "user": name},
+                            user="pytest_user")
+        assert "error" in body
+        assert await rows(server.pg, "SELECT 1 FROM bioprotect.users WHERE username = %s", [name])
+        _, body = await api(server, "GET", "/server/users", {"action": "delete", "user": name})
+        assert "error" not in body, body
+        assert await rows(server.pg, "SELECT 1 FROM bioprotect.users WHERE username = %s", [name]) == []
+    finally:
+        await server.pg.execute("DELETE FROM bioprotect.users WHERE username = %s", [name])
+
+
+async def test_delete_refuses_your_own_account_and_unknown_users(server):
+    _, body = await api(server, "GET", "/server/users", {"action": "delete", "user": "pytest_admin"})
+    assert "own account" in body["error"]
+    _, body = await api(server, "GET", "/server/users", {"action": "delete", "user": "pytest_nobody"})
+    assert "not found" in body["error"]
+
+
+async def test_delete_refuses_a_user_who_still_owns_projects(server):
+    name = await _new_user(server)
+    pid = None
+    try:
+        uid = (await rows(server.pg, "SELECT id FROM bioprotect.users WHERE username = %s", [name]))[0]["id"]
+        pid = (await rows(server.pg, "INSERT INTO bioprotect.projects (name) VALUES (%s) RETURNING id",
+                          [f"{name} project"]))[0]["id"]
+        await server.pg.execute("INSERT INTO bioprotect.user_projects (user_id, project_id, role) "
+                                "VALUES (%s, %s, 'owner')", [uid, pid])
+        _, body = await api(server, "GET", "/server/users", {"action": "delete", "user": name})
+        assert "owns 1 project" in body["error"]
+        assert await rows(server.pg, "SELECT 1 FROM bioprotect.users WHERE id = %s", [uid])
+    finally:
+        if pid:
+            await server.pg.execute("DELETE FROM bioprotect.projects WHERE id = %s", [pid])
+        await server.pg.execute("DELETE FROM bioprotect.users WHERE username = %s", [name])

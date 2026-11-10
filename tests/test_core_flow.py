@@ -87,8 +87,23 @@ async def test_project_gets_grid_cells_edges_owner_and_feature_targets(server, g
         pf = await rows(server.pg, "SELECT target_value FROM bioprotect.project_features "
                                    "WHERE project_id = %s AND feature_unique_id = %s", [pid, fid])
         assert [r["target_value"] for r in pf] == [None]
+
+        # Frontend sends CSV; an unset target is an empty slot, not dropped
+        # ("Lengths of features, targets, and spf must match", prod 2026-11-10)
+        fid2 = (await rows(server.pg, "INSERT INTO bioprotect.metadata_interest_features "
+                                      "(feature_class_name, alias) VALUES (%s, %s) RETURNING unique_id",
+                           [f"pytest_f_{uuid.uuid4().hex[:6]}"] * 2))[0]["unique_id"]
+        status, body = await api(server, "POST", "/server/projects", {"action": "update_features"},
+                                 {"project_id": pid, "interest_features": f"{fid},{fid2}",
+                                  "target_values": ",25", "spf_values": ","})
+        assert status == 200 and "error" not in (body or {}), body
+        pf = await rows(server.pg, "SELECT feature_unique_id, target_value FROM bioprotect.project_features "
+                                   "WHERE project_id = %s ORDER BY feature_unique_id", [pid])
+        assert [(r["feature_unique_id"], r["target_value"] and float(r["target_value"])) for r in pf] \
+            == [(fid, None), (fid2, 25.0)]
     finally:
-        await server.pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE unique_id = %s", [fid])
+        await server.pg.execute("DELETE FROM bioprotect.metadata_interest_features "
+                                "WHERE unique_id = ANY(%s)", [[fid] + ([fid2] if "fid2" in locals() else [])])
 
 
 async def test_project_on_grid_whose_name_has_brackets(server):

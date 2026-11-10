@@ -58,6 +58,15 @@ class ImportFeaturesWSHandler(SocketHandler):
         self.finish_feature_import = finish_feature_import
         self.get_unique_feature_name = get_unique_feature_name
 
+    async def _remove_features(self, tables):
+        """Drop feature tables (and their metadata rows) made by a failed upload."""
+        while tables:
+            table = tables.pop()
+            await self.pg.execute(sql.SQL("DROP TABLE IF EXISTS bioprotect.{}")
+                                  .format(sql.Identifier(table)))
+            await self.pg.execute("DELETE FROM bioprotect.metadata_interest_features "
+                                  "WHERE feature_class_name = %s", [table])
+
     async def open(self):
         try:
             await super().open({'info': "Importing features.."})
@@ -75,6 +84,10 @@ class ImportFeaturesWSHandler(SocketHandler):
             else:
                 name = None
             scratch_name = None
+            # feature tables this upload has made; removed again if any step
+            # fails, so a failed upload leaves nothing behind to clean up
+            created = []
+            completed = False
             try:
                 # get a scratch name for the import
                 scratch_name = self.get_unique_feature_name("scratch_")
@@ -193,6 +206,18 @@ class ImportFeaturesWSHandler(SocketHandler):
                             f"{len(feature_names)} feature(s)"
                         )
                     })
+                # Names must be unique (metadata alias constraint). Check them all
+                # now rather than failing part-way through a long import.
+                taken = await self.pg.execute(
+                    "SELECT alias FROM bioprotect.metadata_interest_features "
+                    "WHERE alias = ANY(%s) ORDER BY alias",
+                    [feature_names], return_format="Array")
+                if taken:
+                    raise ServicesError(
+                        "These feature names already exist: "
+                        + ", ".join(f"'{r['alias']}'" for r in taken)
+                        + ". Delete or rename them, then import again.")
+
                 # split the imported feature class into separate feature classes
                 for feature_name in feature_names:
                     # create the new feature class
@@ -240,6 +265,7 @@ class ImportFeaturesWSHandler(SocketHandler):
                         description = f"Imported from '{shapefile}' and split by '{splitfield}' field"
 
                     await self.pg.execute(query, params)
+                    created.append(feature_class_name)
 
                     # add an index and a record in the metadata_interest_features table and start the upload to mapbox
                     geometryType = await self.pg.get_geometry_type(feature_class_name)
@@ -257,10 +283,12 @@ class ImportFeaturesWSHandler(SocketHandler):
                         'info': f"Feature '{feature_name}' imported",
                         'status': 'FeatureCreated'
                     })
+                completed = True
                 # complete
                 self.close({'info': "Features imported"})
 
             except ServicesError as e:
+                await self._remove_features(created)  # before the client hears it failed
                 self.send_response({
                     'status': 'Finished',
                     'error': str(e),
@@ -268,6 +296,9 @@ class ImportFeaturesWSHandler(SocketHandler):
                 })
                 self.close(clean=False)
             finally:
+                # all-or-nothing: undo the features this upload already made
+                if not completed:
+                    await self._remove_features(created)
                 # delete the scratch feature class
                 if scratch_name:
                     query = f'DROP TABLE IF EXISTS bioprotect."{scratch_name}"'

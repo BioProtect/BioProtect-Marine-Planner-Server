@@ -404,13 +404,13 @@ class ProjectHandler(BaseHandler):
             feature_ids = [int(x) for x in interest_features]
 
         if isinstance(target_values, str):
-            targets = [x.strip()
-                       for x in target_values.split(",") if x.strip()]
+            # keep empty slots (= not set) so positions line up with feature_ids
+            targets = [x.strip() for x in target_values.split(",")] if target_values.strip() else []
         else:
             targets = target_values or []
 
         if isinstance(spf_values, str):
-            spfs = [x.strip() for x in spf_values.split(",") if x.strip()]
+            spfs = [x.strip() for x in spf_values.split(",")] if spf_values.strip() else []
         else:
             spfs = spf_values or []
 
@@ -866,13 +866,13 @@ class ProjectHandler(BaseHandler):
             feature_ids = [int(x) for x in interest_features]
 
         if isinstance(target_values, str):
-            targets = [x.strip()
-                       for x in target_values.split(",") if x.strip()]
+            # keep empty slots (= not set) so positions line up with feature_ids
+            targets = [x.strip() for x in target_values.split(",")] if target_values.strip() else []
         else:
             targets = target_values or []
 
         if isinstance(spf_values, str):
-            spfs = [x.strip() for x in spf_values.split(",") if x.strip()]
+            spfs = [x.strip() for x in spf_values.split(",")] if spf_values.strip() else []
         else:
             spfs = spf_values or []
 

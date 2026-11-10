@@ -309,10 +309,13 @@ async def finish_feature_import(feature_class_name, name, description, source, u
                 )
                 SELECT %s, %s, %s, now(), sub._area, %s, sub.extent, %s, %s
                 FROM (
-                    SELECT ST_Area(geom::geography) AS _area, box2d(geom) AS extent
-                    FROM (
-                        SELECT ST_Union(geometry) AS geom FROM bioprotect.{}
-                    ) AS sub2
+                    -- ponytail: summed areas, not ST_Union. Union of the CSO
+                    -- Sublittoral Sediments class (58k polygons) blew the 60s
+                    -- query cap on prod; the sum is ~40x faster. Overlapping
+                    -- polygons get counted twice, but _area is display-only.
+                    SELECT sum(ST_Area(geometry::geography)) AS _area,
+                           ST_Extent(geometry)::box2d AS extent
+                    FROM bioprotect.{}
                 ) AS sub
                 RETURNING unique_id;
             """
@@ -351,7 +354,7 @@ async def finish_feature_import(feature_class_name, name, description, source, u
         raise ServicesError(
             "An unexpected error occurred while creating the feature.") from e
 
-    return feature_id[0]
+    return feature_id[0]['unique_id']  # "Array" rows are dicts; callers send this as the id
 
 
 def _setCORS(obj):

@@ -1,5 +1,4 @@
 import json
-import shutil
 from os.path import join
 
 from psycopg2.errors import UniqueViolation
@@ -148,27 +147,40 @@ class UserHandler(BaseHandler):
         })
 
     async def get_users(self):
-        """Retrieve a list of users from the database."""
-
-        query = """
-            SELECT id, username, email, role, date_created
-            FROM bioprotect.users
-            ORDER BY username;
-        """
-        try:
-            users = await self.pg.execute(query, return_format="Dict")
-            return users
-        except Exception as e:
-            self.send_response({"error": f"Failed to fetch users: {str(e)}"})
+        """Admin only: every user, without password hashes."""
+        if not await self._is_admin(await self._get_authenticated_user_id()):
+            raise ServicesError("Access denied")
+        users = await self.pg.execute(
+            "SELECT id, username, email, role, date_created FROM bioprotect.users ORDER BY username",
+            return_format="Array")
+        self.send_response({'info': "Users received", 'users': users})
 
     async def delete_user(self):
+        """Admin only. Refuses your own account and anyone who still owns
+        projects (they'd be left with no members). user_projects rows cascade;
+        cost_rasters.owner_id goes NULL; created_by columns keep the name."""
         self.validate_args(self.request.arguments, ["user"])
+        admin_id = await self._get_authenticated_user_id()
+        if not await self._is_admin(admin_id):
+            raise ServicesError("Access denied")
 
-        try:
-            shutil.rmtree(self.folder_user)
-            self.send_response({'info': "User deleted"})
-        except Exception as e:
-            raise ServicesError(f"Failed to delete user: {e}")
+        found = await self.pg.execute(
+            "SELECT u.id, (SELECT count(*) FROM bioprotect.user_projects up "
+            "              WHERE up.user_id = u.id AND up.role = 'owner') AS owned "
+            "FROM bioprotect.users u WHERE u.username = %s",
+            [self.get_argument("user")], return_format="Array")
+        if not found:
+            raise ServicesError("User not found")
+        user = found[0]
+        if user["id"] == admin_id:
+            raise ServicesError("You can't delete your own account")
+        if user["owned"]:
+            n = user["owned"]
+            raise ServicesError(f"User owns {n} project{'s' if n > 1 else ''}: "
+                                "delete or reassign them first")
+
+        await self.pg.execute("DELETE FROM bioprotect.users WHERE id = %s", [user["id"]])
+        self.send_response({'info': "User deleted"})
 
     async def update_user_parameters(self):
         self.validate_args(self.request.arguments, ["user_id"])

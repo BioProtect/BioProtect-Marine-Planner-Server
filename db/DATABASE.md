@@ -539,7 +539,6 @@ metadata_activities
 | Function | Purpose |
 |----------|---------|
 | `run_cumulative_impact(project_id, activity_ids[], profile_name, description, user, floor)` | Compute CI and create cost profile (`floor` defaults to 0.001; costs rescaled into [floor, 1]) |
-| `run_impact_pipeline(project_id, activity_ids[], ...)` | Create pressures + run CI |
 | `create_pressures_from_activity(activity_id)` | Generate pressure rows from activity |
 | `aggregate_feature_stats(project_id)` | Aggregate feature statistics |
 
@@ -562,7 +561,6 @@ metadata_activities
 | `get_planning_units_for_project(project_id)` | Returns PU layer with cost from active profile |
 | `set_active_profile_pu_statuses(project_id, status1_h3[], status2_h3[], status3_h3[])` | Set locked_in/out/status3 |
 | `get_pu_grids()` | List available planning grids |
-| `get_project_pus(project_id)` | Get planning units for a project |
 
 ### Features
 | Function | Purpose |

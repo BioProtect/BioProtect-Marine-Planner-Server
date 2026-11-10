@@ -31,8 +31,10 @@ coverage gaps are filled with a sensible non-zero value.
 import logging
 import math
 import os
-import shutil
+import re
 import statistics
+import subprocess
+import tempfile
 from typing import Iterable
 
 import numpy as np
@@ -40,17 +42,20 @@ import rasterio
 from rasterio.crs import CRS
 from tornado.ioloop import IOLoop
 from rasterio.errors import WindowError
-from rasterio.transform import array_bounds
-from rasterio.warp import (
-    Resampling,
-    calculate_default_transform,
-    reproject,
-    transform_bounds,
-)
+from rasterio.warp import transform_bounds
 from rasterio.windows import Window, from_bounds as window_from_bounds
 
 
 log = logging.getLogger(__name__)
+
+# Above this many pixels an upload takes minutes; handlers say so up front
+# (prod's 1.3-billion-pixel fishing raster). The frontend has the same number.
+LARGE_RASTER_PIXELS = 100_000_000
+
+# GDAL's block cache defaults to 5% of RAM, per process (this one and every
+# gdalwarp child, which inherits the env). Pin it so a big raster costs the
+# same few hundred MB on any box. ponytail: 256 MB; raise for speed if RAM allows.
+os.environ.setdefault("GDAL_CACHEMAX", "256")
 
 
 # ----------------------------------------------------------------------------
@@ -67,46 +72,60 @@ def _source_crs(src, fallback_crs=None):
     )
 
 
-def reproject_to_wgs84(input_path: str, output_path: str, fallback_crs=None) -> None:
-    """Reproject a raster to EPSG:4326. Copies the file if already 4326.
+def reproject_to_wgs84(input_path: str, output_path: str, fallback_crs=None,
+                       progress=None, resampling="bilinear") -> None:
+    """Reproject a whole raster to EPSG:4326, on disk with bounded memory.
+
+    Same GDAL path as clip_and_reproject, without the clip. (This used to
+    read whole bands through rasterio, which OOM-kills on big rasters.)
+    """
+    clip_and_reproject(input_path, output_path, None, fallback_crs, progress,
+                       resampling)
+
+
+def raster_presence_to_gpkg(input_path, gpkg_path, fallback_crs=None,
+                            progress=None) -> None:
+    """Activity raster -> polygons of where band 1 is > 0, as a GeoPackage.
+
+    Activities are presence-only, so the raster becomes a yes/no mask before
+    polygonising: neighbouring activity pixels merge into one polygon instead
+    of one per distinct value (a continuous 30 m raster would otherwise be
+    roughly a polygon per pixel). Nearest-neighbour reprojection keeps each
+    pixel in or out; bilinear smeared every edge out by a pixel.
+    Everything stays on disk, so memory is flat whatever the raster size.
 
     Args:
-        input_path: Path to the source raster on disk.
-        output_path: Destination path for the reprojected raster.
-        fallback_crs: CRS to assume when the raster has none (the project
-            CRS, e.g. "EPSG:2193"). Without it a CRS-less raster is an error.
+        progress: Optional callable(stage, percent).
     """
-    with rasterio.open(input_path) as src:
-        src_crs = _source_crs(src, fallback_crs)
-        if src_crs.to_epsg() == 4326:
-            if input_path != output_path:
-                shutil.copy2(input_path, output_path)
-            return
+    work = os.path.dirname(gpkg_path)
+    repro = os.path.join(work, "repro.tif")
+    mask = os.path.join(work, "presence.tif")
+    step = (lambda name: (lambda pct: progress(name, pct))) if progress \
+        else (lambda name: None)
 
-        transform, width, height = calculate_default_transform(
-            src_crs, "EPSG:4326",
-            src.width, src.height, *src.bounds,
-        )
+    reproject_to_wgs84(input_path, repro, fallback_crs,
+                       step("Reprojecting raster"), resampling="near")
 
-        kwargs = src.meta.copy()
-        kwargs.update({
-            "crs": "EPSG:4326",
-            "transform": transform,
-            "width": width,
-            "height": height,
-        })
+    with rasterio.open(repro) as src:
+        nodata = src.nodata
+        profile = dict(driver="GTiff", width=src.width, height=src.height,
+                       count=1, dtype="uint8", crs=src.crs,
+                       transform=src.transform, nodata=0, tiled=True,
+                       compress="deflate", BIGTIFF="IF_SAFER")
+        with rasterio.open(mask, "w", **profile) as dst:
+            for _, win in dst.block_windows(1):
+                a = src.read(1, window=win)
+                keep = a > 0  # NaN > 0 is False
+                if nodata is not None:
+                    keep &= a != nodata
+                dst.write(keep.astype("uint8"), 1, window=win)
+    os.remove(repro)
 
-        with rasterio.open(output_path, "w", **kwargs) as dst:
-            for i in range(1, src.count + 1):
-                reproject(
-                    source=rasterio.band(src, i),
-                    destination=rasterio.band(dst, i),
-                    src_transform=src.transform,
-                    src_crs=src_crs,
-                    dst_transform=transform,
-                    dst_crs="EPSG:4326",
-                    resampling=Resampling.bilinear,
-                )
+    # nodata=0 is the mask, so only the 1s become polygons. GPKG output and
+    # positional layer/field args work on GDAL 3.4 (prod) as well as 3.13.
+    _run_gdal(["gdal_polygonize.py", mask, "-b", "1", "-f", "GPKG",
+               gpkg_path, "presence", "dn"], step("Building polygons"))
+    os.remove(mask)
 
 
 def bounds_wgs84(path: str, fallback_crs=None) -> tuple[float, float, float, float]:
@@ -126,17 +145,20 @@ def bounds_wgs84(path: str, fallback_crs=None) -> tuple[float, float, float, flo
         )
 
 
-def clip_and_reproject(input_path, output_path, bounds_4326=None, fallback_crs=None) -> None:
-    """Window-read a raster to a WGS84 footprint, then reproject to 4326.
+def clip_and_reproject(input_path, output_path, bounds_4326=None,
+                       fallback_crs=None, progress=None,
+                       resampling="bilinear") -> None:
+    """Clip a raster to a WGS84 footprint, then reproject to 4326, on disk.
 
     The clip is to the hexes we are about to extract against, not to any one
     project - the raster is discarded either way, so nothing reusable is lost,
     and we avoid reprojecting the parts of a continental raster that no
     planning grid covers.
 
-    ponytail: the window is read into memory in one go. Fine for a footprint
-    that covers a few planning grids; if a single extraction ever spans most
-    of a continent at full resolution, switch to block-wise warping.
+    The pixels never enter Python: the clip is a VRT window (no copy) and
+    gdalwarp streams it in chunks under a fixed memory budget, writing a
+    tiled GeoTIFF. A 1.3-billion-pixel Float32 upload OOM-killed the server
+    on prod (2026-11-10) when this was a numpy read of the whole window.
 
     Args:
         input_path: Source raster on disk, any CRS.
@@ -145,14 +167,16 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None, fallback_crs=N
             whole raster.
         fallback_crs: CRS to assume when the raster has none (the project
             CRS). Without it a CRS-less raster is an error.
+        progress: Optional callable(percent) for GDAL's progress, 0-100.
+        resampling: gdalwarp -r method; 'near' for presence/categorical data.
 
     Raises:
         ValueError: If the clip box does not overlap the raster.
+        RuntimeError: If GDAL fails.
     """
     with rasterio.open(input_path) as src:
         src_crs = _source_crs(src, fallback_crs)
-
-        window = None
+        window = Window(0, 0, src.width, src.height)
         if bounds_4326 is not None:
             src_box = transform_bounds(
                 "EPSG:4326", src_crs, *bounds_4326, densify_pts=21
@@ -178,43 +202,45 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None, fallback_crs=N
                 raise ValueError(
                     "The raster does not overlap any planning grid hexes."
                 )
+        assign_srs = [] if src.crs else ["-a_srs", src_crs.to_string()]
+        is_4326 = src_crs.to_epsg() == 4326
 
-        data = src.read(window=window)
-        src_transform = (
-            src.transform if window is None else src.window_transform(window)
-        )
-        height, width = data.shape[1], data.shape[2]
+    srcwin = ["-srcwin", str(window.col_off), str(window.row_off),
+              str(window.width), str(window.height)]
+    tiled = ["-co", "TILED=YES", "-co", "COMPRESS=DEFLATE",
+             "-co", "BIGTIFF=IF_SAFER"]
 
-        profile = src.profile.copy()
-        profile.update(transform=src_transform, width=width, height=height,
-                       crs=src_crs)
+    if is_4326:
+        # Already WGS84: cut the window out, no resampling.
+        _run_gdal(["gdal_translate", *srcwin, *assign_srs, *tiled,
+                   input_path, output_path], progress)
+        return
 
-        if src_crs.to_epsg() == 4326:
-            with rasterio.open(output_path, "w", **profile) as dst:
-                dst.write(data)
-            return
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(output_path) or None) as tmp:
+        vrt = os.path.join(tmp, "clip.vrt")
+        _run_gdal(["gdal_translate", "-q", "-of", "VRT", *srcwin, *assign_srs,
+                   input_path, vrt])
+        # ponytail: -wm 256 (MB) caps GDAL's working memory; raise it if a
+        # big warp is too slow and the box has the RAM.
+        _run_gdal(["gdalwarp", "-overwrite", "-t_srs", "EPSG:4326",
+                   "-r", resampling, "-wm", "256", *tiled, vrt, output_path],
+                  progress)
 
-        dst_transform, dst_w, dst_h = calculate_default_transform(
-            src_crs, "EPSG:4326", width, height,
-            *array_bounds(height, width, src_transform),
-        )
-        profile.update({
-            "crs": "EPSG:4326",
-            "transform": dst_transform,
-            "width": dst_w,
-            "height": dst_h,
-        })
-        with rasterio.open(output_path, "w", **profile) as dst:
-            for i in range(1, src.count + 1):
-                reproject(
-                    source=data[i - 1],
-                    destination=rasterio.band(dst, i),
-                    src_transform=src_transform,
-                    src_crs=src_crs,
-                    dst_transform=dst_transform,
-                    dst_crs="EPSG:4326",
-                    resampling=Resampling.bilinear,
-                )
+
+def _run_gdal(cmd, progress=None) -> None:
+    """Run a GDAL command-line tool, reporting its 0...10...20 progress."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    output, last = "", -1
+    for ch in iter(lambda: proc.stdout.read(1), ""):
+        output += ch
+        if progress and ch == ".":
+            m = re.search(r"(\d+)\.*$", output)
+            if m and int(m.group(1)) > last:
+                last = int(m.group(1))
+                progress(last)
+    if proc.wait() != 0:
+        raise RuntimeError(f"{cmd[0]} failed: {output.strip()[-500:]}")
 
 
 # ----------------------------------------------------------------------------
@@ -254,6 +280,16 @@ def get_raster_band_info(path: str) -> dict:
             "width": src.width,
             "height": src.height,
         }
+
+
+def large_raster_warning(info: dict) -> str | None:
+    """The 'this will take minutes' message for a big raster, else None."""
+    pixels = info["width"] * info["height"]
+    if pixels < LARGE_RASTER_PIXELS:
+        return None
+    return (f"Large raster: {info['width']:,} x {info['height']:,} "
+            f"= {pixels / 1e6:,.0f} million pixels. This can take several "
+            "minutes - keep this page open; progress is shown here as it goes.")
 
 
 # ----------------------------------------------------------------------------
@@ -327,15 +363,18 @@ def pick_sampling_method(pix_area: float, resolution, ratio=None) -> str:
     return "centroid" if pix_area >= ratio * hex_area else "exact"
 
 
+# Pixels per strip read by sample_raster_at_centroids (~64 MB of Float32).
+STRIP_PIXELS = 16_000_000
+
+
 def sample_raster_at_centroids(raster_path, points, band: int) -> list[dict]:
     """Read the pixel under each point. One vectorised lookup, no polygons.
 
     This is the whole saving: no GeoJSON parsing, no per-polygon coverage
     maths, and no 3-million-feature list in memory - just three arrays.
 
-    ponytail: reads the band into memory in one go, which is fine for the
-    clipped footprints we sample. Switch to windowed reads if a single
-    extraction ever needs a band bigger than RAM.
+    The band is read in horizontal strips of ~STRIP_PIXELS, and only the
+    strips that hold a point, so memory stays flat however big the raster.
 
     Args:
         raster_path: WGS84 raster on disk.
@@ -353,25 +392,34 @@ def sample_raster_at_centroids(raster_path, points, band: int) -> list[dict]:
     lats = np.fromiter((float(p["lat"]) for p in points), dtype="float64",
                        count=len(points))
 
+    values = np.full(len(points), np.nan, dtype="float64")
     with rasterio.open(raster_path) as src:
         if band < 1 or band > src.count:
             raise ValueError(
                 f"Band {band} out of range (raster has {src.count} bands)."
             )
-        arr = src.read(band).astype("float64")
         nodata = src.nodatavals[band - 1]
         inv = ~src.transform
         height, width = src.height, src.width
 
-    # Affine inverse: world -> fractional pixel, then floor to an index.
-    cols = np.floor(inv.a * lons + inv.b * lats + inv.c).astype("int64")
-    rows = np.floor(inv.d * lons + inv.e * lats + inv.f).astype("int64")
+        # Affine inverse: world -> fractional pixel, then floor to an index.
+        cols = np.floor(inv.a * lons + inv.b * lats + inv.c).astype("int64")
+        rows = np.floor(inv.d * lons + inv.e * lats + inv.f).astype("int64")
 
-    inside = (
-        (rows >= 0) & (rows < height) & (cols >= 0) & (cols < width)
-    )
-    values = np.full(len(points), np.nan, dtype="float64")
-    values[inside] = arr[rows[inside], cols[inside]]
+        idx = np.flatnonzero(
+            (rows >= 0) & (rows < height) & (cols >= 0) & (cols < width)
+        )
+        strip = max(1, STRIP_PIXELS // width)
+        sid = rows[idx] // strip
+        order = np.argsort(sid, kind="stable")
+        idx, sid = idx[order], sid[order]
+        for grp in np.split(idx, np.flatnonzero(np.diff(sid)) + 1):
+            if not len(grp):
+                continue
+            r0 = int(rows[grp[0]] // strip) * strip
+            block = src.read(band, window=Window(0, r0, width,
+                                                 min(strip, height - r0)))
+            values[grp] = block[rows[grp] - r0, cols[grp]]
 
     if nodata is not None:
         values[values == nodata] = np.nan
@@ -403,7 +451,8 @@ async def fetch_project_hexes(pg, project_id: int) -> list[dict]:
     )
 
 
-async def fetch_hexes_in_bounds(pg, bounds_4326, resolutions=None) -> list[dict]:
+async def fetch_hexes_in_bounds(pg, bounds_4326, resolutions=None,
+                                after=None, limit=None) -> list[dict]:
     """Hex polygons intersecting a WGS84 footprint, for exactextract.
 
     This is the extraction target for the raster library: while the file is
@@ -418,6 +467,8 @@ async def fetch_hexes_in_bounds(pg, bounds_4326, resolutions=None) -> list[dict]
         pg: Database access object exposing async ``execute``.
         bounds_4326: (left, bottom, right, top) in EPSG:4326.
         resolutions: Restrict to these H3 resolutions, or None for all.
+        after, limit: Keyset paging - hexes after this h3_index, at most
+            `limit` of them - so a big footprint is fetched in batches.
 
     Returns:
         List of {h3_index, geom_json} dicts.
@@ -427,6 +478,7 @@ async def fetch_hexes_in_bounds(pg, bounds_4326, resolutions=None) -> list[dict]
     data = [left, bottom, right, top]
     if resolutions:
         data.append(list(resolutions))
+    page, data = _page(after, limit, data)
     return await pg.execute(
         f"""
         SELECT DISTINCT ON (hc.h3_index)
@@ -434,14 +486,15 @@ async def fetch_hexes_in_bounds(pg, bounds_4326, resolutions=None) -> list[dict]
                ST_AsGeoJSON(hc.geometry) AS geom_json
           FROM bioprotect.h3_cells hc
          WHERE hc.geometry && ST_MakeEnvelope(%s, %s, %s, %s, 4326){res_filter}
-         ORDER BY hc.h3_index;
+         {page};
         """,
         data=data,
         return_format="Array",
     )
 
 
-async def fetch_hex_points_in_bounds(pg, bounds_4326, resolutions) -> list[dict]:
+async def fetch_hex_points_in_bounds(pg, bounds_4326, resolutions,
+                                     after=None, limit=None) -> list[dict]:
     """Hex centroids only - no geometry JSON, for the cheap sampling path.
 
     Deliberately does not select ST_AsGeoJSON: for sub-pixel hexes the
@@ -452,8 +505,10 @@ async def fetch_hex_points_in_bounds(pg, bounds_4326, resolutions) -> list[dict]
         List of {h3_index, lon, lat} dicts.
     """
     left, bottom, right, top = bounds_4326
+    page, data = _page(after, limit,
+                       [left, bottom, right, top, list(resolutions)])
     return await pg.execute(
-        """
+        f"""
         SELECT DISTINCT ON (hc.h3_index)
                hc.h3_index                    AS h3_index,
                ST_X(ST_Centroid(hc.geometry)) AS lon,
@@ -461,11 +516,24 @@ async def fetch_hex_points_in_bounds(pg, bounds_4326, resolutions) -> list[dict]
           FROM bioprotect.h3_cells hc
          WHERE hc.geometry && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
            AND hc.resolution = ANY(%s)
-         ORDER BY hc.h3_index;
+         {page};
         """,
-        data=[left, bottom, right, top, list(resolutions)],
+        data=data,
         return_format="Array",
     )
+
+
+def _page(after, limit, data):
+    """ORDER BY / keyset tail for the hex fetchers, and its parameters."""
+    sql = ""
+    if after is not None:
+        sql += " AND hc.h3_index > %s"
+        data = data + [after]
+    sql += " ORDER BY hc.h3_index"
+    if limit:
+        sql += " LIMIT %s"
+        data = data + [limit]
+    return sql, data
 
 
 async def bounds_of_hexes_in_bounds(pg, bounds_4326) -> tuple | None:
@@ -540,10 +608,9 @@ async def extract_raster_to_hexes(
 
     # exactextract.prep_raster only accepts gdal.Dataset, rasterio
     # DatasetReader, xarray DataArray/Dataset, numpy ndarray, or a path.
-    # rasterio.band() is NOT supported, so for multi-band rasters we
-    # materialise the chosen band into an in-memory single-band dataset
-    # and pass that. Single-band rasters can be passed directly.
-    from rasterio.io import MemoryFile  # type: ignore
+    # rasterio.band() is NOT supported, so for multi-band rasters we pick
+    # the band with a single-band VRT (a few hundred bytes, no pixel copy).
+    # Single-band rasters can be passed directly.
 
     # ponytail: exact_extract is a blocking C call - run it off the IOLoop
     # so the websocket ping keeps firing on big grids.
@@ -555,29 +622,15 @@ async def extract_raster_to_hexes(
                 )
 
             if src.count == 1:
-                results = exact_extract(
-                    rast=src,
-                    vec=features,
-                    ops=[stat],
-                    include_cols=id_cols,
-                    output="pandas",
-                )
-            else:
-                band_data = src.read(band)
-                profile = src.profile.copy()
-                profile.update(count=1, dtype=band_data.dtype)
-                with MemoryFile() as memfile:
-                    with memfile.open(**profile) as mem_dst:
-                        mem_dst.write(band_data, 1)
-                    with memfile.open() as mem_src:
-                        results = exact_extract(
-                            rast=mem_src,
-                            vec=features,
-                            ops=[stat],
-                            include_cols=id_cols,
-                            output="pandas",
-                        )
-        return results
+                return exact_extract(rast=src, vec=features, ops=[stat],
+                                     include_cols=id_cols, output="pandas")
+        with tempfile.TemporaryDirectory() as tmp:
+            vrt = os.path.join(tmp, "band.vrt")
+            _run_gdal(["gdal_translate", "-q", "-of", "VRT", "-b", str(band),
+                       raster_path, vrt])
+            with rasterio.open(vrt) as one_band:
+                return exact_extract(rast=one_band, vec=features, ops=[stat],
+                                     include_cols=id_cols, output="pandas")
 
     results = await IOLoop.current().run_in_executor(None, _extract)
 

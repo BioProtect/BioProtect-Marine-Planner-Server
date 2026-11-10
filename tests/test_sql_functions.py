@@ -251,3 +251,18 @@ def test_cumulative_impact_rejects_floor_outside_0_1(db, floor):
     with pytest.raises(psycopg2.errors.RaiseException, match="strictly between 0 and 1"):
         db.execute("SELECT bioprotect.run_cumulative_impact(%s, ARRAY[-1], 'x', '', 'pytest', %s)",
                    [p, Decimal(floor)])
+
+
+def test_run_config_defaults_and_null_feature_target_is_30_percent(db):
+    """A NULL project_features.target_value means "not set" and becomes 0.30;
+    an empty params object gets every documented default."""
+    pid = project(db)
+    (set_f, _), (unset_f, _) = feature(db), feature(db)
+    db.execute("INSERT INTO bioprotect.project_features (project_id, feature_unique_id, target_value) "
+               "VALUES (%s, %s, 45), (%s, %s, NULL)", [pid, set_f, pid, unset_f])
+    run = one(db, "INSERT INTO bioprotect.prioritizr_runs (project_id) VALUES (%s) RETURNING id", [pid])
+    db.execute("SELECT target_prop, mode, boundary_penalty, linear_cost_penalty, gap, time_limit_sec, "
+               "feature_targets_json::jsonb FROM bioprotect.get_prioritizr_run_config(%s)", [run])
+    *defaults, targets = db.fetchone()
+    assert defaults == [0.30, "area", 0.0, 0.1, 0.04, 1200]
+    assert targets == {f"f_{set_f}": 0.45, f"f_{unset_f}": 0.30}

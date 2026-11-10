@@ -74,9 +74,13 @@ async def _split_import(server, zip_path, splitfield):
                if m.get("status") == "FeatureCreated"}
     counts = {}
     for table in created:
-        alias = (await server.pg.execute(
-            "SELECT alias FROM bioprotect.metadata_interest_features "
-            "WHERE feature_class_name = %s", [table], return_format="Array"))[0]["alias"]
+        meta = (await server.pg.execute(
+            "SELECT unique_id, alias, _area, extent FROM bioprotect.metadata_interest_features "
+            "WHERE feature_class_name = %s", [table], return_format="Array"))[0]
+        # the frontend fetches the new feature by this id ([object Object] on prod 2026-11-10)
+        assert created[table]["id"] == meta["unique_id"]
+        assert meta["_area"] > 0 and meta["extent"]
+        alias = meta["alias"]
         n = (await server.pg.execute(
             f'SELECT count(*) AS n FROM bioprotect."{table}"',
             return_format="Array"))[0]["n"]
@@ -135,3 +139,65 @@ async def test_split_real_cso_sample_by_level_2(server, cleanup):
         "Sublittoral Rocky Substrates (12.4)": 4,
         "Sublittoral Sediments (12.3)": 4,
     }
+
+
+def _habitats_zip(tmp_path, classes):
+    gdf = gpd.GeoDataFrame({"HabClass": classes,
+                            "geometry": [box(-9 + i / 10, 53, -8.9 + i / 10, 53.1)
+                                         for i in range(len(classes))]}, crs=4326)
+    shp_dir = tmp_path / "shp"
+    shp_dir.mkdir()
+    gdf.to_file(shp_dir / "habitats.shp")
+    zp = tmp_path / "habitats.zip"
+    with zipfile.ZipFile(zp, "w") as z:
+        for f in shp_dir.iterdir():
+            z.write(f, f.name)
+    return zp
+
+
+async def _aliases(server, names):
+    got = await server.pg.execute(
+        "SELECT alias FROM bioprotect.metadata_interest_features WHERE alias = ANY(%s)",
+        [names], return_format="Array")
+    return sorted(r["alias"] for r in got)
+
+
+async def test_split_refuses_up_front_when_a_name_is_taken(server, cleanup, tmp_path):
+    await server.pg.execute("INSERT INTO bioprotect.metadata_interest_features "
+                            "(feature_class_name, alias) VALUES ('pytest_taken', 'Sand')")
+    cleanup.append("pytest_taken")
+    messages, _, _, tables = await _split_import(
+        server, _habitats_zip(tmp_path, ["Rock", "Sand"]), "HabClass")
+    cleanup.extend(tables)
+    assert tables == []
+    assert any("'Sand'" in e for e in _errors(messages))
+    assert await _aliases(server, ["Rock"]) == []
+
+
+async def test_failed_split_rolls_back_features_already_created(server, cleanup, tmp_path, monkeypatch):
+    """CSO upload on prod 2026-11-10: the 7th feature timed out and the first 6
+    stayed behind. Now a failure removes everything that upload created."""
+    real = server.pg.get_geometry_type
+    calls = []
+
+    async def fail_second(table):  # fail on the 2nd feature's table
+        if table not in calls:
+            calls.append(table)
+        if len(calls) == 2:
+            raise ServicesError("Database query timed out")
+        return await real(table)
+
+    monkeypatch.setattr(server.pg, "get_geometry_type", fail_second)
+    zp = _habitats_zip(tmp_path, ["Rock", "Sand"])
+    shutil.copy(zp, _import_folder())
+    root = unzip_shapefile(_import_folder(), zp.name)
+    messages, _ = await ws_messages(server, "/server/importFeatures",
+                                    {"shapefile": f"{root}.shp", "splitfield": "HabClass"})
+    cleanup.extend(calls)
+    assert "Database query timed out" in _errors(messages)
+    assert any(m.get("status") == "FeatureCreated" for m in messages)  # Rock got made...
+    assert await _aliases(server, ["Rock", "Sand"]) == []              # ...and removed
+    for t in calls:
+        left = await server.pg.execute("SELECT to_regclass(%s) AS t",
+                                       [f'bioprotect."{t}"'], return_format="Array")
+        assert left[0]["t"] is None

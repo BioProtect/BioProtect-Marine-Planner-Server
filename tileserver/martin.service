@@ -1,0 +1,15 @@
+# User service: cp to ~/.config/systemd/user/, then
+#   systemctl --user daemon-reload && systemctl --user enable --now martin
+#   sudo loginctl enable-linger $USER   # keep it running after logout
+# Paths assume the prod checkout at /opt/bioprotect-server.
+[Unit]
+Description=Martin tile server (BioProtect)
+
+[Service]
+# Environment=DATABASE_URL=postgres://user:pass@localhost/bioprotect
+ExecStart=/usr/bin/martin -c /opt/bioprotect-server/tileserver/config.yaml
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

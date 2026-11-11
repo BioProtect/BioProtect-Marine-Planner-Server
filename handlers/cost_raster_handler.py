@@ -28,10 +28,13 @@ one user's data into another user's project without either of them
 choosing it.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
+
+from tornado.ioloop import IOLoop
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.base_handler import BaseHandler, has_project_access
@@ -45,6 +48,7 @@ from services.raster_service import (
     fetch_hex_points_in_bounds,
     fetch_hexes_in_bounds,
     get_raster_band_info,
+    large_raster_warning,
     normalise_costs,
     pick_sampling_method,
     pixel_area_km2,
@@ -66,6 +70,10 @@ _MAY_MANAGE_SQL = """
 """
 
 project_paths = get_folder_path_config()
+
+# Hexes fetched, extracted and cached per round trip. Bounds memory to one
+# batch of hex geometries + values, whatever the raster or grid size.
+EXTRACT_BATCH = 50_000
 
 def _resolve_uploaded_raster(filename: str) -> str:
     """Path of a raster uploaded to IMPORT_FOLDER (FileUpload destFolder="imports")."""
@@ -140,9 +148,9 @@ class UploadRasterCostHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({"info": "Uploading raster cost profile..."})
+            await self.start({"info": "Uploading raster cost profile..."})
         except ServicesError as e:
             log.error("UploadRasterCostHandler open failed: %s", e)
             return
@@ -223,13 +231,14 @@ class UploadRasterCostHandler(SocketHandler):
             # Step 2: has this exact file already been extracted?
             # Owner-scoped on purpose: a global checksum match would tell
             # one user that another holds their file.
-            checksum = _sha256(raster_path)
+            checksum = await asyncio.to_thread(_sha256, raster_path)
             owner_id = await self._owner_id()
             existing = await self.pg.execute(
                 """
                 SELECT id, name FROM bioprotect.cost_rasters
                  WHERE checksum = %s AND band = %s AND stat = %s
                    AND owner_id IS NOT DISTINCT FROM %s
+                   AND hex_count > 0  -- 0 = still extracting, or died doing so
                  LIMIT 1;
                 """,
                 data=[checksum, band, stat, owner_id],
@@ -385,12 +394,27 @@ class UploadRasterCostHandler(SocketHandler):
         # Clip to the hexes before reprojecting - computed in PostGIS so we
         # never load geometries just to find a bounding box.
         hex_envelope = await bounds_of_hexes_in_bounds(self.pg, raster_bounds)
+        warning = large_raster_warning(get_raster_band_info(raster_path))
+        if warning:
+            self.send_response({"status": "Preprocessing", "info": warning})
         self.send_response({
             "status": "Preprocessing",
             "info": "Clipping and reprojecting raster to WGS84...",
         })
-        clip_and_reproject(raster_path, reprojected_path, hex_envelope,
-                           fallback_crs=fallback_crs)
+        # GDAL runs in a worker thread; add_callback is the thread-safe way
+        # back onto the IOLoop to report its progress.
+        loop = IOLoop.current()
+
+        def warp_progress(pct):
+            if pct % 20 == 0 and 0 < pct < 100:
+                loop.add_callback(self.send_response, {
+                    "status": "Preprocessing",
+                    "info": f"Reprojecting raster... {pct}%",
+                })
+
+        await asyncio.to_thread(
+            clip_and_reproject, raster_path, reprojected_path, hex_envelope,
+            fallback_crs, warp_progress)
 
         # Now the raster is in its final form, so a pixel has a real size.
         pix_area = pixel_area_km2(reprojected_path)
@@ -422,80 +446,88 @@ class UploadRasterCostHandler(SocketHandler):
             ),
         })
 
-        extracted = []
-
-        # Cheap path: one numpy lookup for every sub-pixel hex.
-        if centroid_res:
-            res_values = [r["resolution"] for r in centroid_res]
-            self.send_response({
-                "status": "Preprocessing",
-                "info": (
-                    f"Sampling {sum(r['n'] for r in centroid_res):,} hex "
-                    f"centroids at resolution(s) "
-                    f"{', '.join(map(str, res_values))}..."
-                ),
-            })
-            points = await fetch_hex_points_in_bounds(
-                self.pg, raster_bounds, res_values
-            )
-            extracted.extend(
-                sample_raster_at_centroids(reprojected_path, points, band)
-            )
-
-        # Exact path: hexes big enough to span pixels.
-        if exact_res:
-            res_values = [r["resolution"] for r in exact_res]
-            self.send_response({
-                "status": "Preprocessing",
-                "info": (
-                    f"Running zonal stats ({stat}) for band {band} at "
-                    f"resolution(s) {', '.join(map(str, res_values))}..."
-                ),
-            })
-            hex_rows = await fetch_hexes_in_bounds(
-                self.pg, raster_bounds, res_values
-            )
-            extracted.extend(
-                await extract_raster_to_hexes(
-                    raster_path=reprojected_path,
-                    rows=hex_rows,
-                    band=band,
-                    stat=stat,
-                )
-            )
-
-        covered = [e for e in extracted if not _is_nan(e["value"])]
-        if not covered:
-            raise ServicesError(
-                "The raster produced no values for any planning hex."
-            )
-
-        # Record the raster, then the values, then delete the file.
+        # Record the raster first so each batch of values can be written as
+        # it is extracted; hex_count stays 0 (= not finished, hidden from the
+        # library and the checksum reuse) until the end.
         row = await self.pg.execute(
             """
             INSERT INTO bioprotect.cost_rasters
                 (name, description, source_filename, band, stat, checksum,
                  bounds, owner_id, visibility, hex_count)
             VALUES (%s, %s, %s, %s, %s, %s,
-                    ST_MakeEnvelope(%s, %s, %s, %s, 4326), %s, 'private', %s)
+                    ST_MakeEnvelope(%s, %s, %s, %s, 4326), %s, 'private', 0)
             RETURNING id;
             """,
             data=[
                 profile_name, description, filename, band, stat, checksum,
-                *raster_bounds, owner_id, len(covered),
+                *raster_bounds, owner_id,
             ],
             return_format="Array",
         )
         raster_id = row[0]["id"]
 
-        self.send_response({
-            "status": "Preprocessing",
-            "info": f"Caching {len(covered):,} hex values...",
-        })
-        await _bulk_insert_hex_values(
-            self.pg,
-            [(raster_id, e["h3_index"], float(e["value"])) for e in covered],
-        )
+        try:
+            done = covered = 0
+
+            async def run(fetch, extract, res_list, label):
+                nonlocal done, covered
+                res_values = [r["resolution"] for r in res_list]
+                after = None
+                while True:
+                    batch = await fetch(self.pg, raster_bounds, res_values,
+                                        after=after, limit=EXTRACT_BATCH)
+                    if not batch:
+                        return
+                    after = batch[-1]["h3_index"]
+                    values = [e for e in await extract(batch)
+                              if not _is_nan(e["value"])]
+                    await _bulk_insert_hex_values(
+                        self.pg,
+                        [(raster_id, e["h3_index"], float(e["value"]))
+                         for e in values],
+                    )
+                    done += len(batch)
+                    covered += len(values)
+                    self.send_response({
+                        "status": "Preprocessing",
+                        "info": (
+                            f"{label}: {done:,} of {total_hexes:,} hexes "
+                            f"({100 * done / total_hexes:.0f}%)"
+                        ),
+                    })
+
+            # Cheap path: a vectorised lookup for every sub-pixel hex.
+            if centroid_res:
+                await run(
+                    fetch_hex_points_in_bounds,
+                    lambda pts: asyncio.to_thread(
+                        sample_raster_at_centroids, reprojected_path, pts, band),
+                    centroid_res, "Centroid sampling")
+
+            # Exact path: hexes big enough to span pixels.
+            if exact_res:
+                await run(
+                    fetch_hexes_in_bounds,
+                    lambda rows: extract_raster_to_hexes(
+                        raster_path=reprojected_path, rows=rows,
+                        band=band, stat=stat),
+                    exact_res, f"Zonal stats ({stat})")
+
+            if not covered:
+                raise ServicesError(
+                    "The raster produced no values for any planning hex."
+                )
+            await self.pg.execute(
+                "UPDATE bioprotect.cost_rasters SET hex_count = %s WHERE id = %s",
+                data=[covered, raster_id],
+            )
+        except BaseException:
+            # values cascade with the row
+            await self.pg.execute(
+                "DELETE FROM bioprotect.cost_rasters WHERE id = %s",
+                data=[raster_id],
+            )
+            raise
 
         return raster_id
 
@@ -579,8 +611,9 @@ class CostRasterLibraryHandler(BaseHandler):
                    ST_XMin(cr.bounds) AS left, ST_YMin(cr.bounds) AS bottom,
                    ST_XMax(cr.bounds) AS right, ST_YMax(cr.bounds) AS top
               FROM bioprotect.cost_rasters cr
-             WHERE cr.owner_id IS NOT DISTINCT FROM %s
-                OR cr.visibility = 'shared'
+             WHERE (cr.owner_id IS NOT DISTINCT FROM %s
+                    OR cr.visibility = 'shared')
+               AND cr.hex_count > 0  -- 0 = upload still extracting
              ORDER BY cr.date_created DESC;
             """,
             data=[owner_id, owner_id, owner_id, owner_id],

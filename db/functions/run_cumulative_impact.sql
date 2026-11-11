@@ -11,6 +11,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     _cost_profile INTEGER;
+    _act          RECORD;
 BEGIN
     -- ---------------------------------------------------------------
     -- Validate floor: cells must never have cost <= 0 because
@@ -52,57 +53,69 @@ BEGIN
     -- ---------------------------------------------------------------
     -- Compute cumulative impact per hex and insert as cost values.
     --
-    -- Uses hex centroid containment instead of polygon intersection
-    -- for performance. A hex is "covered" (coverage=1) if its centroid
-    -- falls within the activity geometry, otherwise 0.
-    --
-    -- All pressures for a given activity share the same geometry, so
-    -- we test containment once per (activity, hex) then fan out.
+    -- A hex is "covered" by an activity when its centroid lies in any of
+    -- the activity's own polygons, tested through that table's spatial
+    -- index - no union, no simplify, so huge activities cost no more than
+    -- the cells they touch. Each covered (hex, activity) then fans out to
+    -- the activity's pressures straight from PAD (rppscore > 0), so PAD
+    -- edits apply to the next run. (This replaced a `pressures` table that
+    -- held a merged copy of the footprint per PAD row; dropped in 0018.)
     --
     -- Costs are rescaled into [_floor, 1] so no hex ever stores 0.
     -- ---------------------------------------------------------------
-    WITH project_hexes AS (
-        SELECT pp.id   AS project_pu_id,
-               pp.h3_index,
-               ST_Centroid(hc.geometry) AS hex_centroid
-          FROM bioprotect.project_pus pp
-          -- One geometry per cell: overlapping grids repeat h3_index in
-          -- h3_cells, which would multiply every hex's impact.
-          CROSS JOIN LATERAL (
-            SELECT h.geometry FROM bioprotect.h3_cells h
-             WHERE h.h3_index = pp.h3_index
-             LIMIT 1
-          ) hc
-         WHERE pp.project_id = _project_id
-    ),
-    -- Distinct activity geometries, simplified for performance
-    activity_geoms AS (
-        SELECT DISTINCT ON (activity_id)
-               activity_id,
-               ST_Simplify(geometry, 0.0001) AS geometry
-          FROM bioprotect.pressures
-         WHERE activity_id = ANY(_activity_ids)
-    ),
-    -- Binary containment: 1 if hex centroid is inside activity, else 0
-    hex_activity_coverage AS (
-        SELECT ph.project_pu_id,
-               ph.h3_index,
-               ag.activity_id,
-               1::numeric AS pressure_coverage
-          FROM project_hexes ph
-          JOIN activity_geoms ag
-            ON ST_Contains(ag.geometry, ph.hex_centroid)
-    ),
-    -- Fan out to pressures (no spatial ops)
-    hex_pressures AS (
-        SELECT hac.project_pu_id,
-               hac.h3_index,
-               p.pressuretitle,
-               p.rppscore,
-               hac.pressure_coverage
-          FROM hex_activity_coverage hac
-          JOIN bioprotect.pressures p
-            ON p.activity_id = hac.activity_id
+    DROP TABLE IF EXISTS pg_temp.ci_hexes, pg_temp.ci_coverage;
+    CREATE TEMP TABLE ci_hexes ON COMMIT DROP AS
+    SELECT pp.id AS project_pu_id,
+           pp.h3_index,
+           ST_Centroid(hc.geometry) AS hex_centroid
+      FROM bioprotect.project_pus pp
+      -- One geometry per cell: overlapping grids repeat h3_index in
+      -- h3_cells, which would multiply every hex's impact.
+      CROSS JOIN LATERAL (
+        SELECT h.geometry FROM bioprotect.h3_cells h
+         WHERE h.h3_index = pp.h3_index
+         LIMIT 1
+      ) hc
+     WHERE pp.project_id = _project_id;
+    CREATE INDEX ON ci_hexes USING gist (hex_centroid);
+    ANALYZE ci_hexes;
+
+    CREATE TEMP TABLE ci_coverage (
+        project_pu_id INTEGER,
+        h3_index      TEXT,
+        activity_id   INTEGER
+    ) ON COMMIT DROP;
+
+    -- Driven from the activity's polygons into the indexed centroids, so
+    -- each (possibly 100k-vertex) polygon is prepared once and probed many
+    -- times. Hex-driven EXISTS was 60x slower on a 192k-cell grid.
+    -- ST_Intersects, not ST_Contains: activities come as several polygons
+    -- (raster pieces, shapefile parts), and a centroid on a shared edge is
+    -- inside the activity even though no single polygon "contains" it.
+    FOR _act IN
+        SELECT ma.id, ma.activity_name
+          FROM bioprotect.metadata_activities ma
+         WHERE ma.id = ANY(_activity_ids)
+           AND ma.activity_name IS NOT NULL
+    LOOP
+        EXECUTE format($f$
+            INSERT INTO ci_coverage (project_pu_id, h3_index, activity_id)
+            SELECT DISTINCT h.project_pu_id, h.h3_index, %s
+              FROM bioprotect.%I a
+              JOIN ci_hexes h ON ST_Intersects(a.geometry, h.hex_centroid)
+        $f$, _act.id, _act.activity_name);
+    END LOOP;
+
+    WITH hex_pressures AS (
+        SELECT cov.project_pu_id,
+               cov.h3_index,
+               pad.pressuretitle,
+               pad.rppscore
+          FROM ci_coverage cov
+          JOIN bioprotect.metadata_activities ma ON ma.id = cov.activity_id
+          JOIN bioprotect.pad pad
+            ON pad.activitytitle = ma.activity
+           AND pad.rppscore > 0
     ),
     hex_features AS (
         SELECT pfa.h3_index,
@@ -117,8 +130,7 @@ BEGIN
     cumulative AS (
         SELECT hp.project_pu_id,
                SUM(
-                   hp.pressure_coverage
-                   * hp.rppscore
+                   hp.rppscore
                    * hf.feature_coverage
                    * COALESCE(sm.sensitivity_score, 0)
                ) AS impact

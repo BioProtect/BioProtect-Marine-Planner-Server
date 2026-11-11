@@ -1,8 +1,10 @@
 """
 Activity upload and cumulative impact handler.
 
-Supports uploading activities as shapefiles or rasters, creating pressures
-from the PAD table, and running the cumulative impact function in PostGIS.
+Supports uploading activities as shapefiles or rasters, and running the
+cumulative impact function in PostGIS. An activity is a set of polygons
+(where it happens); its pressures come from the PAD table by activity title
+at run time - nothing is copied per pressure.
 """
 
 import asyncio
@@ -10,17 +12,29 @@ import logging
 import os
 import time
 import uuid
-import subprocess
+import tempfile
 
 from psycopg2 import sql
+from tornado.ioloop import IOLoop
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
 from services.project_service import get_project_crs, off_grid_warning
-from services.raster_service import bounds_wgs84, get_raster_band_info, reproject_to_wgs84
+from services.raster_service import (bounds_wgs84, get_raster_band_info,
+                                     large_raster_warning,
+                                     raster_presence_to_gpkg)
 from services.service_error import ServicesError, raise_error
 
 project_paths = get_folder_path_config()
+
+
+async def pad_pressure_count(pg, activity_titles):
+    """How many PAD pressures (rppscore > 0) these activity titles bring."""
+    rows = await pg.execute(
+        "SELECT count(*) AS n FROM bioprotect.pad "
+        "WHERE activitytitle = ANY(%s) AND rppscore > 0",
+        data=[list(activity_titles)], return_format="Array")
+    return rows[0]["n"]
 
 
 def get_unique_activity_name():
@@ -50,9 +64,9 @@ class UploadActivityHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({'info': "Uploading activity..."})
+            await self.start({'info': "Uploading activity..."})
         except ServicesError as e:
             print('ServicesError as e: ', e)
             return
@@ -72,6 +86,20 @@ class UploadActivityHandler(SocketHandler):
             if not str(self.project_id or "").isdigit():
                 self.project_id = None
 
+            # An activity only matters through its PAD pressures; one with
+            # none would be stored and then add nothing to any cost layer.
+            pressure_count = await pad_pressure_count(self.pg, [activity])
+            if pressure_count == 0:
+                # A raster can still become a cost layer directly (values kept);
+                # cost profiles don't come from shapefiles, so no hint there.
+                hint = (" To use this raster as a cost layer anyway, upload it "
+                        "in the 'Upload Raster Cost Profile' tab instead."
+                        if upload_type == 'raster' else "")
+                raise ServicesError(
+                    f"'{activity}' has no pressures in the PAD table, so it "
+                    "would not affect any cost layer. Choose another activity."
+                    + hint)
+
             if upload_type == 'shapefile':
                 activity_id = await self._import_shapefile(
                     activity, filename, description)
@@ -82,16 +110,8 @@ class UploadActivityHandler(SocketHandler):
                 raise ServicesError(
                     f"Unsupported upload_type: {upload_type}. Use 'shapefile' or 'raster'.")
 
-            # Create pressures from the uploaded activity
-            self.send_response({
-                'status': 'Preprocessing',
-                'info': 'Creating pressures from activity...'
-            })
-
-            pressure_count = await self._create_pressures(activity_id)
-
             self.close(close_message={
-                'info': f"Activity uploaded. {pressure_count} pressures created.",
+                'info': f"Activity uploaded. {pressure_count} pressures apply.",
                 'activity_id': activity_id,
                 'pressure_count': pressure_count
             })
@@ -161,8 +181,11 @@ class UploadActivityHandler(SocketHandler):
         """
         Import a raster as a vector activity table.
 
-        Loads the raster, reprojects to WGS84, polygonizes it, and stores
-        the resulting polygons as vector geometry in PostGIS.
+        Activities are presence-only: the raster is reprojected to WGS84
+        (nearest neighbour), cut to where it is > 0, polygonised by GDAL on
+        disk, and the polygons loaded with ogr2ogr. Nothing runs as one big
+        pool query, so a large raster is not stopped by the 60s cap, and
+        memory stays flat (a numpy read of the raster OOM-killed prod).
         """
         activity_table = get_unique_activity_name()
         raster_path = os.path.join(project_paths.IMPORT_FOLDER, filename)
@@ -170,82 +193,63 @@ class UploadActivityHandler(SocketHandler):
         if not os.path.isfile(raster_path):
             raise ServicesError(f"Raster file not found: {raster_path}")
 
-        self.send_response({
-            'status': 'Preprocessing',
-            'info': 'Reprojecting raster to WGS84...'
-        })
+        info = get_raster_band_info(raster_path)
+        warning = large_raster_warning(info)
+        if warning:
+            self.send_response({'status': 'Preprocessing', 'info': warning})
 
-        reprojected_path = os.path.join(
-            project_paths.IMPORT_FOLDER, f'repro_{filename}')
-        temp_raster_table = f"tmp_rast_{uuid.uuid4().hex[:16]}"
+        fallback_crs = f"EPSG:{self.crs_epsg}" if self.project_id else None
+        if fallback_crs and info["crs_epsg"] is None and info["crs_wkt"] is None:
+            self.send_response({
+                'status': 'Preprocessing',
+                'info': await off_grid_warning(
+                    self.pg, self.project_id, self.crs_epsg,
+                    bbox=bounds_wgs84(raster_path, fallback_crs))
+                or f"The raster has no CRS, so it was read as "
+                   f"EPSG:{self.crs_epsg} (the project CRS)."
+            })
+
+        # GDAL runs in a worker thread; add_callback is the thread-safe way
+        # back onto the IOLoop to report its progress.
+        loop = IOLoop.current()
+
+        def progress(stage, pct):
+            if pct % 20 == 0 and 0 < pct < 100:
+                loop.add_callback(self.send_response, {
+                    'status': 'Preprocessing', 'info': f'{stage}... {pct}%'})
+
         try:
-            # Reproject to WGS84 if needed, then polygonize via PostGIS
-            fallback_crs = f"EPSG:{self.crs_epsg}" if self.project_id else None
-            reproject_to_wgs84(raster_path, reprojected_path, fallback_crs=fallback_crs)
-            info = get_raster_band_info(raster_path)
-            if fallback_crs and info["crs_epsg"] is None and info["crs_wkt"] is None:
+            with tempfile.TemporaryDirectory(
+                    dir=project_paths.IMPORT_FOLDER) as work:
+                await asyncio.to_thread(
+                    raster_presence_to_gpkg, raster_path,
+                    os.path.join(work, "presence.gpkg"), fallback_crs, progress)
                 self.send_response({
                     'status': 'Preprocessing',
-                    'info': await off_grid_warning(
-                        self.pg, self.project_id, self.crs_epsg,
-                        bbox=bounds_wgs84(raster_path, fallback_crs))
-                    or f"The raster has no CRS, so it was read as "
-                       f"EPSG:{self.crs_epsg} (the project CRS)."
+                    'info': 'Loading activity polygons...'
                 })
-
-            self.send_response({
-                'status': 'Preprocessing',
-                'info': 'Loading raster into temporary table...'
-            })
-
-            # Load raster into a temporary PostGIS raster table
-            db_config = self.pg.config
-
-            raster2pgsql_cmd = [
-                "raster2pgsql", "-s", "4326", "-d", "-I", "-C", "-F",
-                reprojected_path, f"bioprotect.{temp_raster_table}"
-            ]
-
-            psql_cmd = [
-                "psql", db_config.build_connection_string()
-            ]
-
-            try:
-                raster_proc = subprocess.Popen(
-                    raster2pgsql_cmd, stdout=subprocess.PIPE)
-                subprocess.run(psql_cmd, stdin=raster_proc.stdout, check=True)
-                raster_proc.stdout.close()
-            except (subprocess.CalledProcessError, TypeError) as e:
-                raise ServicesError(
-                    f"Failed to load raster into database: {e}")
-
-            self.send_response({
-                'status': 'Preprocessing',
-                'info': 'Polygonizing raster...'
-            })
-
-            # Polygonize: convert raster to vector geometry table
-            await self.pg.execute(
-                sql.SQL("""
-                    CREATE TABLE bioprotect.{activity_table} AS
-                    SELECT (ST_DumpAsPolygons(rast)).geom AS geometry,
-                           (ST_DumpAsPolygons(rast)).val  AS value
-                    FROM bioprotect.{temp_raster_table}
-                    WHERE (ST_DumpAsPolygons(rast)).val > 0;
-                """).format(
-                    activity_table=sql.Identifier(activity_table),
-                    temp_raster_table=sql.Identifier(temp_raster_table)
-                )
-            )
+                # ponytail: no dateline split - the old raster path never did
+                # one, and an UPDATE over every polygon could hit the 60s cap.
+                await self.pg.import_file(work, "presence.gpkg", activity_table,
+                                          None, "EPSG:4326",
+                                          split_at_dateline=False)
         finally:
-            await self.pg.execute(
-                sql.SQL("DROP TABLE IF EXISTS bioprotect.{};").format(
-                    sql.Identifier(temp_raster_table)
-                )
-            )
-            for f in [raster_path, reprojected_path]:
-                if os.path.exists(f):
-                    os.remove(f)
+            if os.path.exists(raster_path):
+                os.remove(raster_path)
+
+        await self.pg.execute(sql.SQL(
+            # presence only: no value column; GPKG's fid gives way to our id
+            "ALTER TABLE bioprotect.{} DROP COLUMN IF EXISTS dn, "
+            "DROP COLUMN IF EXISTS fid"
+        ).format(sql.Identifier(activity_table)))
+        has_rows = await self.pg.execute(sql.SQL(
+            "SELECT EXISTS (SELECT 1 FROM bioprotect.{}) AS any"
+        ).format(sql.Identifier(activity_table)), return_format="Array")
+        if not has_rows[0]["any"]:
+            await self.pg.drop_existing_table(activity_table)
+            raise ServicesError(
+                "The raster has no pixels above 0, so there is no activity "
+                "footprint to save.")
 
         # Add spatial index and primary key
         await self._finalise_activity_table(activity_table)
@@ -312,16 +316,6 @@ class UploadActivityHandler(SocketHandler):
 
         return result[0]['id']
 
-    async def _create_pressures(self, activity_id):
-        """Call the PostGIS function to create pressures from the activity."""
-        result = await self.pg.execute(
-            "SELECT bioprotect.create_pressures_from_activity(%s);",
-            data=[activity_id],
-            return_format="Array"
-        )
-        return result[0]['create_pressures_from_activity']
-
-
 class RunCumulativeImpactHandler(SocketHandler):
     """
     WebSocket handler for running the cumulative impact function.
@@ -336,9 +330,9 @@ class RunCumulativeImpactHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({
+            await self.start({
                 'info': "Running Cumulative Impact..."
             })
         except ServicesError as e:
@@ -387,25 +381,12 @@ class RunCumulativeImpactHandler(SocketHandler):
                             f'be excluded from the impact calculation.'
                 })
 
-            # Step 1: Create/refresh pressures for all selected activities
-            self.send_response({
-                'status': 'Preprocessing',
-                'info': 'Creating pressures from activities...'
-            })
-
+            titles = await self.pg.execute(
+                "SELECT activity FROM bioprotect.metadata_activities "
+                "WHERE id = ANY(%s)", data=[activity_ids], return_format="Array")
             total_pressures = 0
-            for i, aid in enumerate(activity_ids, 1):
-                self.send_response({
-                    'status': 'Preprocessing',
-                    'info': f'Creating pressures for activity {i} of {len(activity_ids)}...'
-                })
-                result = await self.pg.execute(
-                    "SELECT bioprotect.create_pressures_from_activity(%s);",
-                    data=[aid],
-                    return_format="Array"
-                )
-                count = result[0]['create_pressures_from_activity']
-                total_pressures += count
+            for t in titles:  # per row: one title can back several activities
+                total_pressures += await pad_pressure_count(self.pg, [t["activity"]])
 
             pu_count = (await self.pg.execute(
                 "SELECT COUNT(*) AS n FROM bioprotect.project_pus WHERE project_id = %s;",
@@ -415,7 +396,7 @@ class RunCumulativeImpactHandler(SocketHandler):
 
             self.send_response({
                 'status': 'Preprocessing',
-                'info': f'{total_pressures} pressures created. Calculating cumulative '
+                'info': f'{total_pressures} pressures apply. Calculating cumulative '
                         f'impact across {pu_count:,} planning units '
                         f'(overlaying pressures, features and sensitivity scores)...'
             })

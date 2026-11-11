@@ -97,9 +97,9 @@ class PrioritizrWSHandler(SocketHandler):
         # never split a word across two log rows.
         self._pty_buffer = ""
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({"info": "Running Prioritizr..."})
+            await self.start({"info": "Running Prioritizr..."})
         except ServicesError as e:
             self.send_response({
                 "status": "Error",

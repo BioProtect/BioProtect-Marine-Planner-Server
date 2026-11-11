@@ -81,22 +81,60 @@ def square_grid(db):
     return project(db, crs_epsg=3035, planning_unit_id=grid_id), grid_id
 
 
+def build_pieces(cur, feature_id, table, batch_points=10_000):
+    cur.execute("SELECT from_id, to_id FROM bioprotect.feature_piece_batches(%s, %s, %s)",
+                [feature_id, table, batch_points])
+    batches = cur.fetchall()
+    for lo, hi in batches:
+        cur.execute("SELECT bioprotect.build_feature_pieces(%s, %s, %s, %s)",
+                    [feature_id, table, lo, hi])
+    return batches
+
+
+def polygon_feature(cur):
+    """half of A plus 0.9 of B, and a self-intersecting bowtie over C:
+    ST_MakeValid gives two triangles of 1000 x 500 / 2 each, so 0.5 km²."""
+    feature_id, table = feature(cur)
+    cur.execute(f"CREATE TABLE bioprotect.{table} (id serial PRIMARY KEY, geometry geometry)")
+    cur.execute(f"INSERT INTO bioprotect.{table} (geometry) VALUES ({box(500, 0, 1900, 1000, 3035)})")
+    cur.execute(f"INSERT INTO bioprotect.{table} (geometry) VALUES (ST_GeomFromText("
+                "'POLYGON((2000 0, 3000 1000, 3000 0, 2000 1000, 2000 0))', 3035))")
+    return feature_id, table
+
+
 def test_polygon_amounts_are_overlap_km2_and_invalid_rings_are_repaired(db, square_grid):
     project_id, grid_id = square_grid
-    feature_id, table = feature(db)
-    db.execute(f"CREATE TABLE bioprotect.{table} (geometry geometry)")
-    # half of A plus 0.9 of B
-    db.execute(f"INSERT INTO bioprotect.{table} VALUES ({box(500, 0, 1900, 1000, 3035)})")
-    # a self-intersecting bowtie over C: ST_MakeValid gives two triangles of
-    # 1000 x 500 / 2 each, so 0.5 km²
-    db.execute(f"INSERT INTO bioprotect.{table} VALUES (ST_GeomFromText("
-               "'POLYGON((2000 0, 3000 1000, 3000 0, 2000 1000, 2000 0))', 3035))")
+    feature_id, table = polygon_feature(db)
+    build_pieces(db, feature_id, table)
 
-    db.execute("SELECT bioprotect.insert_feature_pu_amounts(%s, %s, %s, %s, 'ST_Polygon')",
+    db.execute("SELECT bioprotect.insert_feature_pu_amounts(%s, %s, %s, %s, 'ST_Polygon', NULL, NULL)",
                [project_id, feature_id, grid_id, table])
 
     got = amounts(db, project_id, feature_id)
     assert got == pytest.approx({"A": 0.5, "B": 0.9, "C": 0.5})
+
+
+def test_batched_amounts_match_and_pieces_are_reused_until_rows_are_added(db, square_grid):
+    project_id, grid_id = square_grid
+    feature_id, table = polygon_feature(db)
+    # 1 vertex per batch: every row in its own batch
+    assert len(build_pieces(db, feature_id, table, batch_points=1)) == 2
+    assert build_pieces(db, feature_id, table) == []  # complete: reused
+
+    # 1 hit per batch: every cell in its own h3 range
+    db.execute("SELECT lo, hi FROM bioprotect.feature_cell_batches(%s, %s, 1)", [feature_id, grid_id])
+    ranges = db.fetchall()
+    assert ranges == [("A", "A"), ("B", "B"), ("C", "C")]
+    for lo, hi in ranges:
+        db.execute("SELECT bioprotect.insert_feature_pu_amounts(%s, %s, %s, %s, 'ST_Polygon', %s, %s)",
+                   [project_id, feature_id, grid_id, table, lo, hi])
+    assert amounts(db, project_id, feature_id) == pytest.approx({"A": 0.5, "B": 0.9, "C": 0.5})
+
+    # a new row (Engage merge) makes the pieces stale: all rebuilt, no duplicates
+    db.execute(f"INSERT INTO bioprotect.{table} (geometry) VALUES ({box(0, 0, 100, 1000, 3035)})")
+    assert build_pieces(db, feature_id, table) != []
+    assert one(db, "SELECT count(DISTINCT source_id) = 3 AND count(*) = 4 "  # bowtie = 2 triangles
+                   "FROM bioprotect.feature_pieces WHERE feature_unique_id = %s", [feature_id])
 
 
 def test_point_amounts_sum_the_value_column(db, square_grid):
@@ -107,7 +145,7 @@ def test_point_amounts_sum_the_value_column(db, square_grid):
         db.execute(f"INSERT INTO bioprotect.{table} VALUES (%s, ST_SetSRID(ST_MakePoint({x}, 500), 3035))",
                    [value])
 
-    db.execute("SELECT bioprotect.insert_feature_pu_amounts(%s, %s, %s, %s, 'ST_Point')",
+    db.execute("SELECT bioprotect.insert_feature_pu_amounts(%s, %s, %s, %s, 'ST_Point', NULL, NULL)",
                [project_id, feature_id, grid_id, table])
 
     assert amounts(db, project_id, feature_id) == {"A": 5, "B": 5}
@@ -208,7 +246,9 @@ def test_cumulative_impact_normalises_into_floor_to_one(db):
     """impact = coverage x rppscore x feature amount x sensitivity, summed.
 
     Hexes A|B|C (unit boxes). Activity 1 (rpp 2, sensitivity 3) covers A's
-    centroid; activity 2 (rpp 1, sensitivity 1) covers A's and B's.
+    centroid; activity 2 (rpp 1, sensitivity 1) covers A's and B's, as two
+    polygons whose shared edge runs through A's centroid - it still counts.
+    Pressures come from PAD by activity title; an rppscore 0 row is ignored.
     Feature amounts A 0.5, B 1.0, C none.
       A = 2*0.5*3 + 1*0.5*1 = 3.5  -> max -> 1.0
       B = 1*1.0*1           = 1.0  -> 0.001 + 0.999 * 1/3.5
@@ -224,15 +264,21 @@ def test_cumulative_impact_normalises_into_floor_to_one(db):
     amount(db, p, fid, "A", 0.5)
     amount(db, p, fid, "B", 1.0)
     tag = uuid.uuid4().hex[:8]
-    for act, rpp, sens, geom in ((1, 2, 3, box(0.1, 0.1, 0.9, 0.9)),
-                                 (2, 1, 1, box(0.1, 0.1, 1.9, 0.9))):
-        pressure = f"pytest pressure {act} {tag}"
-        db.execute(f"INSERT INTO bioprotect.pressures (activity_id, pressuretitle, rppscore, geometry) "
-                   f"VALUES (%s, %s, %s, {geom})", [-act, pressure, rpp])
+    act_ids = []
+    for act, rpp, sens, geoms in ((1, 2, 3, [box(0.1, 0.1, 0.9, 0.9)]),
+                                  (2, 1, 1, [box(0.1, 0.1, 0.5, 0.9), box(0.5, 0.1, 1.9, 0.9)])):
+        title, pressure, table = (f"pytest activity {act} {tag}", f"pytest pressure {act} {tag}",
+                                  f"pytest_act_{act}_{tag}")
+        db.execute(f"CREATE TABLE bioprotect.{table} AS "
+                   + " UNION ALL ".join(f"SELECT {g} AS geometry" for g in geoms))
+        act_ids.append(one(db, "INSERT INTO bioprotect.metadata_activities (activity, activity_name) "
+                               "VALUES (%s, %s) RETURNING id", [title, table]))
+        db.execute("INSERT INTO bioprotect.pad (activitytitle, pressuretitle, rppscore) "
+                   "VALUES (%s, %s, %s), (%s, %s, 0)", [title, pressure, rpp, title, pressure + " zero"])
         db.execute("INSERT INTO bioprotect.sensitivity_matrix (eunis_code, pressure, sensitivity_score) "
-                   "VALUES (%s, %s, %s)", [alias, pressure, sens])
+                   "VALUES (%s, %s, %s), (%s, %s, 100)", [alias, pressure, sens, alias, pressure + " zero"])
 
-    cp = one(db, "SELECT bioprotect.run_cumulative_impact(%s, ARRAY[-1, -2], 'pytest ci')", [p])
+    cp = one(db, "SELECT bioprotect.run_cumulative_impact(%s, %s, 'pytest ci')", [p, act_ids])
 
     db.execute("SELECT project_pu_id, cost, status FROM bioprotect.cost_profile_values "
                "WHERE cost_profile_id = %s", [cp])

@@ -67,9 +67,9 @@ class ImportFeaturesWSHandler(SocketHandler):
             await self.pg.execute("DELETE FROM bioprotect.metadata_interest_features "
                                   "WHERE feature_class_name = %s", [table])
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({'info': "Importing features.."})
+            await self.start({'info': "Importing features.."})
 
         except ServicesError:  # authentication/authorisation error
             pass
@@ -115,6 +115,9 @@ class ImportFeaturesWSHandler(SocketHandler):
                             "shapefile with a .prj file and import it again."
                         )
                     })
+                self.ping_message = f"Loading '{shapefile}' into the database"
+                self.send_response({'status': 'Preprocessing',
+                                    'info': self.ping_message + '...'})
                 await self.pg.import_shapefile(
                     self.proj_paths.IMPORT_FOLDER, shapefile, scratch_name,
                     s_epsg_code=None if has_prj else f"EPSG:{crs_epsg}")
@@ -123,6 +126,7 @@ class ImportFeaturesWSHandler(SocketHandler):
                     'status': 'Preprocessing',
                     'info': "Checking the geometry.."
                 })
+                self.ping_message = "Checking the geometry"
                 await self.pg.is_valid(scratch_name)
                 if not has_prj:
                     warning = await off_grid_warning(
@@ -219,7 +223,11 @@ class ImportFeaturesWSHandler(SocketHandler):
                         + ". Delete or rename them, then import again.")
 
                 # split the imported feature class into separate feature classes
-                for feature_name in feature_names:
+                for i, feature_name in enumerate(feature_names, 1):
+                    self.ping_message = (f"Creating feature '{feature_name}' "
+                                         f"({i}/{len(feature_names)})")
+                    self.send_response({'status': 'Preprocessing',
+                                        'info': self.ping_message + '...'})
                     # create the new feature class
                     is_single = bool(name)
                     prefix = "f_" if is_single else "fs_"
@@ -284,6 +292,7 @@ class ImportFeaturesWSHandler(SocketHandler):
                         'status': 'FeatureCreated'
                     })
                 completed = True
+                self.ping_message = None
                 # complete
                 self.close({'info': "Features imported"})
 

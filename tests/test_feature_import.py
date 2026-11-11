@@ -201,3 +201,41 @@ async def test_failed_split_rolls_back_features_already_created(server, cleanup,
         left = await server.pg.execute("SELECT to_regclass(%s) AS t",
                                        [f'bioprotect."{t}"'], return_format="Array")
         assert left[0]["t"] is None
+
+
+# --- preprocessFeature (batched, shared feature_pieces) ---------------------
+
+async def test_preprocess_batches_and_reuses_pieces_across_projects(server, grid):
+    from conftest import AREA, create_project, rows
+    alias, grid_id, cells = grid
+    pg = server.pg
+    table = "pytest_pre_" + os.urandom(3).hex()
+    # west half of AREA
+    await pg.execute(f"CREATE TABLE bioprotect.{table} (id serial PRIMARY KEY, geometry geometry)")
+    await pg.execute(f"INSERT INTO bioprotect.{table} (geometry) "
+                     "VALUES (ST_MakeEnvelope(-9.6, 53.0, -9.55, 53.1, 4326))")
+    fid = (await rows(pg, "INSERT INTO bioprotect.metadata_interest_features "
+                          "(feature_class_name, alias) VALUES (%s, %s) RETURNING unique_id",
+                      [table, table]))[0]["unique_id"]
+    try:
+        infos = []
+        for _ in range(2):
+            pid = await create_project(server, alias)
+            messages, _ = await ws_messages(server, "/server/preprocessFeature", {
+                "project_id": pid, "feature_id": fid, "planning_grid_id": grid_id})
+            assert not any("error" in m for m in messages), messages
+            done = messages[-1]  # the frontend resolves on Finished, so the result must be on it
+            assert done["status"] == "Finished" and done["pu_count"] > 0
+            n = (await rows(pg, "SELECT count(*) AS n FROM bioprotect.pu_feature_amounts "
+                                "WHERE project_id = %s AND feature_unique_id = %s", [pid, fid]))[0]["n"]
+            assert n == done["pu_count"]
+            infos.append(" ".join(m.get("info", "") for m in messages))
+        assert "Preparing feature geometry" in infos[0]
+        assert "Preparing feature geometry" not in infos[1]  # pieces reused
+        assert "Intersecting with planning units" in infos[1]
+    finally:
+        await pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE unique_id = %s", [fid])
+        await pg.execute(f"DROP TABLE bioprotect.{table}")
+    # FK cascade cleared the pieces
+    assert (await rows(pg, "SELECT count(*) AS n FROM bioprotect.feature_pieces "
+                           "WHERE feature_unique_id = %s", [fid]))[0]["n"] == 0

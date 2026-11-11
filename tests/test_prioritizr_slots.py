@@ -18,7 +18,7 @@ class _PG:
 
 
 def test_run_cap(monkeypatch):
-    monkeypatch.setattr(SocketHandler, "open", _noop_open)
+    monkeypatch.setattr(SocketHandler, "start", _noop_open)
     async def _allow(*a, **k):
         return True
     monkeypatch.setattr(m, "has_project_access", _allow)  # access has its own test in test_auth
@@ -45,7 +45,7 @@ def test_run_cap(monkeypatch):
 
     async def run():
         hs = [build(i, closed=(i == 5)) for i in range(6)]
-        await asyncio.gather(*(h.open() for h in hs))
+        await asyncio.gather(*(h.run() for h in hs))
 
     asyncio.run(run())
     assert state["peak"] == m.MAX_CONCURRENT_RUNS == 4, state["peak"]

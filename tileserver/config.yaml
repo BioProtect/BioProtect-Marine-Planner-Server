@@ -1,0 +1,28 @@
+# Martin tile server. Only the three tile functions are served (auto_publish
+# off), so no table is reachable by name. The functions live in db/functions/
+# and are deployed by `python db/migrate.py deploy`; no Martin restart needed
+# when features or grids are added.
+#   grid_tiles  - planning grids
+#   layer_tiles - features and activities
+#   wdpa_tiles  - WDPA reference layer
+# Run: martin -c tileserver/config.yaml   (DATABASE_URL overrides the default)
+listen_addresses: "0.0.0.0:3000"
+# Serves at /<function>/{z}/{x}/{y}; nginx maps /tiles/ onto it
+# (proxy_pass http://127.0.0.1:3000/; - the trailing slash strips /tiles).
+# ponytail: no route_prefix, Martin 0.15 ignores it.
+web_ui: disable
+
+postgres:
+  connection_string: '${DATABASE_URL:-postgres://postgres:postgres@localhost/bioprotect}'
+  auto_publish: false
+  default_srid: 4326
+  functions:
+    grid_tiles:
+      schema: bioprotect
+      function: grid_tiles
+    layer_tiles:
+      schema: bioprotect
+      function: layer_tiles
+    wdpa_tiles:
+      schema: bioprotect
+      function: wdpa_tiles

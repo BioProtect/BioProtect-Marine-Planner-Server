@@ -312,3 +312,16 @@ def test_run_config_defaults_and_null_feature_target_is_30_percent(db):
     *defaults, targets = db.fetchone()
     assert defaults == [0.30, "area", 0.0, 0.1, 0.04, 1200]
     assert targets == {f"f_{set_f}": 0.45, f"f_{unset_f}": 0.30}
+
+
+def test_layer_tiles_serves_registered_layers_only(db):
+    """A polygon far bigger than the tile still comes back (simplified and
+    clipped); an unregistered table name gets nothing."""
+    cur = db
+    _, table = feature(cur)
+    cur.execute(f"CREATE TABLE bioprotect.{table} (id serial PRIMARY KEY, geometry geometry)")
+    cur.execute(f"INSERT INTO bioprotect.{table} (geometry) VALUES ({box(-20, 40, 10, 60)})")
+    # z6 tile 30/21 lies inside the box
+    tile = one(cur, "SELECT bioprotect.layer_tiles(6, 30, 21, json_build_object('layer', %s))", [table])
+    assert tile and len(tile) > 0
+    assert one(cur, "SELECT bioprotect.layer_tiles(6, 30, 21, '{\"layer\": \"projects\"}')") is None

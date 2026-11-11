@@ -1,13 +1,15 @@
-CREATE OR REPLACE FUNCTION bioprotect.insert_feature_pu_amounts(p_project_id integer, p_feature_id integer, p_planning_unit_id integer, p_feature_class text, p_geom_type text)
+-- Feature amount per grid cell, for the cells with h3_index in [p_lo, p_hi]
+-- (NULLs = every cell). Polygon features read bioprotect.feature_pieces, so
+-- build them first (feature_piece_batches / build_feature_pieces).
+CREATE OR REPLACE FUNCTION bioprotect.insert_feature_pu_amounts(p_project_id integer, p_feature_id integer, p_planning_unit_id integer, p_feature_class text, p_geom_type text, p_lo text, p_hi text)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_grid_table TEXT;
-    v_repaired   INTEGER := 0;
     v_area_srid  INTEGER := bioprotect.project_area_srid(p_project_id);
+    v_range      TEXT := '';
 BEGIN
-    -- Resolve grid table name from metadata_planning_units
     SELECT feature_class_name
       INTO v_grid_table
       FROM bioprotect.metadata_planning_units
@@ -17,7 +19,9 @@ BEGIN
         RAISE EXCEPTION 'No planning unit table found for ID %', p_planning_unit_id;
     END IF;
 
-    RAISE NOTICE 'Using grid table: %, feature table: %', v_grid_table, p_feature_class;
+    IF p_lo IS NOT NULL THEN
+        v_range := format(' AND grid.h3_index::text BETWEEN %L AND %L', p_lo, p_hi);
+    END IF;
 
     IF p_geom_type = 'ST_Point' THEN
         EXECUTE format($f$
@@ -28,43 +32,17 @@ BEGIN
             FROM bioprotect.%I AS grid
             JOIN bioprotect.%I AS feat
               ON ST_Intersects(grid.geometry, feat.geometry)
+            WHERE true %s
             GROUP BY grid.h3_index
-        $f$, p_project_id, p_feature_id, v_grid_table, p_feature_class);  -- ✅ correct order
+        $f$, p_project_id, p_feature_id, v_grid_table, p_feature_class, v_range);
 
     ELSE
-        -- Repair invalid geometries before any overlay op. GEOS aborts the
-        -- whole run with "TopologyException: Input geom 1 is invalid: Ring
-        -- Self-intersection" the moment ST_Intersection touches a bad ring,
-        -- and shapefiles routinely carry them. ST_MakeValid can return a
-        -- GeometryCollection (polygon plus dangling lines), so
-        -- ST_CollectionExtract keeps just the polygonal parts.
-        EXECUTE format($f$
-            UPDATE bioprotect.%I
-               SET geometry = ST_CollectionExtract(ST_MakeValid(geometry), 3)
-             WHERE NOT ST_IsValid(geometry)
-        $f$, p_feature_class);
-        GET DIAGNOSTICS v_repaired = ROW_COUNT;
-        IF v_repaired > 0 THEN
-            RAISE NOTICE 'Repaired % invalid geometr(y|ies) in %',
-                v_repaired, p_feature_class;
-        END IF;
-
         -- Polygon features: store coverage in km², measured in the project
         -- CRS (geography when that is geographic; see area_km2.sql). km² is
         -- the app-wide canonical unit for feature amounts — keeps numbers
         -- readable and avoids prioritizr's 1e6 presolve numerical cap.
-        -- Cut the feature into <=256-vertex pieces first. Without this, every
-        -- cell runs ST_Intersection against the whole (often huge) polygon:
-        -- a 33k-vertex feature over 18k cells took 50s vs 1.5s subdivided,
-        -- same amounts. ON COMMIT DROP: one function call = one transaction.
-        DROP TABLE IF EXISTS pg_temp.feature_pieces;
-        EXECUTE format($f$
-            CREATE TEMP TABLE feature_pieces ON COMMIT DROP AS
-            SELECT ST_Subdivide(geometry, 256) AS geometry FROM bioprotect.%I
-        $f$, p_feature_class);
-        CREATE INDEX ON pg_temp.feature_pieces USING gist (geometry);
-        ANALYZE pg_temp.feature_pieces;
-
+        -- The union is needed: uploads can overlap (CSO has 10,920
+        -- overlapping polygon pairs), so summing piece areas double-counts.
         EXECUTE format($f$
             INSERT INTO bioprotect.pu_feature_amounts (project_id, feature_unique_id, h3_index, amount)
             SELECT
@@ -78,11 +56,11 @@ BEGIN
                     %L::integer
                 ) AS amount
             FROM bioprotect.%I AS grid
-            JOIN pg_temp.feature_pieces AS feat
+            JOIN bioprotect.feature_pieces AS feat
               ON ST_Intersects(grid.geometry, feat.geometry)
+            WHERE feat.feature_unique_id = %s %s
             GROUP BY grid.h3_index
-        $f$, p_project_id, p_feature_id, v_area_srid, v_grid_table);
+        $f$, p_project_id, p_feature_id, v_area_srid, v_grid_table, p_feature_id, v_range);
     END IF;
 END;
 $function$
-

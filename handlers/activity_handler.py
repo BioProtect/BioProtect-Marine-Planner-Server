@@ -64,9 +64,9 @@ class UploadActivityHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({'info': "Uploading activity..."})
+            await self.start({'info': "Uploading activity..."})
         except ServicesError as e:
             print('ServicesError as e: ', e)
             return
@@ -330,9 +330,9 @@ class RunCumulativeImpactHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({
+            await self.start({
                 'info': "Running Cumulative Impact..."
             })
         except ServicesError as e:

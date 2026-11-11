@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import traceback
@@ -51,8 +52,37 @@ class SocketHandler(WebSocketHandler):
             raise ServicesError(
                 f"Missing required arguments: {', '.join(missing)}")
 
-    async def open(self, start_message):
-        """Handles WebSocket connection opening."""
+    # Tornado reads no client frames (pongs, close) until open() / on_message()
+    # return. A job awaited there missed every pong and was cut off by the 90s
+    # ping timeout: the browser saw 1005 "closed unexpectedly" while the job,
+    # with on_close never called, kept running. So the job runs as a task;
+    # subclasses implement run() (and run_message() if they take messages).
+    def open(self, *args, **kwargs):
+        self.start_time = datetime.datetime.now()  # send_response needs it even if run() fails early
+        self._spawn(self.run(*args, **kwargs))
+
+    def on_message(self, message):
+        self._spawn(self.run_message(message))
+
+    async def run(self):
+        pass
+
+    async def run_message(self, message):
+        raise NotImplementedError()
+
+    def _spawn(self, coro):
+        self._job = asyncio.ensure_future(coro)
+        self._job.add_done_callback(self._job_done)
+
+    def _job_done(self, task):
+        if task.cancelled() or task.exception() is None:
+            return
+        e = task.exception()
+        self.log_exception(type(e), e, e.__traceback__)
+        self.close({'error': f"Server error: {e}"})
+
+    async def start(self, start_message):
+        """Sends the start message, authorises and starts the keep-alive."""
         print("================== websocket open method")
         try:
             self.start_time = datetime.datetime.now()
@@ -136,9 +166,11 @@ class SocketHandler(WebSocketHandler):
     def _send_ping(self):
         """Sends a ping to keep the WebSocket connection alive."""
         message = {"status": "WebSocketOpen"}
-        if hasattr(self, 'ping_message'):
+        if getattr(self, 'ping_message', None):
+            # heartbeat so the user sees a long silent step is still alive
+            elapsed = (datetime.datetime.now() - self.start_time).seconds
             message.update({"status": "Preprocessing",
-                           "info": self.ping_message})
+                           "info": f"{self.ping_message} (still working, {elapsed}s)"})
         self.send_response(message)
 
     def close(self, close_message=None, clean=True):

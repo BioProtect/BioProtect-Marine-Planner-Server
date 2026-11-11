@@ -129,13 +129,13 @@ class PlanningGridWSHandler(SocketHandler):
             })
         return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({'info': "Processing planning grid.."})
+            await self.start({'info': "Processing planning grid.."})
         except ServicesError:
             pass
 
-    async def on_message(self, message):
+    async def run_message(self, message):
         """
         Docstring for on_message
 

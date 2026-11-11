@@ -148,9 +148,9 @@ class UploadRasterCostHandler(SocketHandler):
     def initialize(self, pg):
         super().initialize(pg=pg)
 
-    async def open(self):
+    async def run(self):
         try:
-            await super().open({"info": "Uploading raster cost profile..."})
+            await self.start({"info": "Uploading raster cost profile..."})
         except ServicesError as e:
             log.error("UploadRasterCostHandler open failed: %s", e)
             return

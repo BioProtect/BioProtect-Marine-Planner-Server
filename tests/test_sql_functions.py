@@ -308,9 +308,9 @@ def test_run_config_defaults_and_null_feature_target_is_30_percent(db):
                "VALUES (%s, %s, 45), (%s, %s, NULL)", [pid, set_f, pid, unset_f])
     run = one(db, "INSERT INTO bioprotect.prioritizr_runs (project_id) VALUES (%s) RETURNING id", [pid])
     db.execute("SELECT target_prop, mode, boundary_penalty, linear_cost_penalty, gap, time_limit_sec, "
-               "feature_targets_json::jsonb FROM bioprotect.get_prioritizr_run_config(%s)", [run])
+               "cohon_calibrate, feature_targets_json::jsonb FROM bioprotect.get_prioritizr_run_config(%s)", [run])
     *defaults, targets = db.fetchone()
-    assert defaults == [0.30, "area", 0.0, 0.1, 0.04, 1200]
+    assert defaults == [0.30, "area", 0.0, 0.1, 0.04, 1200, False]
     assert targets == {f"f_{set_f}": 0.45, f"f_{unset_f}": 0.30}
 
 

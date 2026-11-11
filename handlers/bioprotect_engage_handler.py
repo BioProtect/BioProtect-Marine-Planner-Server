@@ -300,8 +300,9 @@ class BioProtectEngageHandler(BaseHandler):
     async def create_activity(self):
         """
         POST /server/engage?action=create-activity
-        Saves a drawn activity polygon into metadata_activities and creates
-        pressures via the PostGIS function, making it available in the main app.
+        Saves a drawn activity polygon and its metadata_activities row, making
+        it available in the main app (its pressures come from PAD by activity
+        title when cumulative impact runs).
         Body: { user, userGroup, name, description, density, timestamp, geometry }
         """
         try:
@@ -360,11 +361,6 @@ class BioProtectEngageHandler(BaseHandler):
                     [activity_id],
                 )
 
-                await self.pg.execute(
-                    "SELECT bioprotect.create_pressures_from_activity(%s);",
-                    [activity_id],
-                )
-
                 broadcast("activity-updated", {"activityId": activity_id})
                 self.send_response({
                     "info": "Activity merged successfully",
@@ -420,13 +416,6 @@ class BioProtectEngageHandler(BaseHandler):
 
             activity_id = meta_rows[0]["id"] if meta_rows else None
 
-            # Create pressures from PAD table
-            if activity_id:
-                await self.pg.execute(
-                    "SELECT bioprotect.create_pressures_from_activity(%s);",
-                    [activity_id],
-                )
-
             broadcast("activity-created", {
                 "activityName": activity_table,
                 "activityId": activity_id,
@@ -434,7 +423,7 @@ class BioProtectEngageHandler(BaseHandler):
 
             self.send_response({
                 "info": "Activity created successfully",
-                "message": "Activity saved and pressures created",
+                "message": "Activity saved",
                 "activityName": activity_table,
                 "activityId": activity_id,
                 "type": "success",

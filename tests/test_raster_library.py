@@ -104,6 +104,51 @@ def test_centroid_sampling_reads_the_right_pixel():
         print(f"ok  pixel area computed as {area:,.0f} km2")
 
 
+def test_strip_sampling_matches_a_whole_band_read(monkeypatch):
+    """Sampling reads the band strip by strip so a huge raster never lands in
+    memory (prod OOM, 2026-11-10). Tiny strips here force every point through
+    a different strip; the answers must be what a whole-band read gives."""
+    import services.raster_service as rs
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "src.tif")
+        data = np.arange(100, dtype="float32").reshape(10, 10)  # unique per pixel
+        with rasterio.open(src, "w", driver="GTiff", height=10, width=10, count=1,
+                           dtype="float32", crs="EPSG:4326", nodata=55,
+                           transform=from_origin(0.0, 50.0, 1.0, 1.0)) as dst:
+            dst.write(data, 1)
+        rng = np.random.default_rng(0)
+        points = [{"h3_index": str(i), "lon": float(x), "lat": float(y)}
+                  for i, (x, y) in enumerate(zip(rng.uniform(-1, 11, 300),
+                                                 rng.uniform(39, 51, 300)))]
+        monkeypatch.setattr(rs, "STRIP_PIXELS", 20)  # 2 rows per strip
+        got = {r["h3_index"]: r["value"] for r in sample_raster_at_centroids(src, points, 1)}
+        for p in points:
+            col, row = math.floor(p["lon"]), math.floor(50 - p["lat"])
+            want = (float(data[row, col]) if 0 <= row < 10 and 0 <= col < 10
+                    and data[row, col] != 55 else float("nan"))
+            assert (math.isnan(want) and math.isnan(got[p["h3_index"]])) \
+                or got[p["h3_index"]] == want, (p, got[p["h3_index"]], want)
+
+
+def test_reprojection_keeps_nodata_out_of_real_pixels():
+    """The old in-memory reproject blended nodata (-9999) into its
+    neighbours, so coverage edges came out as large negative costs."""
+    with tempfile.TemporaryDirectory() as d:
+        src, out = os.path.join(d, "merc.tif"), os.path.join(d, "out.tif")
+        data = np.full((200, 200), 50.0, dtype="float32")
+        data[:30, :] = -9999
+        with rasterio.open(src, "w", driver="GTiff", height=200, width=200, count=1,
+                           dtype="float32", crs="EPSG:3857", nodata=-9999,
+                           transform=from_origin(-1_000_000, 7_000_000, 500, 500)) as dst:
+            dst.write(data, 1)
+        clip_and_reproject(src, out)
+        with rasterio.open(out) as r:
+            assert r.crs.to_epsg() == 4326
+            v = r.read(1)
+            real = v[v != r.nodata]
+        assert real.size and real.min() >= 50.0 - 1e-3, real.min()
+
+
 def test_missing_cache_rows_become_fills():
     # This is the cache -> profile contract: a hex with no cached row
     # arrives as NaN and must be filled, never treated as zero cost.

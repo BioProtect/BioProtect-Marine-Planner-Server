@@ -208,7 +208,9 @@ def test_cumulative_impact_normalises_into_floor_to_one(db):
     """impact = coverage x rppscore x feature amount x sensitivity, summed.
 
     Hexes A|B|C (unit boxes). Activity 1 (rpp 2, sensitivity 3) covers A's
-    centroid; activity 2 (rpp 1, sensitivity 1) covers A's and B's.
+    centroid; activity 2 (rpp 1, sensitivity 1) covers A's and B's, as two
+    polygons whose shared edge runs through A's centroid - it still counts.
+    Pressures come from PAD by activity title; an rppscore 0 row is ignored.
     Feature amounts A 0.5, B 1.0, C none.
       A = 2*0.5*3 + 1*0.5*1 = 3.5  -> max -> 1.0
       B = 1*1.0*1           = 1.0  -> 0.001 + 0.999 * 1/3.5
@@ -224,15 +226,21 @@ def test_cumulative_impact_normalises_into_floor_to_one(db):
     amount(db, p, fid, "A", 0.5)
     amount(db, p, fid, "B", 1.0)
     tag = uuid.uuid4().hex[:8]
-    for act, rpp, sens, geom in ((1, 2, 3, box(0.1, 0.1, 0.9, 0.9)),
-                                 (2, 1, 1, box(0.1, 0.1, 1.9, 0.9))):
-        pressure = f"pytest pressure {act} {tag}"
-        db.execute(f"INSERT INTO bioprotect.pressures (activity_id, pressuretitle, rppscore, geometry) "
-                   f"VALUES (%s, %s, %s, {geom})", [-act, pressure, rpp])
+    act_ids = []
+    for act, rpp, sens, geoms in ((1, 2, 3, [box(0.1, 0.1, 0.9, 0.9)]),
+                                  (2, 1, 1, [box(0.1, 0.1, 0.5, 0.9), box(0.5, 0.1, 1.9, 0.9)])):
+        title, pressure, table = (f"pytest activity {act} {tag}", f"pytest pressure {act} {tag}",
+                                  f"pytest_act_{act}_{tag}")
+        db.execute(f"CREATE TABLE bioprotect.{table} AS "
+                   + " UNION ALL ".join(f"SELECT {g} AS geometry" for g in geoms))
+        act_ids.append(one(db, "INSERT INTO bioprotect.metadata_activities (activity, activity_name) "
+                               "VALUES (%s, %s) RETURNING id", [title, table]))
+        db.execute("INSERT INTO bioprotect.pad (activitytitle, pressuretitle, rppscore) "
+                   "VALUES (%s, %s, %s), (%s, %s, 0)", [title, pressure, rpp, title, pressure + " zero"])
         db.execute("INSERT INTO bioprotect.sensitivity_matrix (eunis_code, pressure, sensitivity_score) "
-                   "VALUES (%s, %s, %s)", [alias, pressure, sens])
+                   "VALUES (%s, %s, %s), (%s, %s, 100)", [alias, pressure, sens, alias, pressure + " zero"])
 
-    cp = one(db, "SELECT bioprotect.run_cumulative_impact(%s, ARRAY[-1, -2], 'pytest ci')", [p])
+    cp = one(db, "SELECT bioprotect.run_cumulative_impact(%s, %s, 'pytest ci')", [p, act_ids])
 
     db.execute("SELECT project_pu_id, cost, status FROM bioprotect.cost_profile_values "
                "WHERE cost_profile_id = %s", [cp])

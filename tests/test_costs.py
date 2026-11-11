@@ -202,7 +202,6 @@ async def activity(server):
     aid = (await rows(pg, "INSERT INTO bioprotect.metadata_activities (activity, activity_name) "
                           "VALUES (%s, %s) RETURNING id", [title, table]))[0]["id"]
     yield aid, pressures
-    await pg.execute("DELETE FROM bioprotect.pressures WHERE activity_id = %s", [aid])
     await pg.execute("DELETE FROM bioprotect.metadata_activities WHERE id = %s", [aid])
     await pg.execute(f"DROP TABLE bioprotect.{table}")
 
@@ -254,3 +253,78 @@ async def test_cumulative_impact_refuses_a_project_without_preprocessed_features
     pid = await create_project(server, grid[0])
     done = await run_ci(server, pid, activity[0])
     assert "No features have been preprocessed" in done["error"]
+
+
+def _activity_raster(tmpname):
+    """Web Mercator raster over -9.7..-9.4, 52.9..53.2: 7.0 east of -9.55,
+    0 west of it, and a nodata strip along the top 40 of 300 rows."""
+    from pyproj import Transformer
+    t = Transformer.from_crs(4326, 3857, always_xy=True)
+    (x0, y0), (x1, y1) = t.transform(-9.7, 52.9), t.transform(-9.4, 53.2)
+    data = np.full((300, 300), 7.0, dtype="float32")
+    data[:, :150] = 0
+    data[:40, :] = -9999
+    with rasterio.open(os.path.join(import_folder(), tmpname), "w", driver="GTiff",
+                       width=300, height=300, count=1, dtype="float32", crs="EPSG:3857",
+                       nodata=-9999, transform=from_bounds(x0, y0, x1, y1, 300, 300)) as dst:
+        dst.write(data, 1)
+
+
+async def test_raster_activity_upload_is_a_presence_footprint(server):
+    """Only pixels > 0 become polygons, merged regardless of value, with no
+    value column; nearest-neighbour keeps the 0|7 edge where it is (bilinear
+    smeared it a pixel west). Reprojection and polygonising run in GDAL on
+    disk - the old in-memory path OOM-killed prod on a big raster."""
+    pg = server.pg
+    title = (await rows(pg, "SELECT activitytitle FROM bioprotect.pad WHERE rppscore > 0 "
+                            "GROUP BY 1 ORDER BY count(*) LIMIT 1"))[0]["activitytitle"]
+    name = f"pytest_act_{uuid.uuid4().hex[:6]}.tif"
+    _activity_raster(name)
+
+    messages, _ = await ws_messages(server, "/server/uploadActivity", {
+        "activity": title, "filename": name, "description": "pytest",
+        "upload_type": "raster"})
+    done = messages[-1]
+    assert "error" not in done, messages
+    aid = done["activity_id"]
+    table = (await rows(pg, "SELECT activity_name FROM bioprotect.metadata_activities "
+                            "WHERE id = %s", [aid]))[0]["activity_name"]
+    try:
+        cols = {r["column_name"] for r in await rows(
+            pg, "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'bioprotect' AND table_name = %s", [table])}
+        assert cols == {"geometry", "id"}, cols
+        got = (await rows(pg, f"""SELECT count(*) AS n, ST_SRID(ST_Collect(geometry)) AS srid,
+                                         ST_XMin(ST_Extent(geometry)) AS west,
+                                         ST_XMax(ST_Extent(geometry)) AS east,
+                                         ST_YMax(ST_Extent(geometry)) AS north
+                                    FROM bioprotect."{table}" """))[0]
+        assert got["n"] == 1 and got["srid"] == 4326, got  # one block of activity
+        assert -9.5505 < got["west"] < -9.5495, got       # edge at -9.55, not smeared
+        assert got["east"] > -9.401 and got["north"] < 53.17, got  # nodata strip left out
+        pad_n = (await rows(pg, "SELECT count(*) AS n FROM bioprotect.pad "
+                                "WHERE activitytitle = %s AND rppscore > 0", [title]))[0]["n"]
+        assert done["pressure_count"] == pad_n
+        assert not os.path.exists(os.path.join(import_folder(), name))
+    finally:
+        await pg.execute("DELETE FROM bioprotect.metadata_activities WHERE id = %s", [aid])
+        await pg.execute(f'DROP TABLE IF EXISTS bioprotect."{table}"')
+
+
+async def test_activity_upload_refuses_a_title_with_no_pad_pressures(server):
+    name = f"pytest_act_{uuid.uuid4().hex[:6]}.tif"
+    _activity_raster(name)
+    title = f"pytest not in PAD {uuid.uuid4().hex[:6]}"
+    try:
+        messages, _ = await ws_messages(server, "/server/uploadActivity", {
+            "activity": title, "filename": name, "description": "pytest",
+            "upload_type": "raster"})
+        error = messages[-1].get("error", "")
+        assert "has no pressures in the PAD table" in error, messages
+        assert "Upload Raster Cost Profile" in error  # rasters can be a cost layer instead
+        assert await rows(server.pg, "SELECT 1 FROM bioprotect.metadata_activities "
+                                     "WHERE activity = %s", [title]) == []
+    finally:
+        path = os.path.join(import_folder(), name)
+        if os.path.exists(path):
+            os.remove(path)

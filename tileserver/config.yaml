@@ -13,7 +13,7 @@ listen_addresses: "0.0.0.0:3000"
 web_ui: disable
 
 postgres:
-  connection_string: '${DATABASE_URL:-postgres://postgres:postgres@localhost/bioprotect}'
+  connection_string: '${DATABASE_URL:postgres://postgres:postgres@localhost/bioprotect}'
   auto_publish: false
   default_srid: 4326
   functions:

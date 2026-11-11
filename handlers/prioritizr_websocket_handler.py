@@ -244,6 +244,9 @@ class PrioritizrWSHandler(SocketHandler):
 
             # Close slave FD in parent
             os.close(slave_fd)
+            # the solver can go minutes without printing (root LP, branch and
+            # bound): heartbeat every 30s so the run doesn't look frozen
+            self.ping_message = "Solver still working"
 
             # Start streaming PTY output
             await self._read_pty_until_exit()

@@ -11,7 +11,8 @@ RETURNS TABLE (
   linear_cost_penalty double precision,
   gap double precision,
   time_limit_sec int,
-  feature_targets_json text
+  feature_targets_json text,
+  cohon_calibrate boolean
 )
 LANGUAGE sql
 STABLE
@@ -34,7 +35,10 @@ SELECT
           )::text
    FROM bioprotect.project_features pf
    WHERE pf.project_id = r.project_id
-  ) AS feature_targets_json
+  ) AS feature_targets_json,
+  -- area mode: calibrate the cost penalty with Cohon's method instead of the
+  -- grid-normalised default (run_prioritzr_v2.R)
+  COALESCE((r.params->'penalties'->>'cohon')::boolean, false) AS cohon_calibrate
 FROM bioprotect.prioritizr_runs r
 WHERE r.id = p_run_id;
 $$;

@@ -51,12 +51,14 @@ async def problem(server, grid):
     await pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE unique_id = %s", [fid])
 
 
-async def run(server, pid, params):
+async def run(server, pid, params, log=None):
     messages, _ = await ws_messages(server, "/server/prioritizr-ws", {
         "user": server.user_id["pytest_admin"], "project_id": pid,
         "params": json.dumps({"name": "pytest run", **params})})
     final = messages[-1]
     assert "error" not in final, (final, [m.get("info") for m in messages[-15:]])
+    if log is not None:
+        log.extend(str(m.get("info") or m.get("message") or "") for m in messages)
     status = (await rows(server.pg, "SELECT status FROM bioprotect.prioritizr_runs WHERE id = %s",
                          [final["run_id"]]))[0]["status"]
     assert status == "Finished"
@@ -86,4 +88,43 @@ async def test_area_mode_stays_within_the_area_budget(server, problem):
     chosen = [c for c, s in sol.items() if s == 1]
     # all res-7 cells here are near-equal in area, so the budget is a cell count
     assert 0 < len(chosen) <= math.floor(0.3 * len(sol)) + 1
+    assert p["locked_in"] in chosen and p["locked_out"] not in chosen
+
+
+@pytest.mark.parametrize("mode", ["species", "area"])
+async def test_clustering_rounds_keep_targets_and_locks(server, problem, mode):
+    p = problem
+    log = []
+    sol = await run(server, p["pid"], {"mode": mode, "targets": {"prop": 0.3},
+                                       "penalties": {"boundary": 0.9}}, log=log)
+    text = "\n".join(log)
+    assert "Clustering round 0" in text and "Clustering round 1" in text, text[-2000:]
+    chosen = {c for c, s in sol.items() if s == 1}
+    assert p["locked_in"] in chosen and p["locked_out"] not in chosen
+    if mode == "species":
+        assert len(chosen) >= math.ceil(0.4 * len(sol))  # the 40% feature target still holds
+
+
+async def test_area_mode_uses_the_budget_when_every_cell_is_expensive(server, problem):
+    """The cost penalty is scaled to the grid. Unscaled (0.1 x cost 10 per
+    cell) it outweighed a cell's whole contribution to the targets, so area
+    mode selected nothing but the locked-in cell."""
+    p = problem
+    await server.pg.execute(
+        "UPDATE bioprotect.cost_profile_values v SET cost = 10 FROM bioprotect.projects pr "
+        "WHERE pr.id = %s AND v.cost_profile_id = pr.active_cost_profile_id", [p["pid"]])
+    sol = await run(server, p["pid"], {"mode": "area", "targets": {"prop": 0.3}})
+    chosen = [c for c, s in sol.items() if s == 1]
+    # 8 cells here: the budget holds 2; the unscaled penalty picked only the locked-in one
+    assert len(chosen) >= math.floor(0.3 * len(sol)), (len(chosen), len(sol))
+
+
+async def test_area_mode_cohon_calibration_sets_the_cost_penalty(server, problem):
+    p = problem
+    log = []
+    sol = await run(server, p["pid"], {"mode": "area", "targets": {"prop": 0.3},
+                                       "penalties": {"cohon": True}}, log=log)
+    text = "\n".join(log)
+    assert "Cost penalty: Cohon" in text, text[-2000:]
+    chosen = {c for c, s in sol.items() if s == 1}
     assert p["locked_in"] in chosen and p["locked_out"] not in chosen

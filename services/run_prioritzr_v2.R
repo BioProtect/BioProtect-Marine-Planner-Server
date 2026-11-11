@@ -160,7 +160,13 @@ MODE <- tolower(trimws(as.character(config$mode[1] %||% "species")))
 if (!MODE %in% c("species", "area")) {
     MODE <- "species"
 }
-BOUNDARY_PENALTY <- as.numeric(config$boundary_penalty[1] %||% 0.000)
+# Clustering strength 0..1 (the slider; stored as penalties.boundary).
+# Runs before 2026-11-11 stored absolute boundary penalties (<= 0.005) here.
+CLUSTERING <- min(max(as.numeric(config$boundary_penalty[1] %||% 0), 0), 0.95)
+CLUSTER_BUDGET_SEC <- 240 # all solves incl. round 0; inside the 5-minute ceiling
+CLUSTER_MAX_ROUNDS <- 15
+AREA_REWARD <- 0.05 # area mode: clustering reward vs a cell's mean target contribution
+COHON <- isTRUE(as.logical(config$cohon_calibrate[1]))
 LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||% 0.1)
 GAP <- as.numeric(config$gap[1] %||% 0.04)
 TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||% 1200)
@@ -176,7 +182,11 @@ logline(
     " Gap:",
     GAP,
     " TimeLimit:",
-    TIME_LIMIT_SEC
+    TIME_LIMIT_SEC,
+    " Clustering:",
+    CLUSTERING,
+    " Cohon:",
+    COHON
 )
 
 
@@ -317,73 +327,42 @@ logline(
     )
 )
 
-# ---- 5) Boundary matrix from precomputed edges (or runtime fallback) ----------
-# Note: adjacency returns undirected unique pairs (pu_id, nbr_id).
-# Mirror edges to make bm symmetric.
-logline("Loading boundary edges…")
-
-bm <- NULL
-
-# Try precomputed edges first (fast read from grid_boundary_edges table)
-h3_adjacency <- dbGetQuery(
-    conn,
-    sprintf(
-        "SELECT pu_id, nbr_id, boundary FROM bioprotect.get_project_boundary_edges(%s)",
-        project_id
-    )
-)
-
-if (nrow(h3_adjacency) == 0) {
-    # Fallback: compute at runtime (fine for small grids, slow for 100K+)
-    logline("No precomputed edges found, computing from H3 adjacency…")
+# ---- 5) Neighbour matrix from precomputed edges (or runtime fallback) ----------
+# Clustering needs only who-neighbours-whom; edge lengths are uniform on an
+# H3 grid. Skipped entirely when clustering is off.
+nm <- NULL
+if (CLUSTERING > 0) {
+    logline("Loading neighbour edges…")
     h3_adjacency <- dbGetQuery(
         conn,
         sprintf(
-            "SELECT pu_id, nbr_id, boundary FROM bioprotect.get_project_h3_adjacency(%s)",
+            "SELECT pu_id, nbr_id FROM bioprotect.get_project_boundary_edges(%s)",
             project_id
         )
     )
-}
-
-if (nrow(h3_adjacency) == 0) {
-    logline("No adjacency edges found; continuing without boundary penalties.")
-} else {
-    logline("Building boundary matrix from", nrow(h3_adjacency), "edges…")
-    ids <- PU$pu_id
-    n <- length(ids)
-
-    h3_adjacency$pu_id <- as.character(h3_adjacency$pu_id)
-    h3_adjacency$nbr_id <- as.character(h3_adjacency$nbr_id)
-
-    i <- match(h3_adjacency$pu_id, ids)
-    j <- match(h3_adjacency$nbr_id, ids)
+    if (nrow(h3_adjacency) == 0) {
+        # Fallback: compute at runtime (fine for small grids, slow for 100K+)
+        logline("No precomputed edges found, computing from H3 adjacency…")
+        h3_adjacency <- dbGetQuery(
+            conn,
+            sprintf(
+                "SELECT pu_id, nbr_id FROM bioprotect.get_project_h3_adjacency(%s)",
+                project_id
+            )
+        )
+    }
+    i <- match(as.character(h3_adjacency$pu_id), PU$pu_id)
+    j <- match(as.character(h3_adjacency$nbr_id), PU$pu_id)
     ok <- !is.na(i) & !is.na(j) & i != j
-
     if (!any(ok)) {
-        logline(
-            "Adjacency edges did not match PU ids; continuing without boundary penalties."
-        )
+        logline("No neighbour edges matched the PUs; continuing without clustering.")
     } else {
-        x <- suppressWarnings(as.numeric(h3_adjacency$boundary[ok]))
-        x[!is.finite(x) | x < 0] <- 0
-
-        # build symmetric sparse matrix
-        bm0 <- Matrix::sparseMatrix(
-            i = c(i[ok], j[ok]),
-            j = c(j[ok], i[ok]),
-            x = c(x, x),
-            dims = c(n, n),
-            dimnames = list(ids, ids)
+        n <- nrow(PU)
+        nm <- Matrix::sparseMatrix(
+            i = c(i[ok], j[ok]), j = c(j[ok], i[ok]), x = 1, dims = c(n, n)
         )
-
-        # set diagonal = total perimeter proxy (sum of shared boundaries)
-        # (not perfect outer-perimeter, but satisfies prioritizr's expectation)
-        rs <- Matrix::rowSums(bm0)
-        Matrix::diag(bm0) <- as.numeric(rs)
-
-        # coerce to symmetric dsCMatrix (expected by prioritizr boundary handling)
-        bm <- as(Matrix::forceSymmetric(bm0, uplo = "U"), "dsCMatrix")
-        logline("Boundary matrix built. nnz=", length(bm@x))
+        nm@x[] <- 1 # duplicate edges sum to 2; neighbours are 0/1
+        logline("Neighbour matrix built. edges=", sum(ok))
     }
 }
 
@@ -403,50 +382,151 @@ if (MODE == "area") {
             " planning units with non-finite or non-positive area_km2 values"
         )
     }
-
     budget <- TARGET_PROP * sum(PU$area_km2, na.rm = TRUE)
-
-    pblm <- problem(PU, features = feature_cols, cost_column = "area_km2") |>
-        add_min_shortfall_objective(budget = budget) |>
-        add_relative_targets(feature_targets) |>
-        add_feature_weights(fw) |>
-        add_linear_penalties(penalty = LINEAR_COST_PENALTY, data = PU$cost) |>
-        add_binary_decisions() |>
-        add_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
-} else {
-    pblm <- problem(PU, features = feature_cols, cost_column = "cost") |>
-        add_min_set_objective() |>
-        add_relative_targets(feature_targets) |>
-        add_feature_weights(fw) |>
-        add_binary_decisions() |>
-        add_solver(gap = GAP, time_limit = TIME_LIMIT_SEC, verbose = TRUE)
+    # Scale the cost tie-breaker to the grid. The shortfall objective is at
+    # most sum(feature weights), but raw cost grows with the cell count, so a
+    # fixed 0.1 x cost outweighed every target on large grids: 20k cells met
+    # 0/12 targets, 192k selected nothing (tested 2026-11-11). Now selecting
+    # every cell costs LINEAR_COST_PENALTY x the full shortfall.
+    total_cost <- sum(PU$cost, na.rm = TRUE)
+    cost_penalty <- if (total_cost > 0) LINEAR_COST_PENALTY * sum(fw) / total_cost else 0
 }
 
-# Add locked constraints only if there are locked PUs
+# `nbr` = each PU's (damped) share of selected neighbours from the previous
+# round, 0..1. Round 0 has none, i.e. the plain problem.
+build_problem <- function(nbr, time_limit) {
+    if (MODE == "area") {
+        # Area is the budget, so it can't be discounted; cost is only a weak
+        # tie-breaker here. Reward clustered cells on the shortfall scale
+        # instead: AREA_REWARD x a cell's mean contribution to the targets.
+        p <- problem(PU, features = feature_cols, cost_column = "area_km2") |>
+            add_min_shortfall_objective(budget = budget) |>
+            add_relative_targets(feature_targets) |>
+            add_feature_weights(fw) |>
+            add_linear_penalties(penalty = cost_penalty, data = PU$cost)
+        if (any(nbr > 0)) {
+            p <- p |> add_linear_penalties(
+                penalty = -1,
+                data = AREA_REWARD * shortfall_unit * CLUSTERING * nbr
+            )
+        }
+    } else {
+        d <- PU
+        d$cost_r <- PU$cost * (1 - CLUSTERING * nbr)
+        p <- problem(d, features = feature_cols, cost_column = "cost_r") |>
+            add_min_set_objective() |>
+            add_relative_targets(feature_targets) |>
+            add_feature_weights(fw)
+    }
+    p <- p |>
+        add_binary_decisions() |>
+        add_solver(gap = GAP, time_limit = time_limit, verbose = TRUE)
+    if (any(PU$locked_in, na.rm = TRUE)) {
+        p <- p |> add_locked_in_constraints(locked_in = "locked_in")
+    }
+    if (any(PU$locked_out, na.rm = TRUE)) {
+        p <- p |> add_locked_out_constraints(locked_out = "locked_out")
+    }
+    p
+}
+
 if (any(PU$locked_in, na.rm = TRUE)) {
-    logline(
-        "Adding locked-in constraints:",
-        sum(PU$locked_in, na.rm = TRUE),
-        "PUs"
-    )
-    pblm <- pblm |> add_locked_in_constraints(locked_in = "locked_in")
+    logline("Locked-in PUs:", sum(PU$locked_in, na.rm = TRUE))
 }
 if (any(PU$locked_out, na.rm = TRUE)) {
-    logline(
-        "Adding locked-out constraints:",
-        sum(PU$locked_out, na.rm = TRUE),
-        "PUs"
-    )
-    pblm <- pblm |> add_locked_out_constraints(locked_out = "locked_out")
+    logline("Locked-out PUs:", sum(PU$locked_out, na.rm = TRUE))
 }
 
-if (!is.null(bm)) {
-    pblm <- pblm |>
-        add_boundary_penalties(penalty = BOUNDARY_PENALTY, data = bm)
+sol_of <- function(s) {
+    v <- as.numeric(s[[if ("solution_1" %in% names(s)) "solution_1" else "solution"]])
+    v[!is.finite(v)] <- 0
+    v
+}
+
+t_start <- Sys.time()
+elapsed <- function() as.numeric(difftime(Sys.time(), t_start, units = "secs"))
+
+# Area mode, on request: Cohon's method (prioritizr::calibrate_cohon_penalty)
+# picks the cost penalty where cost and target shortfall are traded evenly.
+# Here it works out as n_features / cost of the cost-blind plan, about 30x the
+# normalised default: cheaper plans, some targets fall short (20k test cells:
+# cost -20%, worst feature at 83% of target). Two extra solves; they count
+# against the clustering budget. Falls back to the normalised penalty.
+if (MODE == "area" && COHON && cost_penalty > 0) {
+    logline("Calibrating cost penalty (Cohon)…")
+    calibrated <- tryCatch(
+        calibrate_cohon_penalty(
+            build_problem(rep(0, nrow(PU)), TIME_LIMIT_SEC),
+            approx = TRUE, verbose = FALSE
+        ),
+        error = function(e) {
+            logline("Cohon calibration failed, using the normalised penalty:", conditionMessage(e))
+            NA
+        }
+    )
+    if (is.finite(calibrated) && calibrated > 0) {
+        logline(sprintf(
+            "Cost penalty: Cohon %.4g (normalised would be %.4g)", calibrated, cost_penalty
+        ))
+        cost_penalty <- as.numeric(calibrated)
+    }
+} else if (MODE == "area") {
+    logline(sprintf("Cost penalty: normalised %.4g", cost_penalty))
 }
 
 logline("Solving…")
-s <- solve(pblm, force = TRUE)
+s <- solve(build_problem(rep(0, nrow(PU)), TIME_LIMIT_SEC), force = TRUE)
+
+# Clustering: iterative cost discount (tested 2026-11-11: 192k hexes,
+# -79% cut edges at +14% cost in ~200 s). Pairwise boundary/neighbour
+# penalties don't finish above ~50k hexes with HiGHS/CBC. Each round is a
+# full solve with the same targets and locks, so any round's plan is valid
+# and we can stop whenever the time budget runs out.
+if (!is.null(nm)) {
+    deg <- pmax(Matrix::rowSums(nm), 1)
+    amt <- as.matrix(sf::st_drop_geometry(PU)[feature_cols])
+    tot <- colSums(amt)
+    tot[tot <= 0] <- 1
+    shortfall_unit <- mean(rowSums(sweep(amt, 2, tot, "/")))
+    e_i <- Matrix::summary(Matrix::triu(nm))
+    cut_count <- function(v) sum(v[e_i$i] != v[e_i$j])
+
+    v <- sol_of(s)
+    nbr <- rep(0, nrow(PU))
+    logline(sprintf("Clustering round 0: %d PUs, %d cut edges", sum(v), cut_count(v)))
+    last_round <- elapsed()
+    for (k in seq_len(CLUSTER_MAX_ROUNDS)) {
+        t_round <- elapsed()
+        remaining <- CLUSTER_BUDGET_SEC - t_round
+        # stop if another round (about as long as the last) won't fit
+        if (remaining < last_round) {
+            logline("Clustering: time budget reached after", k - 1, "rounds")
+            break
+        }
+        nbr <- 0.5 * nbr + 0.5 * as.vector(nm %*% v) / deg
+        s_k <- tryCatch(
+            solve(build_problem(nbr, remaining), force = TRUE),
+            error = function(e) {
+                logline("Clustering round", k, "failed, keeping round", k - 1, ":", conditionMessage(e))
+                NULL
+            }
+        )
+        if (is.null(s_k)) break
+        v_k <- sol_of(s_k)
+        last_round <- elapsed() - t_round
+        logline(sprintf(
+            "Clustering round %d: %d PUs, %d cut edges (%.0f s)",
+            k, sum(v_k), cut_count(v_k), last_round
+        ))
+        changed <- any(v_k != v)
+        s <- s_k
+        v <- v_k
+        if (!changed) {
+            logline("Clustering converged")
+            break
+        }
+    }
+}
 
 # ---- 7) Export ID and the solution ----------
 sol_col <- if ("solution_1" %in% names(s)) {

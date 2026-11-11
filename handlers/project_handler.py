@@ -53,12 +53,14 @@ class ProjectHandler(BaseHandler):
         try:
             crs_epsg = int(crs_epsg)
         except (TypeError, ValueError):
-            raise ServicesError(f"Invalid CRS '{crs_epsg}': expected an EPSG code")
+            raise ServicesError(
+                f"Invalid CRS '{crs_epsg}': expected an EPSG code")
         row = await self.pg.execute(
             "SELECT 1 FROM public.spatial_ref_sys WHERE srid = %s",
             [crs_epsg], return_format="Array")
         if not row:
-            raise ServicesError(f"EPSG:{crs_epsg} is not a CRS known to PostGIS")
+            raise ServicesError(
+                f"EPSG:{crs_epsg} is not a CRS known to PostGIS")
         return crs_epsg
 
     async def _crs_grid_warning(self, crs_epsg, planning_unit_id):
@@ -358,7 +360,7 @@ class ProjectHandler(BaseHandler):
 
         # Populate project_pus (critical)
         await self.pg.execute(
-            """
+            r"""
             INSERT INTO bioprotect.project_pus (project_id, h3_index)
             SELECT %s AS project_id, hc.h3_index
             FROM bioprotect.h3_cells hc
@@ -405,12 +407,14 @@ class ProjectHandler(BaseHandler):
 
         if isinstance(target_values, str):
             # keep empty slots (= not set) so positions line up with feature_ids
-            targets = [x.strip() for x in target_values.split(",")] if target_values.strip() else []
+            targets = [x.strip() for x in target_values.split(",")
+                       ] if target_values.strip() else []
         else:
             targets = target_values or []
 
         if isinstance(spf_values, str):
-            spfs = [x.strip() for x in spf_values.split(",")] if spf_values.strip() else []
+            spfs = [x.strip() for x in spf_values.split(",")
+                    ] if spf_values.strip() else []
         else:
             spfs = spf_values or []
 
@@ -867,12 +871,14 @@ class ProjectHandler(BaseHandler):
 
         if isinstance(target_values, str):
             # keep empty slots (= not set) so positions line up with feature_ids
-            targets = [x.strip() for x in target_values.split(",")] if target_values.strip() else []
+            targets = [x.strip() for x in target_values.split(",")
+                       ] if target_values.strip() else []
         else:
             targets = target_values or []
 
         if isinstance(spf_values, str):
-            spfs = [x.strip() for x in spf_values.split(",")] if spf_values.strip() else []
+            spfs = [x.strip() for x in spf_values.split(",")
+                    ] if spf_values.strip() else []
         else:
             spfs = spf_values or []
 

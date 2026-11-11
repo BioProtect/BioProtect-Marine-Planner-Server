@@ -9,7 +9,12 @@
 listen_addresses: "0.0.0.0:3000"
 # Serves at /<function>/{z}/{x}/{y}; nginx maps /tiles/ onto it
 # (proxy_pass http://127.0.0.1:3000/; - the trailing slash strips /tiles).
-# ponytail: no route_prefix, Martin 0.15 ignores it.
+# No route_prefix: neither 0.15 nor prod's 0.19.3 honours it.
+# base_path IS needed (0.19.3 honours it): it puts /tiles into the tile URLs
+# of the TileJSON the frontend loads grids and features from. Without it the
+# browser asks nginx for /layer_tiles/... and gets the app's HTML back
+# ("MapError: Unimplemented type: 4"). Dev's 0.15 ignores it.
+base_path: /tiles
 web_ui: disable
 
 postgres:

@@ -328,3 +328,16 @@ async def test_activity_upload_refuses_a_title_with_no_pad_pressures(server):
         path = os.path.join(import_folder(), name)
         if os.path.exists(path):
             os.remove(path)
+
+
+async def test_a_zero_cost_is_refused(server, grid):
+    """Migration 0021: in min-set a free cell can be picked or dropped at no
+    cost and gets no clustering discount, so every writer floors at 0.001."""
+    alias, _, _ = grid
+    pid = await create_project(server, alias)
+    cp = (await rows(server.pg, "INSERT INTO bioprotect.cost_profiles (project_id, name) "
+                                "VALUES (%s, 'pytest zero') RETURNING id", [pid]))[0]["id"]
+    with pytest.raises(Exception, match="cost_profile_values_cost_positive"):
+        await server.pg.execute(
+            "INSERT INTO bioprotect.cost_profile_values (cost_profile_id, project_pu_id, cost, status) "
+            "SELECT %s, id, 0, 0 FROM bioprotect.project_pus WHERE project_id = %s LIMIT 1", [cp, pid])

@@ -36,7 +36,7 @@ Client (React) ──JSONP/POST──► Tornado (Python) ──aiopg──► P
                               R (prioritizr) ──RPostgres───────┘
 ```
 
-- **aiopg** pool: 2-10 async connections, 60s acquisition timeout
+- **aiopg** pool: 2-10 async connections, 120s timeout (connection acquisition and every query)
 - **SQLAlchemy** engine: 3+10 connections, used for GeoDataFrame operations
 - **RPostgres**: direct connection from R scripts, uses `PGHOST`/`PGUSER`/etc. env vars
 
@@ -650,7 +650,7 @@ The R scripts also use these `PG*` env vars for direct database access.
 
 | Pool | Library | Min | Max | Timeout | Used By |
 |------|---------|-----|-----|---------|---------|
-| Async | aiopg | 2 | 10 | 60s (acquisition) | Tornado handlers |
+| Async | aiopg | 2 | 10 | 120s (acquisition + each query) | Tornado handlers |
 | Sync | SQLAlchemy | 3 | 13 | 30s | GeoDataFrame ops |
 | Direct | RPostgres | 1 | 1 | None | R prioritizr scripts |
 
@@ -714,7 +714,7 @@ WHERE n::text <> source.h3_index
 ```
 
 **"timeout expired" on prioritizr run**
-The aiopg pool timeout (60s) is for connection acquisition, not query execution. If all 10 connections are busy, new queries wait up to 60s. Check for:
+The aiopg pool timeout (120s, `classes/postgis_class.py`) applies to connection acquisition and to every query: a query running longer is cancelled. If all 10 connections are busy, new queries wait up to 120s. Check for:
 ```sql
 SELECT pid, state, now() - query_start as duration, left(query, 80)
 FROM pg_stat_activity

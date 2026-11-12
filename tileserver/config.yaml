@@ -1,10 +1,11 @@
-# Martin tile server. Only the three tile functions are served (auto_publish
+# Martin tile server. Only the tile functions are served (auto_publish
 # off), so no table is reachable by name. The functions live in db/functions/
 # and are deployed by `python db/migrate.py deploy`; no Martin restart needed
 # when features or grids are added.
 #   grid_tiles  - planning grids
 #   layer_tiles - features and activities
 #   wdpa_tiles  - WDPA reference layer
+#   reference_tiles - user reference layers (?layer=<reference_layers.id>)
 # Run: martin -c tileserver/config.yaml   (DATABASE_URL overrides the default)
 listen_addresses: "0.0.0.0:3000"
 # Serves at /<function>/{z}/{x}/{y}; nginx maps /tiles/ onto it
@@ -31,3 +32,6 @@ postgres:
     wdpa_tiles:
       schema: bioprotect
       function: wdpa_tiles
+    reference_tiles:
+      schema: bioprotect
+      function: reference_tiles

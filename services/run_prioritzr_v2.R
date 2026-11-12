@@ -1,6 +1,6 @@
 # Prioritizr optimizer (Postgres + H3 adjacency)
-# Usage: Rscript Prioritizr_Postgres_V2.R params.json
-# Usage: Rscript Prioritizr_Postgres_V2.R run_id (params.json is replaced by run_id)
+# Usage: Rscript --vanilla --slave run_prioritzr_v2.R <run_id>
+#   (started by handlers/prioritizr_websocket_handler.py)
 
 # Key changes:
 #  - argv is just run_id
@@ -35,11 +35,10 @@ logline <- function(...) {
 
 # Use HiGHS if available, otherwise fall back to CBC
 add_solver <- if (requireNamespace("highs", quietly = TRUE)) {
-    add_highs_solver
+  add_highs_solver
 } else {
-    add_cbc_solver
+  add_cbc_solver
 }
-
 
 # ---- 1) Read run_id ----------
 args <- commandArgs(trailingOnly = TRUE)
@@ -156,10 +155,12 @@ has_locked_out <- "locked_out" %in% available_cols
 
 # Optimizer params
 TARGET_PROP <- as.numeric(config$target_prop[1] %||% 0.30)
-MODE <- tolower(trimws(as.character(config$mode[1] %||% "species")))
-if (!MODE %in% c("species", "area")) {
-    MODE <- "species"
-}
+# The objective is chosen in 4.7 from the feature amounts and lock-outs:
+# min-set, or area (min shortfall) only when lock-outs make a target
+# unreachable. config$mode is unused: the app never sends one, and
+# get_prioritizr_run_config's 'area' default is ignored.
+MODE <- NA_character_
+AREA_BUDGET_PROP <- 0.35  # fixed fraction of grid area, used only for shortfall fallback
 # Clustering strength 0..1 (the slider; stored as penalties.boundary).
 # Runs before 2026-11-11 stored absolute boundary penalties (<= 0.005) here.
 CLUSTERING <- min(max(as.numeric(config$boundary_penalty[1] %||% 0), 0), 0.95)
@@ -174,20 +175,6 @@ TIME_LIMIT_SEC <- as.integer(config$time_limit_sec[1] %||% 1200)
 logline("Run:", run_id, " Project:", project_id)
 logline("Input table:", input_table)
 logline("Features:", length(feature_cols))
-logline(
-    "Mode:",
-    MODE,
-    " Target:",
-    TARGET_PROP,
-    " Gap:",
-    GAP,
-    " TimeLimit:",
-    TIME_LIMIT_SEC,
-    " Clustering:",
-    CLUSTERING,
-    " Cohon:",
-    COHON
-)
 
 
 # ---- 4) Read PU input table (wide) ----------
@@ -327,6 +314,34 @@ logline(
     )
 )
 
+# ---- 4.7) Select objective using a fast, exact per-feature feasibility check ----
+# Minimum-set has no area budget. With only relative targets and PU locks,
+# selecting all non-locked-out PUs is a feasible solution exactly when each
+# feature has enough remaining amount to reach its target.
+locked_out_amount <- colSums(
+    feat_mat[which(PU$locked_out), feature_cols, drop = FALSE]
+)
+available_amount <- feat_sums[feature_cols] - locked_out_amount
+required_amount <- feat_sums[feature_cols] * feature_targets[feature_cols]
+# a hair of tolerance for float sums; a 100% target with no lock-outs is
+# exactly feasible and must stay min-set
+MODE <- if (all(available_amount >= required_amount * (1 - 1e-9))) "species" else "area"
+
+logline(
+    "Mode:",
+    MODE,
+    " Target:",
+    TARGET_PROP,
+    " Gap:",
+    GAP,
+    " TimeLimit:",
+    TIME_LIMIT_SEC,
+    " Clustering:",
+    CLUSTERING,
+    " Cohon:",
+    COHON
+)
+
 # ---- 5) Neighbour matrix from precomputed edges (or runtime fallback) ----------
 # Clustering needs only who-neighbours-whom; edge lengths are uniform on an
 # H3 grid. Skipped entirely when clustering is off.
@@ -382,7 +397,17 @@ if (MODE == "area") {
             " planning units with non-finite or non-positive area_km2 values"
         )
     }
-    budget <- TARGET_PROP * sum(PU$area_km2, na.rm = TRUE)
+    budget <- AREA_BUDGET_PROP * sum(PU$area_km2, na.rm = TRUE)
+    # Locked-in cells are always selected; a budget below their area makes
+    # the problem infeasible and the run fail.
+    locked_in_area <- sum(PU$area_km2[which(PU$locked_in)])
+    if (locked_in_area > budget) {
+        logline(sprintf(
+            "Area budget raised from %.0f to the locked-in area %.0f km2: the plan is the locked-in cells",
+            budget, locked_in_area
+        ))
+        budget <- locked_in_area * (1 + 1e-9) # solver tolerance on the equal sum
+    }
     # Scale the cost tie-breaker to the grid. The shortfall objective is at
     # most sum(feature weights), but raw cost grows with the cell count, so a
     # fixed 0.1 x cost outweighed every target on large grids: 20k cells met

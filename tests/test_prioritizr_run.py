@@ -4,6 +4,9 @@ Slow, so left out of the default run: `pytest -m slow`.
 The problem is built so the optimum is known: every cell holds 1 unit of
 one feature, west cells cost 1 and east cells cost 10, one east cell is
 locked in and one west cell locked out.
+
+The script picks the objective itself: min-set, or area (min shortfall,
+budget 35% of the grid area) only when lock-outs leave a target unreachable.
 """
 
 import json
@@ -51,6 +54,30 @@ async def problem(server, grid):
     await pg.execute("DELETE FROM bioprotect.metadata_interest_features WHERE unique_id = %s", [fid])
 
 
+async def set_locks(server, p, locked_in=(), locked_out=()):
+    """Replace the project's PU statuses: 1 locked in, 2 locked out, else 0."""
+    await server.pg.execute(
+        "UPDATE bioprotect.cost_profile_values v "
+        "   SET status = CASE WHEN pp.h3_index = ANY(%s) THEN 1 "
+        "                     WHEN pp.h3_index = ANY(%s) THEN 2 ELSE 0 END "
+        "  FROM bioprotect.project_pus pp, bioprotect.projects pr "
+        " WHERE v.project_pu_id = pp.id AND pp.project_id = pr.id AND pr.id = %s "
+        "   AND v.cost_profile_id = pr.active_cost_profile_id",
+        [list(locked_in), list(locked_out), p["pid"]])
+
+
+@pytest.fixture
+async def area_problem(server, problem):
+    """Only the locked-in cell and one cheap west cell stay unlocked: 2 of the
+    cells hold too little of the feature for its 40% target, so the run must
+    fall back to area mode. The budget (35% of ~8 near-equal cells) holds both."""
+    p = problem
+    p["available"] = {p["locked_in"], p["west"][1]}
+    await set_locks(server, p, locked_in=[p["locked_in"]],
+                    locked_out=[c for c in p["west"] + p["east"] if c not in p["available"]])
+    return p
+
+
 async def run(server, pid, params, log=None):
     messages, _ = await ws_messages(server, "/server/prioritizr-ws", {
         "user": server.user_id["pytest_admin"], "project_id": pid,
@@ -73,8 +100,10 @@ async def test_min_set_meets_target_at_least_cost_and_respects_locks(server, pro
     need = math.ceil(0.4 * n)
     assert len(p["west"]) - 1 >= need - 1, "grid too lopsided for a known optimum"
 
-    sol = await run(server, p["pid"], {"mode": "species", "solver": {"gap": 0}})
+    log = []
+    sol = await run(server, p["pid"], {"solver": {"gap": 0}}, log=log)
 
+    assert "Mode: species" in "\n".join(log)
     assert set(sol) == set(p["west"]) | set(p["east"])  # one row per PU
     chosen = {c for c, s in sol.items() if s == 1}
     assert p["locked_in"] in chosen and p["locked_out"] not in chosen
@@ -82,49 +111,88 @@ async def test_min_set_meets_target_at_least_cost_and_respects_locks(server, pro
     assert chosen & set(p["east"]) == {p["locked_in"]}  # nothing expensive beyond the lock
 
 
-async def test_area_mode_stays_within_the_area_budget(server, problem):
+async def test_a_100_percent_target_with_nothing_locked_out_stays_min_set(server, problem):
+    """Exactly feasible: the old check (available >= required x 1.0001) sent
+    this to area mode, whose 35% budget can't reach 100%."""
     p = problem
-    sol = await run(server, p["pid"], {"mode": "area", "targets": {"prop": 0.3}})
-    chosen = [c for c, s in sol.items() if s == 1]
-    # all res-7 cells here are near-equal in area, so the budget is a cell count
-    assert 0 < len(chosen) <= math.floor(0.3 * len(sol)) + 1
-    assert p["locked_in"] in chosen and p["locked_out"] not in chosen
+    await set_locks(server, p)
+    await server.pg.execute("UPDATE bioprotect.project_features SET target_value = 100 "
+                            "WHERE project_id = %s", [p["pid"]])
+    log = []
+    sol = await run(server, p["pid"], {}, log=log)
+    assert "Mode: species" in "\n".join(log)
+    assert all(s == 1 for s in sol.values())
 
 
-@pytest.mark.parametrize("mode", ["species", "area"])
-async def test_clustering_rounds_keep_targets_and_locks(server, problem, mode):
+async def test_an_unreachable_target_falls_back_to_area_mode(server, area_problem):
+    p = area_problem
+    log = []
+    sol = await run(server, p["pid"], {"targets": {"prop": 0.3}}, log=log)
+    assert "Mode: area" in "\n".join(log)
+    # shortfall can only shrink by taking every reachable cell, and the budget holds them
+    assert {c for c, s in sol.items() if s == 1} == p["available"]
+
+
+async def test_area_budget_is_raised_to_the_locked_in_area(server, problem):
+    """3 of ~8 near-equal cells locked in (> 35% of the area) and the rest
+    locked out: unreachable target, and a 35% budget would be infeasible."""
+    p = problem
+    cells = p["west"] + p["east"]
+    keep = cells[:3]
+    await set_locks(server, p, locked_in=keep, locked_out=cells[3:])
+    log = []
+    sol = await run(server, p["pid"], {}, log=log)
+    text = "\n".join(log)
+    assert "Mode: area" in text and "Area budget raised" in text, text[-2000:]
+    assert {c for c, s in sol.items() if s == 1} == set(keep)
+
+
+async def test_min_set_clustering_rounds_keep_targets_and_locks(server, problem):
     p = problem
     log = []
-    sol = await run(server, p["pid"], {"mode": mode, "targets": {"prop": 0.3},
+    sol = await run(server, p["pid"], {"targets": {"prop": 0.3},
                                        "penalties": {"boundary": 0.9}}, log=log)
     text = "\n".join(log)
+    assert "Mode: species" in text
     assert "Clustering round 0" in text and "Clustering round 1" in text, text[-2000:]
     chosen = {c for c, s in sol.items() if s == 1}
     assert p["locked_in"] in chosen and p["locked_out"] not in chosen
-    if mode == "species":
-        assert len(chosen) >= math.ceil(0.4 * len(sol))  # the 40% feature target still holds
+    assert len(chosen) >= math.ceil(0.4 * len(sol))  # the 40% feature target still holds
 
 
-async def test_area_mode_uses_the_budget_when_every_cell_is_expensive(server, problem):
+async def test_area_clustering_rounds_keep_locks(server, area_problem):
+    p = area_problem
+    log = []
+    sol = await run(server, p["pid"], {"targets": {"prop": 0.3},
+                                       "penalties": {"boundary": 0.9}}, log=log)
+    text = "\n".join(log)
+    assert "Mode: area" in text
+    assert "Clustering round 0" in text and "Clustering round 1" in text, text[-2000:]
+    chosen = {c for c, s in sol.items() if s == 1}
+    assert p["locked_in"] in chosen and chosen <= p["available"]
+
+
+async def test_area_mode_uses_the_budget_when_every_cell_is_expensive(server, area_problem):
     """The cost penalty is scaled to the grid. Unscaled (0.1 x cost 10 per
     cell) it outweighed a cell's whole contribution to the targets, so area
     mode selected nothing but the locked-in cell."""
-    p = problem
+    p = area_problem
     await server.pg.execute(
         "UPDATE bioprotect.cost_profile_values v SET cost = 10 FROM bioprotect.projects pr "
         "WHERE pr.id = %s AND v.cost_profile_id = pr.active_cost_profile_id", [p["pid"]])
-    sol = await run(server, p["pid"], {"mode": "area", "targets": {"prop": 0.3}})
-    chosen = [c for c, s in sol.items() if s == 1]
-    # 8 cells here: the budget holds 2; the unscaled penalty picked only the locked-in one
-    assert len(chosen) >= math.floor(0.3 * len(sol)), (len(chosen), len(sol))
-
-
-async def test_area_mode_cohon_calibration_sets_the_cost_penalty(server, problem):
-    p = problem
     log = []
-    sol = await run(server, p["pid"], {"mode": "area", "targets": {"prop": 0.3},
+    sol = await run(server, p["pid"], {"targets": {"prop": 0.3}}, log=log)
+    assert "Mode: area" in "\n".join(log)
+    # the unscaled penalty picked only the locked-in cell
+    assert {c for c, s in sol.items() if s == 1} == p["available"]
+
+
+async def test_area_mode_cohon_calibration_sets_the_cost_penalty(server, area_problem):
+    p = area_problem
+    log = []
+    sol = await run(server, p["pid"], {"targets": {"prop": 0.3},
                                        "penalties": {"cohon": True}}, log=log)
     text = "\n".join(log)
-    assert "Cost penalty: Cohon" in text, text[-2000:]
+    assert "Mode: area" in text and "Cost penalty: Cohon" in text, text[-2000:]
     chosen = {c for c, s in sol.items() if s == 1}
-    assert p["locked_in"] in chosen and p["locked_out"] not in chosen
+    assert p["locked_in"] in chosen and chosen <= p["available"]

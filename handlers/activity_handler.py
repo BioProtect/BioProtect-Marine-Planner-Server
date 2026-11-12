@@ -184,7 +184,7 @@ class UploadActivityHandler(SocketHandler):
         Activities are presence-only: the raster is reprojected to WGS84
         (nearest neighbour), cut to where it is > 0, polygonised by GDAL on
         disk, and the polygons loaded with ogr2ogr. Nothing runs as one big
-        pool query, so a large raster is not stopped by the 60s cap, and
+        pool query, so a large raster is not stopped by the pool query cap, and
         memory stays flat (a numpy read of the raster OOM-killed prod).
         """
         activity_table = get_unique_activity_name()
@@ -229,7 +229,7 @@ class UploadActivityHandler(SocketHandler):
                     'info': 'Loading activity polygons...'
                 })
                 # ponytail: no dateline split - the old raster path never did
-                # one, and an UPDATE over every polygon could hit the 60s cap.
+                # one, and an UPDATE over every polygon could hit the pool query cap.
                 await self.pg.import_file(work, "presence.gpkg", activity_table,
                                           None, "EPSG:4326",
                                           split_at_dateline=False)

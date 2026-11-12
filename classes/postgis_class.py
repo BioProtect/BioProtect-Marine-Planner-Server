@@ -25,7 +25,7 @@ class PostGIS:
                 dsn=self.config.CONNECTION_STRING,
                 minsize=2,
                 maxsize=10,
-                timeout=60
+                timeout=120  # aiopg applies it to every query too: the query cap
             )
 
         except Exception as e:

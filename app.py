@@ -49,7 +49,8 @@ from handlers.cost_handler import (DeleteCostHandler,
                                    SetActiveCostProfileHandler,
                                    GetCostProfileActivitiesHandler)
 from handlers.notification_handler import NotificationHandler
-from handlers.reference_layers_handler import ReferenceLayersHandler
+from handlers.reference_layers_handler import (ImportReferenceLayerWSHandler,
+                                               ReferenceLayersHandler)
 from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
@@ -81,7 +82,7 @@ PERMITTED_METHODS = ["getServerData", "RestartMartin",
                      "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
-    "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost'],
+    "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost', "importReferenceLayer"],
     "User": ["clearRunLogs"],
     "Admin": []
 }
@@ -947,6 +948,8 @@ class Application(tornado.web.Application):
 
             ("/server/getServerData", getServerData),
             ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
+            ("/server/importReferenceLayer", ImportReferenceLayerWSHandler,
+             dict(pg=pg, get_unique_feature_name=get_unique_feature_name)),  # websocket
             ("/server/getActivities", GetActivitiesHandler),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),

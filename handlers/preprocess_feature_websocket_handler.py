@@ -5,7 +5,7 @@ from handlers.websocket_handler import SocketHandler
 from services.service_error import ServicesError
 
 
-# Batch sizes keep every query well under the pool's 60 s cap (prod is ~3x
+# Batch sizes keep every query well under the pool's 120 s cap (prod is ~3x
 # slower than dev). Sublittoral Sediments (58k polygons) on dev: see
 # migrations/0019_feature_pieces.sql.
 PIECE_BATCH_POINTS = 200_000

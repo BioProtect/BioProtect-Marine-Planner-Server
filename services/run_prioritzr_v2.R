@@ -166,6 +166,7 @@ AREA_BUDGET_PROP <- 0.35  # fixed fraction of grid area, used only for shortfall
 CLUSTERING <- min(max(as.numeric(config$boundary_penalty[1] %||% 0), 0), 0.95)
 CLUSTER_BUDGET_SEC <- 240 # all solves incl. round 0; inside the 5-minute ceiling
 CLUSTER_MAX_ROUNDS <- 15
+CLUSTER_NEIGHBOUR_TOL <- 1e-3 # maximum remaining change in neighbour share
 AREA_REWARD <- 0.05 # area mode: clustering reward vs a cell's mean target contribution
 COHON <- isTRUE(as.logical(config$cohon_calibrate[1]))
 LINEAR_COST_PENALTY <- as.numeric(config$linear_cost_penalty[1] %||% 0.1)
@@ -522,13 +523,14 @@ if (!is.null(nm)) {
     last_round <- elapsed()
     for (k in seq_len(CLUSTER_MAX_ROUNDS)) {
         t_round <- elapsed()
-        remaining <- CLUSTER_BUDGET_SEC - t_round
+        remaining <- as.integer(floor(CLUSTER_BUDGET_SEC - t_round))
         # stop if another round (about as long as the last) won't fit
-        if (remaining < last_round) {
+        if (remaining < 1L || remaining < last_round) {
             logline("Clustering: time budget reached after", k - 1, "rounds")
             break
         }
-        nbr <- 0.5 * nbr + 0.5 * as.vector(nm %*% v) / deg
+        selected_neighbour_share <- as.vector(nm %*% v) / deg
+        nbr <- 0.5 * nbr + 0.5 * selected_neighbour_share
         s_k <- tryCatch(
             solve(build_problem(nbr, remaining), force = TRUE),
             error = function(e) {
@@ -546,7 +548,9 @@ if (!is.null(nm)) {
         changed <- any(v_k != v)
         s <- s_k
         v <- v_k
-        if (!changed) {
+        # With an unchanged selection, this is the discount's remaining drift.
+        # Keep iterating while damping still materially changes the costs.
+        if (!changed && max(abs(nbr - selected_neighbour_share)) <= CLUSTER_NEIGHBOUR_TOL) {
             logline("Clustering converged")
             break
         }

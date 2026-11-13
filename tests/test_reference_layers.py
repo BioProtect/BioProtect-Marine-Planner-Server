@@ -80,6 +80,10 @@ async def test_polygon_upload_tiles_and_listing(server, cleanup, monkeypatch):
     assert tile and len(tile) > 0
     assert (await rows(server.pg, "SELECT bioprotect.reference_tiles(7, 60, 42, %s) AS t",
                        ['{"layer": "x; drop"}']))[0]["t"] is None
+    # zoomed out to z1 the circle is sub-pixel: it comes back as a dot, not a fill
+    z1 = bytes((await rows(server.pg, "SELECT bioprotect.reference_tiles(1, 0, 0, %s) AS t",
+                           [json.dumps({"layer": lid})]))[0]["t"])
+    assert b"ref_dot" in z1 and b"ref_fill" not in z1
 
     _, body = await api(server, "GET", "/server/reference-layers", user="pytest_user")
     listed = {l["name"]: l for l in body["layers"]}  # every user sees every layer

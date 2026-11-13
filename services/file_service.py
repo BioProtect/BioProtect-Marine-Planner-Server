@@ -1,133 +1,10 @@
-import csv
 import glob
 import io
 import re
 import zipfile
-from operator import itemgetter
-from os import pardir, path, remove, sep, walk
-from subprocess import PIPE
+from os import path, remove, sep, walk
 
-import numpy as np
-import pandas as pd
 from services.service_error import ServicesError
-import shutil
-from osgeo import ogr
-
-
-def get_shapefile_fieldnames(shapefile):
-    """
-    Retrieves the field names from a shapefile.
-
-    Args:
-        shapefile (str): The full path to the shapefile (*.shp).
-
-    Returns:
-        list[str]: A list of field names in the shapefile.
-
-    Raises:
-        ServicesError: If the shapefile does not exist, cannot be opened, or contains no layers.
-    """
-    # Ensure OGR exceptions are raised
-    ogr.UseExceptions()
-
-    try:
-        # Open the shapefile
-        data_source = ogr.Open(shapefile)
-        if not data_source:
-            raise ServicesError(
-                f"Shapefile '{shapefile}' not found or could not be opened.")
-
-        # Access the first layer
-        layer = data_source.GetLayer(0)
-        if not layer:
-            raise ServicesError(f"No layers found in shapefile '{shapefile}'.")
-
-        # Extract field names from the layer definition
-        layer_definition = layer.GetLayerDefn()
-        return [layer_definition.GetFieldDefn(i).GetName() for i in range(layer_definition.GetFieldCount())]
-
-    except RuntimeError as e:
-        raise ServicesError(
-            f"Error reading shapefile '{shapefile}': {e.args[0]}")
-
-
-def normalize_dataframe(df, column_to_normalize_by, puid_column_name, classes=None):
-    # sourcery skip: extract-method
-    """
-    # sourcery skip: extract-method
-    Converts a DataFrame with duplicate values into a normalized array.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to normalize.
-        column_to_normalize_by (str): The column in the DataFrame used to provide the headings for the normalized data (e.g., "Status" column produces 1,2,3).
-        puid_column_name (str): The name of the planning grid unit ID column to create the array of values.
-        classes (int, optional): Number of classes to classify the data into. Defaults to None.
-
-    Returns:
-        list: The normalized data from the DataFrame organized as a list of values (headings) each with a list of PUIDs, e.g., [32, 2374, 5867, 24967...].
-    """
-    if df.empty:
-        return []
-
-    if classes:
-        # Calculate the range and bin size for classification
-        min_value = df[column_to_normalize_by].min()
-        max_value = df[column_to_normalize_by].max()
-
-        # Handle case where all values in the column are the same
-        num_classes = 1 if min_value == max_value else classes
-        bin_size = (max_value + 1 - min_value) / num_classes
-
-        # Initialize bins
-        bins = [[min_value + bin_size * (i + 1), []]
-                for i in range(num_classes)]
-
-        # Classify rows into bins
-        for idx, row in df.iterrows():
-            bin_index = int(
-                (row[column_to_normalize_by] - min_value) / bin_size)
-            bins[bin_index][1].append(int(row[puid_column_name]))
-
-        return bins, min_value, max_value
-
-    # Group by unique values in the column and organize data
-    groups = df.groupby(column_to_normalize_by)
-    return [
-        [group, group_df[puid_column_name].tolist()]
-        for group, group_df in groups
-        if group != 0
-    ]
-
-
-def file_to_df(file_name):
-    """Reads a file and returns the data as a DataFrame
-
-    Args:
-        file_name (string): The name of the file to read.
-    Returns:
-        DataFrame: The data from the file.
-    """
-    return pd.read_csv(file_name, sep=None, engine='python') if path.exists(file_name) else pd.DataFrame()
-
-
-def get_dict_value(_dict, key):
-    """Gets the value for a given key from a dictionary.
-
-    Args:
-        _dict (dict): The dictionary to search.
-        key (str): The key whose value is to be retrieved.
-
-    Returns:
-        string: The value associated with the key.
-
-    Raises:
-        ServicesError: If the key does not exist.
-    """
-    try:
-        return _dict[key]
-    except KeyError:
-        raise ServicesError(
-            f"The key '{key}' does not exist in the dictionary")
 
 
 def get_keys(s):
@@ -200,42 +77,6 @@ def read_file(filename):
     raise IOError(f"Unable to read file {filename} with supported encodings.")
 
 
-def get_key_values_from_file(filename):
-    """Gets the key/value pairs from a text file as a dictionary.
-
-    Args:
-        filename (str): Full path to the file that will be read.
-
-    Returns:
-        dict: The key/value pairs as a dictionary.
-
-    Raises:
-        ServicesError: If the file does not exist or cannot be read.
-    """
-    if not path.exists(filename):
-        raise ServicesError(f"The file '{filename}' does not exist")
-
-    try:
-        # Get the file contents
-        file_content = read_file(filename)
-    except Exception as e:
-        raise ServicesError(f"Error reading file '{filename}': {str(e)}")
-
-    # Initialize dictionary to hold key-value pairs
-    data = {}
-
-    # Get the keys from the file content
-    keys = get_keys(file_content)
-
-    # Populate the dictionary with key-value pairs
-    for key in keys:
-        key, value = get_key_value(file_content, key)
-        # Add key-value to the dictionary
-        data[key] = value
-
-    return data
-
-
 def write_to_file(filename, data, mode='w'):
     print('Writing to file - filename, mode: ', filename, mode)
     if 'b' in mode:
@@ -277,26 +118,6 @@ def update_file_parameters(filename, newParams):
 
     # Write the updated lines back to the file
     write_to_file(filename, "\n".join(updated_lines))
-
-
-def get_output_file(filename):  # sourcery skip: use-named-expression
-    """
-    Gets the correct filename+extension (normally either csv or txt) of a Marxan file. The extension of the Marxan output files depends on the settings SAVE* in the input.dat file and on the version of marxan.
-
-    Args:
-        filename (string): The full path to the file to get the correct filename for.
-    Returns:
-        The full path to the file with the correct extension.
-    Raises:
-        ServicesError: If the file does not exist.
-    """
-    files = glob.glob(filename + ".*")
-    # If any files exist, return the first found with its extension
-    if files:
-        return files[0]  # Returns the full path including the extension
-
-    # If no files found, raise an error
-    raise ServicesError(f"The output file '{filename}' does not exist.")
 
 
 def create_zipfile(folder, feature_class_name):
@@ -423,27 +244,6 @@ def check_zipped_shapefile(shapefile):
         )
 
 
-def get_files_in_folder(folder, filename):
-    """Gets an array of filenames in the folder recursively.
-
-    Args:
-        folder (str): The full path to the folder to search recursively.
-        filename (str): The filename to search for.
-
-    Returns:
-        list[str]: A list of the full filenames of the found files.
-    """
-    found_files = []
-
-    # Use path.join for path concatenation
-    for root, _, files in walk(folder):
-        # Check if the specified filename is in the current directory's files
-        if filename in files:
-            found_files.append(path.join(root, filename))
-
-    return found_files
-
-
 def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_term=None):
     """Unzips a zipped shapefile.
 
@@ -511,30 +311,3 @@ def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_te
 
     return root_filename
 
-
-def delete_records_in_text_file(filename, id_column_name, ids):
-    """Deletes records in a CSV file that have ID values matching the provided IDs.
-
-    Args:
-        filename (str): Full path to the file that will be processed.
-        id_column_name (str): The column name containing IDs to match against.
-        ids (list[int]): A list of integer values representing feature IDs.
-
-    Returns:
-        None
-
-    Raises:
-        ServicesError: If the file does not exist or cannot be processed.
-    """
-    if not path.exists(filename):
-        raise ServicesError(f"The file '{filename}' does not exist.")
-
-    # Load existing data from the CSV file
-    df = pd.read_csv(filename, sep=None, engine='python') if path.exists(
-        filename) else pd.DataFrame()
-
-    # Remove records with matching IDs
-    df_filtered = df[~df[id_column_name].isin(ids)]
-
-    # Write the filtered results back to the file without including the index
-    df_filtered.to_csv(filename, index=False)

@@ -55,9 +55,6 @@ class DBConfig:
         # return f"host={self.DATABASE_HOST} dbname={self.DATABASE_NAME} user={self.DATABASE_USER} password={self.DATABASE_PASSWORD}"
         return f"postgres://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{self.DATABASE_HOST}:{self.PORT}/{self.DATABASE_NAME}"
 
-    def psql_str(self):
-        return f" |  psql -h {self.DATABASE_HOST} -p {self.PORT} -U {self.DATABASE_USER} -d {self.DATABASE_NAME}"
-
     def create_db_engine(self):
         """Creates a SQLAlchemy engine for the PostgreSQL database."""
         return create_engine(

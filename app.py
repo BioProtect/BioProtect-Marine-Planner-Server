@@ -1,36 +1,27 @@
 import asyncio
 import datetime
-import glob
 import json
 import logging
 import os
 import platform
-import shutil
-import signal
 import sys
 import uuid
 import webbrowser
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-import colorama
 import jwt
 import numpy as np
 import pandas as pd
 import psutil
 import psycopg2
-import rasterio
 from handlers.bioprotect_engage_handler import BioProtectEngageHandler
 import tornado.httpserver
 import tornado.options
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
 from classes.postgis_class import get_pg
-from colorama import Fore, Style
-from functions.utils import (cumul_impact,
-                             get_tif_list, pad_dict, replace_chars,
-                             reproject_raster,
-                             reproject_raster_to_all_habs)
+from functions.utils import pad_dict
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
 from handlers.feature_websocket_handler import ImportFeaturesWSHandler
@@ -54,22 +45,16 @@ from handlers.reference_layers_handler import (ImportReferenceLayerWSHandler,
 from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
-from rasterio.io import MemoryFile
 from services.file_service import (delete_zipped_shapefile,
-                                   get_output_file,
                                    read_file,  unzip_shapefile,
-                                   update_file_parameters,
                                    write_to_file)
 from services.martin_service import restart_martin
-from services.project_service import write_csv
-from services.run_command_service import run_command
 from services.service_error import ServicesError, raise_error
 from sqlalchemy import create_engine, exc
 from tornado.escape import json_decode
 from tornado.ioloop import IOLoop
 from tornado.log import LogFormatter
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
-from tornado.process import Subprocess
 from tornado.web import HTTPError, StaticFileHandler
 import hashlib
 
@@ -128,18 +113,9 @@ SHOW_START_LOG = True
 LOGGING_LEVEL = logging.INFO
 """Tornado logging level that controls what is logged to the console - options are logging.INFO, logging.DEBUG, logging.WARNING, logging.ERROR, logging.CRITICAL. All SQL statements can be logged by setting this to logging.DEBUG."""
 
-# pdoc3 dict to whitelist private members for the documentation
-__pdoc__ = {}
-privateMembers = ['get_geometry_type', 'clone_project', 'create_user', 'create_zipfile', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'delete_zipped_shapefile',  'finish_feature_import', '_getAllProjects', 'get_dict_value',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
-                  'get_safe_project_name', 'get_unique_feature_name', 'get_user_data', 'get_users_data', 'normalize_dataframe', 'pad_dict', '_preprocessProtectedAreas', 'puid_array_to_df', 'raise_error', 'read_file', '_reprocessProtectedAreas', 'run_command', '_setCORS', 'set_global_vars', 'unzip_shapefile', 'update_dataframe', 'update_file_parameters', '_uploadTileset', 'validate_args', 'write_csv', 'write_to_file', 'zip_folder']
-
-for m in privateMembers:
-    __pdoc__[m] = True
-
-
 def log_server_info():
     """Logs server-related information."""
-    log(f"Server {SERVER_VERSION} port {db_config.SERVER_PORT} ..", Fore.GREEN)
+    log(f"Server {SERVER_VERSION} port {db_config.SERVER_PORT} ..")
     log(pad_dict("Operating system:", platform.system()))
     log(pad_dict("Tornado version:", tornado.version))
     log(pad_dict("Permitted domains:", ",".join(
@@ -167,7 +143,7 @@ def logClientInfo():
     if os.path.exists(package_json_path):
         with open(package_json_path) as f:
             MARXAN_CLIENT_VERSION = json.load(f).get('version', 'Unknown')
-    log(f"frontend {MARXAN_CLIENT_VERSION} installed", Fore.GREEN)
+    log(f"frontend {MARXAN_CLIENT_VERSION} installed")
 
 
 def log_other_info():
@@ -190,7 +166,7 @@ def log_other_info():
     log(pad_dict("ogr2ogr executable:", db_config.OGR2OGR_EXECUTABLE))
     log(pad_dict("GDAL_DATA path:", GDAL_ENV_VAR))
     log(pad_dict("Marxan executable:", db_config.MARXAN_EXECUTABLE))
-    log(db_config.STOP_CMD, Fore.RED)
+    log(db_config.STOP_CMD)
 
 
 ####################################################################################################################################################################################################################################################################
@@ -216,24 +192,15 @@ async def set_global_vars():
     DB_V_POSTGIS = results[0]["postgis_version"]
     log_server_info()
     logClientInfo()
-    # initialise colorama to be able to show log messages on windows in color
-    colorama.init()
     # register numpy int64 with psycopg2
     psycopg2.extensions.register_adapter(np.int64, psycopg2._psycopg.AsIs)
     log_other_info()
 
 
-def log(message, color=Fore.RESET):
-    """Logs the string to the logging handlers using the passed colorama color
-
-    Args:
-        _str (string): The string to log
-        _color (int): The color to use. The default is Fore.RESET.
-    Returns:
-        None
-    """
+def log(message):
+    """Prints the message (unless SHOW_START_LOG is off) and appends it to server.log."""
     if SHOW_START_LOG:
-        print(f"{color}{message}{Style.RESET_ALL}")
+        print(message)
     if not project_paths.DISABLE_FILE_LOGGING:
         write_to_file(
             f"{project_paths.PROJECT_FOLDER}server.log", f"{message}\n", "a")
@@ -1039,16 +1006,16 @@ async def initialiseApp():
     # open the web browser if the call includes a url, e.g. python server.py http://localhost/index.html
     if len(sys.argv) > 1:
         if MARXAN_CLIENT_VERSION == "Not installed":
-            log("Ignoring <url> parameter - the client is not installed", Fore.GREEN)
+            log("Ignoring <url> parameter - the client is not installed")
         else:
             url = sys.argv[1]  # normally "http://localhost/index.html"
-            log(f"Opening Marxan Web at {url} ..\n  {Fore.GREEN}")
+            log(f"Opening Marxan Web at {url} ..\n")
             webbrowser.open(url, new=1, autoraise=True)
 
     elif MARXAN_CLIENT_VERSION != "Not installed":
-        log(f"Goto to {navigateTo} to open Marxan Web {Fore.GREEN}")
+        log(f"Goto to {navigateTo} to open Marxan Web")
         log(
-            f"Or run 'python server.py {navigateTo} to open a browser\n {Fore.GREEN}")
+            f"Or run 'python server.py {navigateTo} to open a browser\n")
     logging.warning("server started")
     # otherwise subprocesses fail on windows
     if platform.system() == "Windows":

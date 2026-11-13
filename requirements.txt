@@ -2,7 +2,6 @@
 # GDAL (osgeo) must match the system libgdal: pip install GDAL==$(gdal-config --version)
 # R + solver deps: see README.md
 aiopg==1.4.0
-colorama==0.4.6
 exactextract==0.3.0
 GDAL==3.8.4
 geopandas==1.0.0

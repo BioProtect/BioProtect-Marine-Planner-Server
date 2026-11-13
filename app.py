@@ -47,7 +47,6 @@ from psycopg2 import sql
 from services.file_service import (delete_zipped_shapefile,
                                    read_file,  unzip_shapefile,
                                    write_to_file)
-from services.martin_service import restart_martin
 from services.service_error import ServicesError, raise_error
 from tornado.escape import json_decode
 from tornado.ioloop import IOLoop
@@ -61,8 +60,7 @@ import hashlib
 ####################################################################################################################################################################################################################################################################
 
 # SECURITY SETTINGS
-PERMITTED_METHODS = ["getServerData", "RestartMartin",
-                     "getProjectsWithGrids"]
+PERMITTED_METHODS = ["getServerData", "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
     "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost', "importReferenceLayer"],
@@ -743,25 +741,6 @@ class deleteShapefile(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class RestartMartin(BaseHandler):
-    async def get(self):
-        try:
-            if not project_paths.ENABLE_RESET:
-                raise ValueError(
-                    "Restart endpoint is disabled by config (ENABLE_RESET=false).")
-            self.send_response(restart_martin())
-        except Exception as e:
-            raise_error(self, str(e))
-
-    async def post(self):
-        try:
-            if not project_paths.ENABLE_RESET:
-                raise ValueError(
-                    "Restart endpoint is disabled by config (ENABLE_RESET=false).")
-            self.send_response(restart_martin())
-        except Exception as e:
-            raise_error(self, str(e))
-
 #  ########################################################################################################################
 #  ########################################################################################################################
 # * tornado functions
@@ -896,8 +875,6 @@ class Application(tornado.web.Application):
             ("/server/getShapefileFieldnames", getShapefileFieldnames),
 
             ("/server/preprocessFeature", PreprocessFeature, dict(pg=pg)),
-
-            ("/server/restart-martin", RestartMartin),
 
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
             ("/server/uploadActivity", UploadActivityHandler, dict(pg=pg)),

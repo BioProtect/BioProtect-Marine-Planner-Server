@@ -46,4 +46,12 @@ def create_a_user(username, email, password, role="User"):
 
 
 if __name__ == "__main__":
-    create_a_user("cartig", "carlostighe@gmail.com", "carlos", "Admin")
+    # python -m users.create_user <username> <email> [--role Admin]; prompts for the password
+    import argparse
+    from getpass import getpass
+    p = argparse.ArgumentParser(description="Create a BioProtect user")
+    p.add_argument("username")
+    p.add_argument("email")
+    p.add_argument("--role", default="User", choices=["User", "Admin"])
+    args = p.parse_args()
+    create_a_user(args.username, args.email, getpass("Password: "), args.role)

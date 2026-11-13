@@ -37,7 +37,7 @@ class DBConfig:
         self.DATABASE_USER = self.db_config.get("db_user")
         self.DATABASE_PASSWORD = self.db_config.get("db_pass")
         # default port for PostgreSQL
-        self.PORT = self.db_config.get('PORT', '5432')
+        self.PORT = self.db_config.get('port', '5432')
         self.COOKIE_SECRET = self.db_config.get('cookie_secret')
 
         # Check for missing database configuration and raise an error if any are missing

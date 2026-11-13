@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 
 import jwt
 import numpy as np
-import pandas as pd
 import psutil
 import psycopg2
 from handlers.bioprotect_engage_handler import BioProtectEngageHandler
@@ -50,7 +49,6 @@ from services.file_service import (delete_zipped_shapefile,
                                    write_to_file)
 from services.martin_service import restart_martin
 from services.service_error import ServicesError, raise_error
-from sqlalchemy import create_engine, exc
 from tornado.escape import json_decode
 from tornado.ioloop import IOLoop
 from tornado.log import LogFormatter
@@ -771,53 +769,27 @@ class RestartMartin(BaseHandler):
 #  ########################################################################################################################
 
 
-def getPressuresActivitiesDatabase(padfile_path):
-    db_url = (
-        f"postgresql://{db_config.DATABASE_USER}:"
-        f"{db_config.DATABASE_PASSWORD}@"
-        f"{db_config.DATABASE_HOST}/"
-        f"{db_config.DATABASE_NAME}"
-    )
-    print('db_url: ', db_url)
-
-    engine = create_engine(db_url)
-    print('engine: ', engine)
-    try:
-        pad = pd.read_sql('select * from bioprotect.pad', con=engine)
-    except exc.ProgrammingError as err:
-        print(err)
-    finally:
-        pad = pd.read_csv(padfile_path)
-        pad.columns = pad.columns.str.lower()
-        pad["rppscore"] = np.where(
-            pad['rpptitle'] == 'low', 0.3, 1)
-        pad.to_sql('pad', con=engine, schema='bioprotect', if_exists='replace')
-    return pad
-
-
 def make_stable_id(name: str, digits=6):
     h = hashlib.sha1(name.encode()).hexdigest()
     return int(h[:digits], 16)
 
 
 class GetActivitiesHandler(BaseHandler):
+    """Lists the PAD activities (bioprotect.pad, loaded by 02_seed.sql), each
+    with its first category, in PAD order. Empty when the table is empty."""
 
     async def get(self):
-        pad = getPressuresActivitiesDatabase(db_config.db_config.get('pad'))
-        try:
-            activities = []
-            activitytitles = pad.activitytitle.unique()
-            for idx, act in enumerate(activitytitles):
-                act_id = make_stable_id(act)
-                cat = pad[pad.activitytitle == act].categorytitle.unique()[0]
-                activities.append({
-                    "id": act_id,
-                    "category": cat,
-                    "activity": act
-                })
-            self.send_response({"data": json.dumps(activities)})
-        except Exception as e:
-            print(self, e.args[0])
+        rows = await self.pg.execute("""
+            SELECT activitytitle, categorytitle FROM (
+                SELECT DISTINCT ON (activitytitle) activitytitle, categorytitle, "index"
+                  FROM bioprotect.pad
+                 ORDER BY activitytitle, "index") a
+             ORDER BY "index"
+        """, return_format="Array")
+        activities = [{"id": make_stable_id(r["activitytitle"]),
+                       "category": r["categorytitle"],
+                       "activity": r["activitytitle"]} for r in rows]
+        self.send_response({"data": json.dumps(activities)})
 
 
 class GetUploadedActivitiesHandler(BaseHandler):
@@ -917,7 +889,7 @@ class Application(tornado.web.Application):
             ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
             ("/server/importReferenceLayer", ImportReferenceLayerWSHandler,
              dict(pg=pg, get_unique_feature_name=get_unique_feature_name)),  # websocket
-            ("/server/getActivities", GetActivitiesHandler),
+            ("/server/getActivities", GetActivitiesHandler, dict(pg=pg)),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),
             ("/server/unzipShapefile", unzipShapefile),

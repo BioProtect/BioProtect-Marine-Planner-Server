@@ -21,6 +21,8 @@ tornado==6.4.1
 
 # one-off import scripts only (functions/import_eunis_gdb_as_features.py, scripts/populate_sensitivity_matrix.py)
 fiona
+
+# read at every server start: MarESA sensitivity spreadsheet (classes/folder_path_config.py)
 openpyxl==3.1.5
 
 # Test-only (server/tests): python -m pytest

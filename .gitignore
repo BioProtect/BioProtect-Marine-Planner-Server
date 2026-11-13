@@ -33,6 +33,7 @@ _marxan_web_resources/
 
 *.dump
 *.sql
+!db/install/01_schema.sql
 
 !db/migrations/*.sql
 !db/functions/*.sql

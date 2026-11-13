@@ -37,7 +37,7 @@ class DBConfig:
         self.DATABASE_USER = self.db_config.get("db_user")
         self.DATABASE_PASSWORD = self.db_config.get("db_pass")
         # default port for PostgreSQL
-        self.PORT = self.db_config.get('PORT', '5432')
+        self.PORT = self.db_config.get('port', '5432')
         self.COOKIE_SECRET = self.db_config.get('cookie_secret')
 
         # Check for missing database configuration and raise an error if any are missing
@@ -54,9 +54,6 @@ class DBConfig:
         """Builds the PostgreSQL connection string."""
         # return f"host={self.DATABASE_HOST} dbname={self.DATABASE_NAME} user={self.DATABASE_USER} password={self.DATABASE_PASSWORD}"
         return f"postgres://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{self.DATABASE_HOST}:{self.PORT}/{self.DATABASE_NAME}"
-
-    def psql_str(self):
-        return f" |  psql -h {self.DATABASE_HOST} -p {self.PORT} -U {self.DATABASE_USER} -d {self.DATABASE_NAME}"
 
     def create_db_engine(self):
         """Creates a SQLAlchemy engine for the PostgreSQL database."""

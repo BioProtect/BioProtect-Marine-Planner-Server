@@ -1,36 +1,26 @@
 import asyncio
 import datetime
-import glob
 import json
 import logging
 import os
 import platform
-import shutil
-import signal
 import sys
 import uuid
 import webbrowser
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-import colorama
 import jwt
 import numpy as np
-import pandas as pd
 import psutil
 import psycopg2
-import rasterio
 from handlers.bioprotect_engage_handler import BioProtectEngageHandler
 import tornado.httpserver
 import tornado.options
 from classes.db_config import DBConfig
 from classes.folder_path_config import get_folder_path_config
 from classes.postgis_class import get_pg
-from colorama import Fore, Style
-from functions.utils import (cumul_impact,
-                             get_tif_list, pad_dict, replace_chars,
-                             reproject_raster,
-                             reproject_raster_to_all_habs)
+from functions.utils import pad_dict
 from handlers.base_handler import BaseHandler
 from handlers.feature_handler import FeatureHandler
 from handlers.feature_websocket_handler import ImportFeaturesWSHandler
@@ -54,22 +44,14 @@ from handlers.reference_layers_handler import (ImportReferenceLayerWSHandler,
 from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
-from rasterio.io import MemoryFile
 from services.file_service import (delete_zipped_shapefile,
-                                   get_output_file,
                                    read_file,  unzip_shapefile,
-                                   update_file_parameters,
                                    write_to_file)
-from services.martin_service import restart_martin
-from services.project_service import write_csv
-from services.run_command_service import run_command
 from services.service_error import ServicesError, raise_error
-from sqlalchemy import create_engine, exc
 from tornado.escape import json_decode
 from tornado.ioloop import IOLoop
 from tornado.log import LogFormatter
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
-from tornado.process import Subprocess
 from tornado.web import HTTPError, StaticFileHandler
 import hashlib
 
@@ -78,8 +60,7 @@ import hashlib
 ####################################################################################################################################################################################################################################################################
 
 # SECURITY SETTINGS
-PERMITTED_METHODS = ["getServerData", "RestartMartin",
-                     "getProjectsWithGrids"]
+PERMITTED_METHODS = ["getServerData", "getProjectsWithGrids"]
 """REST services that do not need authentication/authorisation."""
 ROLE_UNAUTHORISED_METHODS = {
     "ReadOnly": ["createProject", "upgradeProject", "createPlanningUnitGrid", "uploadFileToFolder", "uploadFile", "importFeatures", "updatePUFile",  "PreprocessFeature", "preprocessProtectedAreas", "runMarxan", "stopProcess", "clearRunLogs", "unzipShapefile", "getShapefileFieldnames", "importProject", 'updateCosts', 'deleteCost', "importReferenceLayer"],
@@ -128,18 +109,9 @@ SHOW_START_LOG = True
 LOGGING_LEVEL = logging.INFO
 """Tornado logging level that controls what is logged to the console - options are logging.INFO, logging.DEBUG, logging.WARNING, logging.ERROR, logging.CRITICAL. All SQL statements can be logged by setting this to logging.DEBUG."""
 
-# pdoc3 dict to whitelist private members for the documentation
-__pdoc__ = {}
-privateMembers = ['get_geometry_type', 'clone_project', 'create_user', 'create_zipfile', 'delete_archive_files', '_deleteFeature',  'delete_records_in_text_file', 'delete_zipped_shapefile',  'finish_feature_import', '_getAllProjects', 'get_dict_value',   'get_key_value', 'get_keys', 'get_bp_log', 'get_notifications_data', 'get_output_file', 'get_projects_for_feature', 'get_projects_for_user', 'get_run_logs',
-                  'get_safe_project_name', 'get_unique_feature_name', 'get_user_data', 'get_users_data', 'normalize_dataframe', 'pad_dict', '_preprocessProtectedAreas', 'puid_array_to_df', 'raise_error', 'read_file', '_reprocessProtectedAreas', 'run_command', '_setCORS', 'set_global_vars', 'unzip_shapefile', 'update_dataframe', 'update_file_parameters', '_uploadTileset', 'validate_args', 'write_csv', 'write_to_file', 'zip_folder']
-
-for m in privateMembers:
-    __pdoc__[m] = True
-
-
 def log_server_info():
     """Logs server-related information."""
-    log(f"Server {SERVER_VERSION} port {db_config.SERVER_PORT} ..", Fore.GREEN)
+    log(f"Server {SERVER_VERSION} port {db_config.SERVER_PORT} ..")
     log(pad_dict("Operating system:", platform.system()))
     log(pad_dict("Tornado version:", tornado.version))
     log(pad_dict("Permitted domains:", ",".join(
@@ -167,7 +139,7 @@ def logClientInfo():
     if os.path.exists(package_json_path):
         with open(package_json_path) as f:
             MARXAN_CLIENT_VERSION = json.load(f).get('version', 'Unknown')
-    log(f"frontend {MARXAN_CLIENT_VERSION} installed", Fore.GREEN)
+    log(f"frontend {MARXAN_CLIENT_VERSION} installed")
 
 
 def log_other_info():
@@ -190,7 +162,7 @@ def log_other_info():
     log(pad_dict("ogr2ogr executable:", db_config.OGR2OGR_EXECUTABLE))
     log(pad_dict("GDAL_DATA path:", GDAL_ENV_VAR))
     log(pad_dict("Marxan executable:", db_config.MARXAN_EXECUTABLE))
-    log(db_config.STOP_CMD, Fore.RED)
+    log(db_config.STOP_CMD)
 
 
 ####################################################################################################################################################################################################################################################################
@@ -216,24 +188,15 @@ async def set_global_vars():
     DB_V_POSTGIS = results[0]["postgis_version"]
     log_server_info()
     logClientInfo()
-    # initialise colorama to be able to show log messages on windows in color
-    colorama.init()
     # register numpy int64 with psycopg2
     psycopg2.extensions.register_adapter(np.int64, psycopg2._psycopg.AsIs)
     log_other_info()
 
 
-def log(message, color=Fore.RESET):
-    """Logs the string to the logging handlers using the passed colorama color
-
-    Args:
-        _str (string): The string to log
-        _color (int): The color to use. The default is Fore.RESET.
-    Returns:
-        None
-    """
+def log(message):
+    """Prints the message (unless SHOW_START_LOG is off) and appends it to server.log."""
     if SHOW_START_LOG:
-        print(f"{color}{message}{Style.RESET_ALL}")
+        print(message)
     if not project_paths.DISABLE_FILE_LOGGING:
         write_to_file(
             f"{project_paths.PROJECT_FOLDER}server.log", f"{message}\n", "a")
@@ -778,54 +741,11 @@ class deleteShapefile(BaseHandler):
             raise_error(self, e.args[0])
 
 
-class RestartMartin(BaseHandler):
-    async def get(self):
-        try:
-            if not project_paths.ENABLE_RESET:
-                raise ValueError(
-                    "Restart endpoint is disabled by config (ENABLE_RESET=false).")
-            self.send_response(restart_martin())
-        except Exception as e:
-            raise_error(self, str(e))
-
-    async def post(self):
-        try:
-            if not project_paths.ENABLE_RESET:
-                raise ValueError(
-                    "Restart endpoint is disabled by config (ENABLE_RESET=false).")
-            self.send_response(restart_martin())
-        except Exception as e:
-            raise_error(self, str(e))
-
 #  ########################################################################################################################
 #  ########################################################################################################################
 # * tornado functions
 #  ########################################################################################################################
 #  ########################################################################################################################
-
-
-def getPressuresActivitiesDatabase(padfile_path):
-    db_url = (
-        f"postgresql://{db_config.DATABASE_USER}:"
-        f"{db_config.DATABASE_PASSWORD}@"
-        f"{db_config.DATABASE_HOST}/"
-        f"{db_config.DATABASE_NAME}"
-    )
-    print('db_url: ', db_url)
-
-    engine = create_engine(db_url)
-    print('engine: ', engine)
-    try:
-        pad = pd.read_sql('select * from bioprotect.pad', con=engine)
-    except exc.ProgrammingError as err:
-        print(err)
-    finally:
-        pad = pd.read_csv(padfile_path)
-        pad.columns = pad.columns.str.lower()
-        pad["rppscore"] = np.where(
-            pad['rpptitle'] == 'low', 0.3, 1)
-        pad.to_sql('pad', con=engine, schema='bioprotect', if_exists='replace')
-    return pad
 
 
 def make_stable_id(name: str, digits=6):
@@ -834,23 +754,21 @@ def make_stable_id(name: str, digits=6):
 
 
 class GetActivitiesHandler(BaseHandler):
+    """Lists the PAD activities (bioprotect.pad, loaded by 02_seed.sql), each
+    with its first category, in PAD order. Empty when the table is empty."""
 
     async def get(self):
-        pad = getPressuresActivitiesDatabase(db_config.db_config.get('pad'))
-        try:
-            activities = []
-            activitytitles = pad.activitytitle.unique()
-            for idx, act in enumerate(activitytitles):
-                act_id = make_stable_id(act)
-                cat = pad[pad.activitytitle == act].categorytitle.unique()[0]
-                activities.append({
-                    "id": act_id,
-                    "category": cat,
-                    "activity": act
-                })
-            self.send_response({"data": json.dumps(activities)})
-        except Exception as e:
-            print(self, e.args[0])
+        rows = await self.pg.execute("""
+            SELECT activitytitle, categorytitle FROM (
+                SELECT DISTINCT ON (activitytitle) activitytitle, categorytitle, "index"
+                  FROM bioprotect.pad
+                 ORDER BY activitytitle, "index") a
+             ORDER BY "index"
+        """, return_format="Array")
+        activities = [{"id": make_stable_id(r["activitytitle"]),
+                       "category": r["categorytitle"],
+                       "activity": r["activitytitle"]} for r in rows]
+        self.send_response({"data": json.dumps(activities)})
 
 
 class GetUploadedActivitiesHandler(BaseHandler):
@@ -950,15 +868,13 @@ class Application(tornado.web.Application):
             ("/server/reference-layers", ReferenceLayersHandler, dict(pg=pg)),
             ("/server/importReferenceLayer", ImportReferenceLayerWSHandler,
              dict(pg=pg, get_unique_feature_name=get_unique_feature_name)),  # websocket
-            ("/server/getActivities", GetActivitiesHandler),
+            ("/server/getActivities", GetActivitiesHandler, dict(pg=pg)),
 
             ("/server/uploadFileToFolder", uploadFileToFolder),
             ("/server/unzipShapefile", unzipShapefile),
             ("/server/getShapefileFieldnames", getShapefileFieldnames),
 
             ("/server/preprocessFeature", PreprocessFeature, dict(pg=pg)),
-
-            ("/server/restart-martin", RestartMartin),
 
             ("/server/getUploadedActivities", GetUploadedActivitiesHandler),
             ("/server/uploadActivity", UploadActivityHandler, dict(pg=pg)),
@@ -1039,16 +955,16 @@ async def initialiseApp():
     # open the web browser if the call includes a url, e.g. python server.py http://localhost/index.html
     if len(sys.argv) > 1:
         if MARXAN_CLIENT_VERSION == "Not installed":
-            log("Ignoring <url> parameter - the client is not installed", Fore.GREEN)
+            log("Ignoring <url> parameter - the client is not installed")
         else:
             url = sys.argv[1]  # normally "http://localhost/index.html"
-            log(f"Opening Marxan Web at {url} ..\n  {Fore.GREEN}")
+            log(f"Opening Marxan Web at {url} ..\n")
             webbrowser.open(url, new=1, autoraise=True)
 
     elif MARXAN_CLIENT_VERSION != "Not installed":
-        log(f"Goto to {navigateTo} to open Marxan Web {Fore.GREEN}")
+        log(f"Goto to {navigateTo} to open Marxan Web")
         log(
-            f"Or run 'python server.py {navigateTo} to open a browser\n {Fore.GREEN}")
+            f"Or run 'python server.py {navigateTo} to open a browser\n")
     logging.warning("server started")
     # otherwise subprocesses fail on windows
     if platform.system() == "Windows":

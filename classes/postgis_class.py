@@ -1,11 +1,10 @@
 import asyncio
 import logging
 import os
-import uuid
 from subprocess import CalledProcessError
 
 import aiopg
-from psycopg2 import sql, OperationalError, IntegrityError, errors
+from psycopg2 import sql, errors
 
 import pandas as pd
 from classes.db_config import get_db_config
@@ -187,9 +186,6 @@ class PostGIS:
                     "alongside the .shp/.shx/.dbf) and try again."
                 )
         await self.import_file(folder, shapefile, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
-
-    async def import_gml(self, folder, gmlfilename, feature_class_name, s_epsg_code=None, t_epsg_code="EPSG:4326", splitAtDateline=True):
-        await self.import_file(folder, gmlfilename, feature_class_name, s_epsg_code, t_epsg_code, splitAtDateline)
 
     async def import_file_GDBFeatureClass(self, folder, fileGDB, sourceFeatureClass, destFeatureClass, s_epsg_code=None, t_epsg_code="EPSG:4326", splitAtDateline=True, where_clause=None):
         await self.import_file(

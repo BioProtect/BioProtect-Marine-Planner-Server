@@ -791,8 +791,9 @@ class GetUploadedActivitiesHandler(BaseHandler):
         try:
             # get all the species data
             query = """
-                SELECT id, filename, activity, description, to_char(creation_date, 'DD/MM/YY HH24:MI:SS')::text
-                AS creation_date, source, created_by
+                SELECT id, filename, activity, activity_name, description,
+                       to_char(creation_date, 'DD/MM/YYYY HH24:MI')::text AS creation_date,
+                       extent::text AS extent, source, created_by
                 FROM bioprotect.metadata_activities
                 ORDER BY lower(activity);
             """

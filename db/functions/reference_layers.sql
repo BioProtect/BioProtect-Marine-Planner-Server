@@ -120,6 +120,22 @@ BEGIN
     ) t WHERE geom IS NOT NULL;
     out_mvt := out_mvt || coalesce(part_mvt, '');
   END LOOP;
+
+  -- sub-pixel shapes come back as dots (ref_dot)
+  -- ponytail: one per 2 px cell, the rest lose click attrs until zoomed in
+  SELECT ST_AsMVT(t, 'ref_dot', 4096, 'geom') INTO part_mvt FROM (
+    SELECT DISTINCT ON (ST_AsBinary(geom)) attrs, geom FROM (
+      SELECT s.attributes::text AS attrs,
+             ST_SnapToGrid(ST_AsMVTGeom(
+               ST_Transform(ST_PointOnSurface(s.geom), 3857),
+               env, 4096, 0, true), 32) AS geom
+        FROM bioprotect.reference_layer_shapes s
+       WHERE s.layer_id = v_layer AND s.geom && env4326
+         AND ((s.part = 'fill' AND s.size_km < px_km ^ 2)
+              OR (s.part = 'line' AND s.size_km < px_km))
+    ) q WHERE geom IS NOT NULL
+  ) t;
+  out_mvt := out_mvt || coalesce(part_mvt, '');
   RETURN out_mvt;
 END;
 $function$;

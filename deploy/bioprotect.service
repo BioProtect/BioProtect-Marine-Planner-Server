@@ -1,0 +1,40 @@
+# systemd unit for the Tornado app. Assumes the checkout at /opt/bioprotect-server.
+#   sudo cp deploy/bioprotect.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now bioprotect
+[Unit]
+Description=BioProtect Tornado Server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=bioprotect
+WorkingDirectory=/opt/bioprotect-server
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/opt/bioprotect-server/.venv/bin:/usr/local/bin:/usr/bin:/bin
+
+# The Prioritizr R script connects with these, not with .env.local:
+# keep them in step with the db_* keys there.
+Environment=PGHOST=localhost
+Environment=PGPORT=5432
+Environment=PGDATABASE=bioprotect
+Environment=PGUSER=postgres
+Environment=PGPASSWORD=change-me
+
+Environment=R_LIBS_SITE=/usr/local/lib/R/site-library:/usr/lib/R/site-library
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=PROJ_LIB=/usr/share/proj
+Environment=GDAL_DATA=/usr/share/gdal
+
+ExecStart=/opt/bioprotect-server/.venv/bin/python3 app.py
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+# stop the R children with the app
+KillMode=control-group
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

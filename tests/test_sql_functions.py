@@ -325,3 +325,37 @@ def test_layer_tiles_serves_registered_layers_only(db):
     tile = one(cur, "SELECT bioprotect.layer_tiles(6, 30, 21, json_build_object('layer', %s))", [table])
     assert tile and len(tile) > 0
     assert one(cur, "SELECT bioprotect.layer_tiles(6, 30, 21, '{\"layer\": \"projects\"}')") is None
+
+
+def test_compare_runs_counts_a_coarse_cell_for_the_fine_cells_inside_it(db):
+    """Project A is res 7 (cells P, Q), B is res 9 (c1, c2 inside P; e
+    outside A). A's two runs pick P once (50 %), B's run picks c1 (100 %).
+    B's cells inside P average with A's 50 %; A's P is not averaged with B
+    (finer grids draw on top); cells nobody picked are left out."""
+    cur = db
+    cur.execute("""SELECT c::text FROM h3_grid_disk(
+                     h3_lat_lng_to_cell(POINT(-9.55, 53.05), 7), 1) c LIMIT 3""")
+    P, Q, R = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT c::text FROM h3_cell_to_children(%s::h3index, 9) c LIMIT 2", [P])
+    c1, c2 = [r[0] for r in cur.fetchall()]
+    e = one(cur, "SELECT h3_cell_to_center_child(%s::h3index, 9)::text", [R])
+    a, b = project(cur), project(cur)
+    pus(cur, a, [P, Q])
+    pus(cur, b, [c1, c2, e])
+
+    def run(pid, picked, cells):
+        rid = one(cur, "INSERT INTO bioprotect.prioritizr_runs (project_id) VALUES (%s) RETURNING id", [pid])
+        for h in cells:
+            cur.execute("INSERT INTO bioprotect.prioritizr_run_results VALUES (%s, %s, %s)",
+                        [rid, h, int(h in picked)])
+        return rid
+
+    runs = [run(a, {P}, [P, Q]), run(a, set(), [P, Q]), run(b, {c1}, [c1, c2, e])]
+    cur.execute("SELECT project_id, h3_index, avg_pct, shares FROM bioprotect.compare_runs(%s)",
+                [runs])
+    got = {(p, h): (avg, shares) for p, h, avg, shares in cur.fetchall()}
+    assert got == {
+        (a, P): (50.0, {str(a): 50.0}),
+        (b, c1): (75.0, {str(a): 50.0, str(b): 100.0}),
+        (b, c2): (25.0, {str(a): 50.0, str(b): 0.0}),
+    }

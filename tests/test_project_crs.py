@@ -36,6 +36,24 @@ def test_raster_without_crs_uses_fallback():
             raise AssertionError("a CRS-less raster with no fallback must fail")
 
 
+def test_south_up_raster_clips():
+    """Positive pixel height (row 0 = south), as some climate-model GeoTIFFs
+    ship: rasterio's windows.from_bounds rejects these."""
+    with tempfile.TemporaryDirectory() as d:
+        src, out = os.path.join(d, "src.tif"), os.path.join(d, "out.tif")
+        data = np.arange(100, dtype="float32").reshape(10, 10)
+        with rasterio.open(src, "w", driver="GTiff", height=10, width=10,
+                           count=1, dtype="float32", crs="EPSG:4326",
+                           transform=rasterio.Affine(1, 0, -10, 0, 1, 40)) as dst:
+            dst.write(data, 1)
+
+        assert bounds_wgs84(src) == (-10, 40, 0, 50)
+        clip_and_reproject(src, out, (-8, 42, -4, 46))
+        with rasterio.open(out) as r:
+            assert r.transform.e < 0  # written north-up
+            # pixel (col 3, row 3) of the source covers lon -7..-6, lat 43..44
+            assert next(r.sample([(-6.5, 43.5)]))[0] == data[3, 3]
+
 def test_area_functions(db):
     cur = db
     for f in ("db/migrations/0012_project_crs.sql", "db/functions/area_km2.sql"):

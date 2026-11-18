@@ -43,7 +43,7 @@ from rasterio.crs import CRS
 from tornado.ioloop import IOLoop
 from rasterio.errors import WindowError
 from rasterio.warp import transform_bounds
-from rasterio.windows import Window, from_bounds as window_from_bounds
+from rasterio.windows import Window
 
 
 log = logging.getLogger(__name__)
@@ -138,11 +138,12 @@ def bounds_wgs84(path: str, fallback_crs=None) -> tuple[float, float, float, flo
         src_crs = src.crs or (CRS.from_user_input(fallback_crs) if fallback_crs else None)
         if src_crs is None:
             # No CRS to convert from; assume the numbers are already lat/lon.
-            b = src.bounds
-            return (b.left, b.bottom, b.right, b.top)
-        return tuple(
-            transform_bounds(src_crs, "EPSG:4326", *src.bounds, densify_pts=21)
-        )
+            l, b, r, t = src.bounds
+        else:
+            l, b, r, t = transform_bounds(src_crs, "EPSG:4326", *src.bounds,
+                                          densify_pts=21)
+        # A south-up raster (positive pixel height) has bottom > top.
+        return (min(l, r), min(b, t), max(l, r), max(b, t))
 
 
 def clip_and_reproject(input_path, output_path, bounds_4326=None,
@@ -181,7 +182,13 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None,
             src_box = transform_bounds(
                 "EPSG:4326", src_crs, *bounds_4326, densify_pts=21
             )
-            window = window_from_bounds(*src_box, transform=src.transform)
+            # Corners through the inverse transform rather than
+            # windows.from_bounds, which rejects south-up rasters.
+            inv = ~src.transform
+            cols, rows = zip(*(inv * (x, y) for x in src_box[::2]
+                               for y in src_box[1::2]))
+            window = Window(min(cols), min(rows),
+                            max(cols) - min(cols), max(rows) - min(rows))
             try:
                 window = window.intersection(
                     Window(0, 0, src.width, src.height)
@@ -203,7 +210,8 @@ def clip_and_reproject(input_path, output_path, bounds_4326=None,
                     "The raster does not overlap any planning grid hexes."
                 )
         assign_srs = [] if src.crs else ["-a_srs", src_crs.to_string()]
-        is_4326 = src_crs.to_epsg() == 4326
+        # South-up 4326 goes through gdalwarp too, so the output is north-up.
+        is_4326 = src_crs.to_epsg() == 4326 and src.transform.e < 0
 
     srcwin = ["-srcwin", str(window.col_off), str(window.row_off),
               str(window.width), str(window.height)]

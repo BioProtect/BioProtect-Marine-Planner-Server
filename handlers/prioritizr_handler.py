@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 
-from handlers.base_handler import BaseHandler
+from handlers.base_handler import BaseHandler, has_project_access
 from services.run_export_service import ALLOWED_FORMATS, build_export_zip
 from services.service_error import ServicesError
 
@@ -34,6 +34,37 @@ class PrioritizrHandler(BaseHandler):
         except ServicesError:
             return None
 
+    def _run_ids_arg(self):
+        """The run-ids argument as a list of ints, or None after writing a 400."""
+        raw = self.get_argument("run-ids", "")
+        try:
+            run_ids = [int(r.strip()) for r in raw.split(",") if r.strip()]
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "run-ids must be comma-separated integers"})
+            return None
+        if not run_ids:
+            self.set_status(400)
+            self.write({"error": "run-ids is required"})
+            return None
+        return run_ids
+
+    async def _readable_run_projects(self, run_ids):
+        """{run_id: project_id} for run_ids, or None after writing a 403 when
+        any run is missing or its project is one the user may not open."""
+        rows = await self.pg.execute(
+            "SELECT id, project_id FROM bioprotect.prioritizr_runs WHERE id = ANY(%s)",
+            data=[run_ids], return_format="Array")
+        projects = {r["id"]: r["project_id"] for r in rows}
+        user_id = await self._session_user_id()
+        if len(projects) != len(set(run_ids)) or not all([
+                await has_project_access(self.pg, user_id, pid, "viewer")
+                for pid in set(projects.values())]):
+            self.set_status(403)
+            self.write({"error": "Access denied"})
+            return None
+        return projects
+
     async def get(self):
         action = self.get_argument("action", None)
 
@@ -51,6 +82,12 @@ class PrioritizrHandler(BaseHandler):
 
         if action == "export-runs":
             return await self.export_runs()
+
+        if action == "compare-runs":
+            return await self.compare_runs()
+
+        if action == "list-comparable-projects":
+            return await self.list_comparable_projects()
 
         self.write({"error": f"Unknown action '{action}'"})
         self.set_status(400)
@@ -175,23 +212,22 @@ class PrioritizrHandler(BaseHandler):
         Query params:
             run-ids  — comma-separated list of integer run IDs (e.g. "12,14,15")
         """
-        raw = self.get_argument("run-ids", "")
-        try:
-            run_ids = [int(r.strip()) for r in raw.split(",") if r.strip()]
-        except ValueError:
-            self.set_status(400)
-            self.write({"error": "run-ids must be comma-separated integers"})
+        run_ids = self._run_ids_arg()
+        if run_ids is None:
             return
-
-        if not run_ids:
+        projects = await self._readable_run_projects(run_ids)
+        if projects is None:
+            return
+        if len(set(projects.values())) > 1:
+            # the totals below are one project's; another project's runs
+            # would silently come out as 0 %. Comparisons call once per project.
             self.set_status(400)
-            self.write({"error": "run-ids is required"})
+            self.write({"error": "run-ids must all belong to one project"})
             return
 
         query = """
             WITH run_info AS (
-                -- Use the project from the first supplied run; all runs must
-                -- belong to the same project.
+                -- all runs belong to one project (checked above)
                 SELECT project_id
                 FROM   bioprotect.prioritizr_runs
                 WHERE  id = ANY(%s)
@@ -291,6 +327,14 @@ class PrioritizrHandler(BaseHandler):
     async def get_results(self):
         self.validate_args(self.request.arguments, ["run-id"])
         run_id = self.get_argument("run-id", None)
+        try:
+            run_id = int(run_id)
+        except ValueError:
+            self.set_status(400)
+            self.write({"error": "run-id must be an integer"})
+            return
+        if await self._readable_run_projects([run_id]) is None:
+            return
         query = (
             """
                 SELECT
@@ -301,10 +345,88 @@ class PrioritizrHandler(BaseHandler):
                 """)
 
         data = await self.pg.execute(query, data=[run_id], return_format="DataFrame")
-        print('Results data: ', data)
         self.send_response({"info": "Results returned",
                             "run_id": int(run_id),
                             "data": data.to_dict(orient="records")})
+
+    # --------------------------------------------------
+    async def compare_runs(self):
+        """Per-cell comparison of runs from one or more projects
+        (db/functions/compare_runs.sql).
+
+        Query params:
+            run-ids — comma-separated run IDs, from any projects the user
+                      may open
+
+        Returns projects (id, name, grid tile layer, finest resolution,
+        run_ids), coarse first so the map can stack fine grids on top, and
+        cells: {project_id: [[h3_index, avg_pct, {project_id: pct}], ...]}.
+        """
+        run_ids = self._run_ids_arg()
+        if run_ids is None:
+            return
+        run_projects = await self._readable_run_projects(run_ids)
+        if run_projects is None:
+            return
+
+        projects = await self.pg.execute(
+            """
+            SELECT p.id, p.name, mpu.feature_class_name AS grid,
+                   (SELECT max(h3_get_resolution(pp.h3_index::h3index))
+                      FROM bioprotect.project_pus pp
+                     WHERE pp.project_id = p.id) AS resolution
+            FROM   bioprotect.projects p
+            LEFT JOIN bioprotect.metadata_planning_units mpu
+                   ON mpu.unique_id = p.planning_unit_id
+            WHERE  p.id = ANY(%s)
+            ORDER  BY resolution, p.id
+            """,
+            data=[list(set(run_projects.values()))], return_format="Array")
+        for p in projects:
+            p["run_ids"] = sorted(r for r, pid in run_projects.items() if pid == p["id"])
+
+        rows = await self.pg.execute(
+            "SELECT project_id, h3_index, avg_pct, shares "
+            "FROM bioprotect.compare_runs(%s)",
+            data=[run_ids], return_format="Array")
+        cells = {str(p["id"]): [] for p in projects}
+        for r in rows:
+            cells[str(r["project_id"])].append(
+                [r["h3_index"], round(r["avg_pct"], 1), r["shares"]])
+
+        self.send_response({"info": "Comparison returned",
+                            "projects": projects, "cells": cells})
+
+    # --------------------------------------------------
+    async def list_comparable_projects(self):
+        """Projects the user may open, other than project-id, that have
+        finished runs: the "add runs from another project" picker. Projects
+        whose grid outline meets project-id's come first (overlapping=true)."""
+        self.validate_args(self.request.arguments, ["project-id"])
+        project_id = int(self.get_argument("project-id"))
+        user_id = await self._session_user_id()
+        data = await self.pg.execute(
+            """
+            SELECT p.id, p.name, count(r.id) AS finished_runs,
+                   COALESCE(ST_Intersects(mo.envelope, me.envelope), FALSE) AS overlapping
+            FROM   bioprotect.projects p
+            JOIN   bioprotect.prioritizr_runs r
+                     ON r.project_id = p.id AND r.status IN ('done', 'Finished')
+            LEFT JOIN bioprotect.metadata_planning_units mo
+                   ON mo.unique_id = p.planning_unit_id
+            LEFT JOIN bioprotect.projects cur ON cur.id = %s
+            LEFT JOIN bioprotect.metadata_planning_units me
+                   ON me.unique_id = cur.planning_unit_id
+            WHERE  p.id <> %s
+              AND  (EXISTS (SELECT 1 FROM bioprotect.users u
+                             WHERE u.id = %s AND u.role = 'Admin')
+                    OR EXISTS (SELECT 1 FROM bioprotect.user_projects up
+                                WHERE up.project_id = p.id AND up.user_id = %s))
+            GROUP  BY p.id, p.name, mo.envelope, me.envelope
+            ORDER  BY overlapping DESC, lower(p.name)
+            """,
+            data=[project_id, project_id, user_id, user_id], return_format="Array")
+        self.send_response({"data": data})
 
     # --------------------------------------------------
     async def export_runs(self):

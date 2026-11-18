@@ -104,6 +104,69 @@ async def test_only_starter_owner_or_admin_deletes_a_run(server, grid):
     assert body["info"] == f"Run {run} deleted"
 
 
+
+async def _run_in_new_project(server, picked=()):
+    """A bare project (pytest_user is not a member) with one run whose
+    results pick the given h3 indexes. Returns (project_id, run_id)."""
+    import uuid
+    pid = (await rows(server.pg, "INSERT INTO bioprotect.projects (name) VALUES (%s) RETURNING id",
+                      [f"pytest {uuid.uuid4().hex[:8]}"]))[0]["id"]
+    run = (await rows(server.pg, "INSERT INTO bioprotect.prioritizr_runs (project_id) "
+                                 "VALUES (%s) RETURNING id", [pid]))[0]["id"]
+    for h in picked:
+        await server.pg.execute("INSERT INTO bioprotect.project_pus (project_id, h3_index) "
+                                "VALUES (%s, %s)", [pid, h])
+        await server.pg.execute("INSERT INTO bioprotect.prioritizr_run_results VALUES (%s, %s, 1)",
+                                [run, h])
+    return pid, run
+
+
+async def _drop_projects(server, pids):
+    for table in ("prioritizr_runs", "project_pus", "projects"):
+        col = "id" if table == "projects" else "project_id"
+        await server.pg.execute(f"DELETE FROM bioprotect.{table} WHERE {col} = ANY(%s)", [pids])
+
+
+async def test_run_results_and_comparisons_need_project_access(server):
+    """get-results and compare-runs were readable by anyone with a run id."""
+    cell = "8718058b0ffffff"
+    pid, run = await _run_in_new_project(server, [cell])
+    try:
+        for params in ({"action": "get-results", "run-id": run},
+                       {"action": "compare-runs", "run-ids": run}):
+            code, body = await api(server, "GET", "/server/prioritizr", params, user="pytest_user")
+            assert (code, body) == (403, {"error": "Access denied"})
+        _, body = await api(server, "GET", "/server/prioritizr",
+                            {"action": "compare-runs", "run-ids": run})
+        assert [p["id"] for p in body["projects"]] == [pid]
+        assert body["cells"] == {str(pid): [[cell, 100.0, {str(pid): 100.0}]]}
+    finally:
+        await _drop_projects(server, [pid])
+
+
+
+async def test_comparable_projects_lists_only_members_projects_with_finished_runs(server):
+    pid, run = await _run_in_new_project(server)
+    try:
+        await server.pg.execute("UPDATE bioprotect.prioritizr_runs SET status = 'done' WHERE id = %s", [run])
+        params = {"action": "list-comparable-projects", "project-id": -1}
+        _, body = await api(server, "GET", "/server/prioritizr", params)
+        assert pid in [p["id"] for p in body["data"]]
+        _, body = await api(server, "GET", "/server/prioritizr", params, user="pytest_user")
+        assert pid not in [p["id"] for p in body["data"]]
+    finally:
+        await _drop_projects(server, [pid])
+
+async def test_feature_representation_rejects_runs_from_two_projects(server):
+    """It reads one project's totals, so a second project's runs came out 0 %."""
+    (p1, r1), (p2, r2) = await _run_in_new_project(server), await _run_in_new_project(server)
+    try:
+        code, body = await api(server, "GET", "/server/prioritizr",
+                               {"action": "get-feature-representation", "run-ids": f"{r1},{r2}"})
+        assert (code, body) == (400, {"error": "run-ids must all belong to one project"})
+    finally:
+        await _drop_projects(server, [p1, p2])
+
 # --- access control (were holes, fixed 2026-11-06) ---------------------
 
 async def test_anonymous_cannot_make_a_user_admin(server):
@@ -236,5 +299,5 @@ async def test_delete_refuses_a_user_who_still_owns_projects(server):
         assert await rows(server.pg, "SELECT 1 FROM bioprotect.users WHERE id = %s", [uid])
     finally:
         if pid:
-            await server.pg.execute("DELETE FROM bioprotect.projects WHERE id = %s", [pid])
+            await _drop_projects(server, [pid])
         await server.pg.execute("DELETE FROM bioprotect.users WHERE username = %s", [name])

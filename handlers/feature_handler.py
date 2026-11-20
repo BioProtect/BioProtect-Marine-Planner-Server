@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from handlers.base_handler import BaseHandler
@@ -50,8 +51,8 @@ class FeatureHandler(BaseHandler):
         try:
             action = self.get_argument('action', None)
 
-            if action == 'create-from-linestring':
-                await self.create_feature_from_linestring()
+            if action == 'create-from-drawing':
+                await self.create_feature_from_drawing()
             else:
                 raise ServicesError("Invalid action specified.")
 
@@ -148,26 +149,51 @@ class FeatureHandler(BaseHandler):
             'filename': zipfilename
         })
 
-    async def create_feature_from_linestring(self):
-        """Creates a new feature from a provided linestring."""
-        self.validate_args(self.request.arguments, [
-                           'name', 'description', 'linestring'])
+    async def create_feature_from_drawing(self):
+        """Creates a feature from polygons drawn on the map, with land cut out.
+
+        Body: {"name", "description", "geojson": FeatureCollection of polygons}.
+        """
+        data = json.loads(self.request.body or "{}")
+        name = (data.get('name') or '').strip()
+        polygons = [f.get('geometry') for f in (data.get('geojson') or {}).get('features', [])]
+        polygons = [g for g in polygons if g and g.get('type') in ('Polygon', 'MultiPolygon')]
+        if not name or not polygons:
+            raise ServicesError("A name and at least one drawn polygon are required.")
+
+        has_land = await self.pg.execute(
+            "SELECT EXISTS (SELECT 1 FROM bioprotect.land) AS ok", return_format="Dict")
+        if not has_land[0]["ok"]:
+            raise ServicesError(
+                "Land data is not loaded on this server (run db/load_land.sh), so drawn features can't have land removed.")
+
+        feature_class_name = "f_" + uuid.uuid4().hex[:30]
+        # ponytail: one ST_Union of the land pieces under the drawing. 0.5 s for a
+        # bay, 12 s for 36,000 km2 of Norwegian fjords; subdivide the drawing first
+        # if people draw whole coastlines.
+        await self.pg.execute(sql.SQL("""
+            CREATE TABLE bioprotect.{} AS
+            WITH d AS (
+                SELECT ST_MakeValid(ST_Union(ST_SetSRID(ST_GeomFromGeoJSON(g), 4326))) AS g
+                FROM unnest(%s::text[]) AS g),
+            sea AS (
+                SELECT ST_CollectionExtract(ST_Difference(d.g, COALESCE(
+                    (SELECT ST_Union(l.geom) FROM bioprotect.land l WHERE ST_Intersects(l.geom, d.g)),
+                    'SRID=4326;GEOMETRYCOLLECTION EMPTY'::geometry)), 3) AS g
+                FROM d)
+            SELECT (ST_Dump(sea.g)).geom::geometry(Polygon, 4326) AS geometry FROM sea
+        """).format(sql.Identifier(feature_class_name)), [[json.dumps(g) for g in polygons]])
+
+        left = await self.pg.execute(
+            sql.SQL("SELECT count(*) AS n FROM bioprotect.{}").format(sql.Identifier(feature_class_name)),
+            return_format="Dict")
+        if left[0]["n"] == 0:
+            await self.pg.execute(sql.SQL("DROP TABLE bioprotect.{}").format(sql.Identifier(feature_class_name)))
+            raise ServicesError("The drawn area is entirely on land. Draw over water.")
 
         user = self.get_current_user()
-        name = self.get_argument('name')
-        description = self.get_argument('description')
-        linestring = self.get_argument('linestring')
-        feature_class_name = "f_" + uuid.uuid4().hex[:30]
-
-        create_table_query = sql.SQL(
-            """
-            CREATE TABLE bioprotect.{} AS
-            SELECT bioprotect.ST_SplitAtDateLine(ST_SetSRID(ST_MakePolygon(%s)::geometry, 4326)) AS geometry;
-            """
-        ).format(sql.Identifier(feature_class_name))
-
-        await self.pg.execute(create_table_query, [linestring])
-        feature_id = await self.finish_feature_import(feature_class_name, name, description, "Drawn on screen", user)
+        feature_id = await self.finish_feature_import(
+            feature_class_name, name, data.get('description') or '', "Drawn on screen", user)
 
         self.send_response({
             'info': f"Feature '{name}' created",

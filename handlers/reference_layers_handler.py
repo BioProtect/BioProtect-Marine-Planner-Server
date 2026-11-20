@@ -18,7 +18,8 @@ from psycopg2 import sql
 from classes.folder_path_config import get_folder_path_config
 from handlers.base_handler import BaseHandler
 from handlers.websocket_handler import SocketHandler
-from services.file_service import delete_zipped_shapefile, unzip_shapefile
+from services.file_service import (delete_zipped_shapefile, original_name,
+                                   unzip_shapefile)
 from services.service_error import ServicesError, raise_error
 
 # Distinct from the WDPA green and the grid/cost colours; picked by layer id.
@@ -130,7 +131,7 @@ class ImportReferenceLayerWSHandler(SocketHandler):
                 raise ServicesError("Missing required argument: zipfile")
             root = unzip_shapefile(folder, zipfile)
             if not name:
-                name = root
+                name = original_name(root)
             if await self.pg.execute(
                     "SELECT 1 FROM bioprotect.reference_layers WHERE lower(name) = lower(%s)",
                     [name], return_format="Array"):

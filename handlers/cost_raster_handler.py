@@ -39,6 +39,7 @@ from tornado.ioloop import IOLoop
 from classes.folder_path_config import get_folder_path_config
 from handlers.base_handler import BaseHandler, has_project_access
 from handlers.websocket_handler import SocketHandler
+from services.file_service import original_name
 from services.raster_service import (
     SUPPORTED_STATS,
     bounds_of_hexes_in_bounds,
@@ -459,7 +460,7 @@ class UploadRasterCostHandler(SocketHandler):
             RETURNING id;
             """,
             data=[
-                profile_name, description, filename, band, stat, checksum,
+                profile_name, description, original_name(filename), band, stat, checksum,
                 *raster_bounds, owner_id,
             ],
             return_format="Array",

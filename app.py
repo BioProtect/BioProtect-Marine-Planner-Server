@@ -45,7 +45,7 @@ from osgeo import ogr
 from passlib.hash import bcrypt
 from psycopg2 import sql
 from services.file_service import (delete_zipped_shapefile,
-                                   read_file,  unzip_shapefile,
+                                   read_file, tag_upload, unzip_shapefile,
                                    write_to_file)
 from services.service_error import ServicesError, raise_error
 from tornado.escape import json_decode
@@ -585,12 +585,10 @@ class uploadFileToFolder(BaseHandler):
             # validate the input arguments
             self.validate_args(self.request.arguments, [
                                'filename', 'destFolder'])
-            filename = self.get_argument('filename')
+            filename = tag_upload(self.get_argument('filename'))
             dest_folder = self.get_argument('destFolder')
-            print('====================== dest_folder: ', dest_folder)
             # write the file to the server
             file_path = project_paths.PROJECT_FOLDER + dest_folder + os.sep + filename
-            print("============================== Writing file to:", file_path)
             write_to_file(
                 file_path, self.request.files["value"][0]["body"], 'wb')
             self.send_response({

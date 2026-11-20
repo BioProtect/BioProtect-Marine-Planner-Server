@@ -19,6 +19,7 @@ from tornado.ioloop import IOLoop
 
 from classes.folder_path_config import get_folder_path_config
 from handlers.websocket_handler import SocketHandler
+from services.file_service import original_name
 from services.project_service import get_project_crs, off_grid_warning
 from services.raster_service import (bounds_wgs84, get_raster_band_info,
                                      large_raster_warning,
@@ -307,7 +308,7 @@ class UploadActivityHandler(SocketHandler):
                 description,
                 upload_type,
                 self.get_current_user(),
-                filename.lower(),
+                original_name(filename).lower(),
                 activity,
                 activity_table
             ],

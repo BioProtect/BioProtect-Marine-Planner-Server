@@ -1,10 +1,27 @@
 import glob
 import io
 import re
+import shutil
+import uuid
 import zipfile
 from os import path, remove, sep, walk
 
 from services.service_error import ServicesError
+
+
+# Uploads share imports/, so each one gets a random tag: two users uploading
+# habitats.zip at once would otherwise overwrite (and clean up) each other.
+UPLOAD_TAG = re.compile(r'^[0-9a-f]{8}_')
+
+
+def tag_upload(filename):
+    """'habitats.zip' -> 'a1b2c3d4_habitats.zip' (basename only, so no ../)."""
+    return f"{uuid.uuid4().hex[:8]}_{path.basename(filename)}"
+
+
+def original_name(filename):
+    """Strips the upload tag for display: 'a1b2c3d4_habitats.zip' -> 'habitats.zip'."""
+    return UPLOAD_TAG.sub('', filename or '')
 
 
 def get_keys(s):
@@ -293,17 +310,18 @@ def unzip_shapefile(folder, filename, reject_multiple_shapefiles=True, search_te
         shps = [f for f in filenames if f.lower().endswith('.shp')]
         if not shps:
             raise ServicesError("The zip file does not contain a .shp file.")
-        root_filename = path.splitext(shps[0])[0]
+        # Members take the zip's upload tag, so two uploads of the same
+        # shapefile don't extract over each other.
+        tag = m.group(0) if (m := UPLOAD_TAG.match(filename)) else ''
+        root_filename = tag + path.splitext(shps[0])[0]
         try:
-            if search_term:
-                for f in filenames:
-                    zip_ref.extract(f, folder)
-            else:
-                zip_ref.extractall(folder)
+            for f in filenames:
+                with zip_ref.open(f) as src, open(path.join(folder, tag + f), 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
         except OSError:
             # Clean up extracted files in case of an error
             for f in filenames:
-                file_path = path.join(folder, f)
+                file_path = path.join(folder, tag + f)
                 if path.exists(file_path):
                     remove(file_path)
             raise ServicesError(

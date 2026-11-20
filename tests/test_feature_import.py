@@ -16,7 +16,7 @@ import pytest
 from shapely.geometry import box
 
 from conftest import ws_messages
-from services.file_service import unzip_shapefile
+from services.file_service import original_name, tag_upload, unzip_shapefile
 from services.service_error import ServicesError
 
 CSO_SAMPLE = os.path.join("test-data", "cso_marine_sample.zip")
@@ -52,6 +52,17 @@ def test_unzip_rejects_two_or_no_shapefiles(tmp_path, members, message):
     name = _zip(tmp_path, "u.zip", members)
     with pytest.raises(ServicesError, match=message):
         unzip_shapefile(str(tmp_path), name)
+
+
+def test_two_uploads_of_the_same_shapefile_do_not_clash(tmp_path):
+    # workshop case: everyone uploads habitats.zip into the shared imports/
+    a, b = tag_upload("habitats.zip"), tag_upload("../habitats.zip")
+    assert a != b and "/" not in b and original_name(a) == "habitats.zip"
+    for name in (a, b):
+        _zip(tmp_path, name, ["habitats.shp", "habitats.shx", "habitats.dbf"])
+    root_a, root_b = unzip_shapefile(str(tmp_path), a), unzip_shapefile(str(tmp_path), b)
+    assert root_a != root_b and original_name(root_a) == "habitats"
+    assert os.path.exists(tmp_path / f"{root_a}.shp") and os.path.exists(tmp_path / f"{root_b}.shp")
 
 
 # --- split import through the real WebSocket handler -----------------------

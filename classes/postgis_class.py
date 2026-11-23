@@ -37,7 +37,7 @@ class PostGIS:
             self.pool.close()
             await self.pool.wait_closed()
 
-    async def execute(self, sql_query, data=None, return_format=None, filename=None, socket_handler=None):
+    async def execute(self, sql_query, data=None, return_format=None, filename=None, socket_handler=None, timeout=None):
         """Executes a query and optionally returns the records or writes them to a file.
 
         Args:
@@ -46,6 +46,7 @@ class PostGIS:
             return_format (str): Optional. Format of the return data: 'Array', 'DataFrame', 'Dict', or 'File'.
             filename (str): Optional. Name of the file if exporting results.
             socket_handler: Optional. Used for tracking query progress via WebSocket.
+            timeout (float): Optional. Seconds before the query is cut; default the pool's 120.
 
         Returns:
             Any: The result based on return_format or None.
@@ -54,7 +55,7 @@ class PostGIS:
             ServicesError: If any database operation fails.
         """
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(timeout=timeout) as cur:
                 try:
                     logging.debug(f"Executing SQL Query: {sql_query}")
                     if socket_handler:
@@ -93,7 +94,7 @@ class PostGIS:
                 except errors.InternalError as e:
                     raise ServicesError("Query stopped: " + str(e))
                 except asyncio.TimeoutError as e:  # str() of this is '', so the log line used to be blank
-                    logging.error(f"SQL timed out after {self.pool.timeout}s: {str(sql_query)[:200]}")
+                    logging.error(f"SQL timed out after {timeout or self.pool.timeout}s: {str(sql_query)[:200]}")
                     raise ServicesError("Database query timed out") from e
                 except Exception as e:
                     logging.error(f"Error executing SQL: {e!r}")

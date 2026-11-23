@@ -14,6 +14,9 @@ from services.service_error import ServicesError, raise_error
 # process - fine while Tornado runs as one process.
 MAX_CONCURRENT_RUNS = int(os.environ.get("PRIORITIZR_MAX_RUNS", 4))
 _run_slots = asyncio.Semaphore(MAX_CONCURRENT_RUNS)
+# Input prep for big grids runs past the pool's 120s query cap when several
+# runs prepare at once and share the CPUs.
+PREPARE_TIMEOUT_SEC = int(os.environ.get("PRIORITIZR_PREPARE_TIMEOUT_SEC", 600))
 
 # --------------------------------------------------------------------
 # PTY output sanitisation
@@ -192,6 +195,7 @@ class PrioritizrWSHandler(SocketHandler):
             await self.pg.execute(
                 "SELECT bioprotect.prepare_prioritizr_input(%s)",
                 data=[self.run_id],
+                timeout=PREPARE_TIMEOUT_SEC,
             )
         except Exception as e:
             await self.pg.execute(

@@ -52,6 +52,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Create a BioProtect user")
     p.add_argument("username")
     p.add_argument("email")
-    p.add_argument("--role", default="User", choices=["User", "Admin"])
+    p.add_argument("--role", default="User", choices=["User", "Admin", "ReadOnly"])
     args = p.parse_args()
     create_a_user(args.username, args.email, getpass("Password: "), args.role)

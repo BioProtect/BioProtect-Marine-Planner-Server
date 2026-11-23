@@ -164,7 +164,9 @@ AREA_BUDGET_PROP <- 0.35  # fixed fraction of grid area, used only for shortfall
 # Clustering strength 0..1 (the slider; stored as penalties.boundary).
 # Runs before 2026-11-11 stored absolute boundary penalties (<= 0.005) here.
 CLUSTERING <- min(max(as.numeric(config$boundary_penalty[1] %||% 0), 0), 0.95)
-CLUSTER_BUDGET_SEC <- 240 # all solves incl. round 0; inside the 5-minute ceiling
+# Wall-clock budget for all solves incl. round 0. Concurrent runs share the
+# CPUs, so each round is slower and fewer fit; raise via the env var.
+CLUSTER_BUDGET_SEC <- as.numeric(Sys.getenv("PRIORITIZR_CLUSTER_BUDGET_SEC", "480"))
 CLUSTER_MAX_ROUNDS <- 15
 CLUSTER_NEIGHBOUR_TOL <- 1e-3 # maximum remaining change in neighbour share
 AREA_REWARD <- 0.05 # area mode: clustering reward vs a cell's mean target contribution

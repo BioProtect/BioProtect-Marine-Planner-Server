@@ -17,13 +17,17 @@ BEGIN
         p.costs,
         p.default_resolution,
         pu.alias AS planning_unit_alias,
-        up.role
+        -- Admins see every project; where they aren't a member they act as
+        -- editor (owner-only actions like delete/rename stay with the owner)
+        COALESCE(up.role, 'editor')::text
     FROM bioprotect.projects p
-    JOIN bioprotect.user_projects up
-      ON up.project_id = p.id
+    LEFT JOIN bioprotect.user_projects up
+      ON up.project_id = p.id AND up.user_id = p_user_id
     LEFT JOIN bioprotect.metadata_planning_units pu
       ON p.planning_unit_id = pu.unique_id
-    WHERE up.user_id = p_user_id
+    WHERE up.user_id IS NOT NULL
+       OR EXISTS (SELECT 1 FROM bioprotect.users u
+                  WHERE u.id = p_user_id AND u.role = 'Admin')
     ORDER BY LOWER(p.name);
 END;
 $function$

@@ -76,6 +76,23 @@ async def test_project_list_only_shows_your_own(server, grid):
     assert pid not in {p["id"] for p in theirs["projects"]}
 
 
+async def test_admin_lists_and_opens_projects_they_are_not_a_member_of(server, grid):
+    pid = await create_project(server, grid[0])
+    # hand it to pytest_user, so pytest_admin is no longer a member
+    await server.pg.execute("UPDATE bioprotect.user_projects SET user_id = %s WHERE project_id = %s",
+                            [server.user_id["pytest_user"], pid])
+    _, listed = await api(server, "GET", "/server/projects", {"action": "list"})
+    assert pid in {p["id"] for p in listed["projects"]}
+    code, got = await api(server, "GET", "/server/projects", {"action": "get", "projectId": pid})
+    assert code == 200 and "error" not in got, got
+    # owner-only actions stay owner-only
+    _, renamed = await api(server, "POST", "/server/projects", {"action": "rename"},
+                           {"project_id": pid, "newName": "hijacked"})
+    assert renamed == {"error": "Access denied"}
+    # opening set pytest_admin's last_project, which blocks the grid fixture's raw delete
+    await server.pg.execute("UPDATE bioprotect.users SET last_project = NULL WHERE last_project = %s", [pid])
+
+
 @pytest.mark.parametrize("method, action, body", [
     ("GET", "get", None),
     ("POST", "rename", {"newName": "hijacked"}),

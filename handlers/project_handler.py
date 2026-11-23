@@ -4,7 +4,7 @@ from os import sep
 from os.path import join
 import numpy as np
 import pandas as pd
-from handlers.base_handler import BaseHandler
+from handlers.base_handler import BaseHandler, has_project_access
 from psycopg2 import sql
 from services.file_service import (read_file, write_to_file)
 from services.service_error import ServicesError, raise_error
@@ -109,6 +109,9 @@ class ProjectHandler(BaseHandler):
         )
 
         if not row:
+            # Admins may open and edit any project, not delete or rename it
+            if min_role != "owner" and await has_project_access(self.pg, user_id, project_id):
+                return "editor"
             raise ServicesError("Access denied")
 
         role = row[0]["role"]

@@ -26,6 +26,12 @@ Environment=OPENBLAS_NUM_THREADS=1
 Environment=PROJ_LIB=/usr/share/proj
 Environment=GDAL_DATA=/usr/share/gdal
 
+# Prioritizr runs (defaults shown): concurrent runs, input-prep query cap,
+# clustering wall-clock budget. More runs at once = slower each.
+Environment=PRIORITIZR_MAX_RUNS=4
+Environment=PRIORITIZR_PREPARE_TIMEOUT_SEC=600
+Environment=PRIORITIZR_CLUSTER_BUDGET_SEC=480
+
 ExecStart=/opt/bioprotect-server/.venv/bin/python3 app.py
 Restart=on-failure
 RestartSec=3

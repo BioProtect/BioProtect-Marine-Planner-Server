@@ -164,9 +164,18 @@ class PrioritizrHandler(BaseHandler):
                     r.feature_cols,
                     r.feature_map,
                     r.label,
-                    r.description
+                    r.description,
+                    -- NULL for runs from before resolved_config existed
+                    CASE
+                        WHEN r.resolved_config IS NULL THEN NULL
+                        WHEN r.resolved_config->>'cost_profile_id' IS NULL
+                            THEN 'Zero cost'
+                        ELSE coalesce(cp.name, 'Deleted cost profile')
+                    END AS cost_profile_name
                 FROM bioprotect.prioritizr_runs r
                 LEFT JOIN bioprotect.users u ON u.id = r.created_by
+                LEFT JOIN bioprotect.cost_profiles cp
+                    ON cp.id = (r.resolved_config->>'cost_profile_id')::int
                 WHERE r.project_id = %s
                 ORDER BY r.created_at DESC
                 """)
@@ -358,7 +367,7 @@ class PrioritizrHandler(BaseHandler):
             run-ids — comma-separated run IDs, from any projects the user
                       may open
 
-        Returns projects (id, name, grid tile layer, finest resolution,
+        Returns projects (id, name, grid tile layer, grid alias, finest resolution,
         run_ids), coarse first so the map can stack fine grids on top, and
         cells: {project_id: [[h3_index, avg_pct, {project_id: pct}], ...]}.
         """
@@ -372,6 +381,7 @@ class PrioritizrHandler(BaseHandler):
         projects = await self.pg.execute(
             """
             SELECT p.id, p.name, mpu.feature_class_name AS grid,
+                   mpu.alias AS grid_alias,
                    (SELECT max(h3_get_resolution(pp.h3_index::h3index))
                       FROM bioprotect.project_pus pp
                      WHERE pp.project_id = p.id) AS resolution

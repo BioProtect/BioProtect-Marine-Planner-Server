@@ -341,3 +341,23 @@ async def test_a_zero_cost_is_refused(server, grid):
         await server.pg.execute(
             "INSERT INTO bioprotect.cost_profile_values (cost_profile_id, project_pu_id, cost, status) "
             "SELECT %s, id, 0, 0 FROM bioprotect.project_pus WHERE project_id = %s LIMIT 1", [cp, pid])
+
+
+async def test_list_runs_names_each_runs_cost_profile(server):
+    pid = (await rows(server.pg, "INSERT INTO bioprotect.projects (name) VALUES (%s) RETURNING id",
+                      [f"pytest {uuid.uuid4().hex[:8]}"]))[0]["id"]
+    cp = (await rows(server.pg, "INSERT INTO bioprotect.cost_profiles (project_id, name) "
+                                "VALUES (%s, 'Fishing') RETURNING id", [pid]))[0]["id"]
+    configs = {"old run": None, "zero": "{}", "fishing": f'{{"cost_profile_id": {cp}}}',
+               "gone": '{"cost_profile_id": -1}'}
+    for label, cfg in configs.items():
+        await server.pg.execute("INSERT INTO bioprotect.prioritizr_runs (project_id, label, resolved_config) "
+                                "VALUES (%s, %s, %s)", [pid, label, cfg])
+    try:
+        _, body = await api(server, "GET", "/server/prioritizr", {"action": "list-runs", "project-id": pid})
+        assert {r["label"]: r["cost_profile_name"] for r in body["data"]} == {
+            "old run": None, "zero": "Zero cost", "fishing": "Fishing", "gone": "Deleted cost profile"}
+    finally:
+        await server.pg.execute("DELETE FROM bioprotect.prioritizr_runs WHERE project_id = %s", [pid])
+        await server.pg.execute("DELETE FROM bioprotect.cost_profiles WHERE project_id = %s", [pid])
+        await server.pg.execute("DELETE FROM bioprotect.projects WHERE id = %s", [pid])
